@@ -2,7 +2,7 @@
 
 - id: `027`
 - title: Модерация текста и эскалация наказаний
-- status: `pending`
+- status: `done`
 - depends_on: `002`
 
 ## Цель
