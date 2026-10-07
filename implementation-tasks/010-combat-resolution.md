@@ -2,7 +2,7 @@
 
 - id: `010`
 - title: Разрешение атаки
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `004`
 
 ## Цель
