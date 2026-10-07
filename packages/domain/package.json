@@ -10,6 +10,7 @@
     "./character": "./src/character.ts",
     "./craft": "./src/craft.ts",
     "./dungeon": "./src/dungeon.ts",
+    "./economy": "./src/economy.ts",
     "./items": "./src/items.ts",
     "./progression": "./src/progression.ts",
     "./quests": "./src/quests.ts",
