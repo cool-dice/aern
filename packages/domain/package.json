@@ -9,11 +9,13 @@
     ".": "./src/index.ts",
     "./character": "./src/character.ts",
     "./craft": "./src/craft.ts",
+    "./dungeon": "./src/dungeon.ts",
     "./items": "./src/items.ts",
     "./progression": "./src/progression.ts",
     "./quests": "./src/quests.ts",
     "./result": "./src/result.ts",
-    "./stats": "./src/stats.ts"
+    "./stats": "./src/stats.ts",
+    "./world": "./src/world.ts"
   },
   "scripts": {
     "test": "vitest run",
