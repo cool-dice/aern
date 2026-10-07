@@ -2,7 +2,7 @@
 
 - id: `041`
 - title: Сервис валидации бота и utility-фолбэк
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `026`
 
 ## Цель
