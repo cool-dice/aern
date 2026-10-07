@@ -2,7 +2,7 @@
 
 - id: `011`
 - title: Статусы и сопротивление
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `004`
 
 ## Цель
