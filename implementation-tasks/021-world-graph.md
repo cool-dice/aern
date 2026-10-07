@@ -2,7 +2,7 @@
 
 - id: `021`
 - title: Граф мира и зоны PvP
-- status: `pending`
+- status: `done`
 - depends_on: `002`
 
 ## Цель
