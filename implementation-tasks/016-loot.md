@@ -2,7 +2,7 @@
 
 - id: `016`
 - title: Лут-таблицы
-- status: `pending`
+- status: `done`
 - depends_on: `002`
 
 ## Цель
