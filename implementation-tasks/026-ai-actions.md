@@ -2,7 +2,7 @@
 
 - id: `026`
 - title: Вектор восприятия и пространство действий
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `004`
 
 ## Цель
