@@ -2,7 +2,7 @@
 
 - id: `046`
 - title: Клиентское состояние
-- status: `pending`
+- status: `done`
 - depends_on: `001`, `003`
 
 ## Цель
