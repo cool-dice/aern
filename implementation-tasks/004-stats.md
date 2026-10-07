@@ -2,7 +2,7 @@
 
 - id: `004`
 - title: Статы и производные величины
-- status: `pending`
+- status: `done`
 - depends_on: `002`
 
 ## Цель
