@@ -2,7 +2,7 @@
 
 - id: `050`
 - title: Сцена PixiJS
-- status: `pending`
+- status: `done`
 - depends_on: `001`, `012`
 
 ## Цель
