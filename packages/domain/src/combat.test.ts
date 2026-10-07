@@ -11,7 +11,10 @@ import {
 import { mulberry32 } from './rng';
 import { damageMultiplier, derive, emptyPoints } from './stats';
 
-function limbsAt(maxHp: number, overrides: Partial<Record<LimbId, number>> = {}): Record<LimbId, number> {
+function limbsAt(
+  maxHp: number,
+  overrides: Partial<Record<LimbId, number>> = {},
+): Record<LimbId, number> {
   return {
     head: limbMax(maxHp, 'head'),
     torso: limbMax(maxHp, 'torso'),
@@ -43,7 +46,9 @@ function combatant(partial: Partial<Combatant> & Pick<Combatant, 'id'>): Combata
   };
 }
 
-function attack(partial: Partial<AttackInput> & Pick<AttackInput, 'attacker' | 'target'>): AttackInput {
+function attack(
+  partial: Partial<AttackInput> & Pick<AttackInput, 'attacker' | 'target'>,
+): AttackInput {
   return {
     attacker: partial.attacker,
     target: partial.target,
@@ -75,7 +80,12 @@ test('weapon 10, accuracy stat 10, armor 5 deals 10 and spends only attacker OD'
   expect(derived.accuracyScore).toBe(10);
   expect(damageMultiplier(10)).toBe(1.5);
 
-  const attacker = combatant({ id: 'a', accuracyStat: 10, accuracyScore: derived.accuracyScore, od: 4 });
+  const attacker = combatant({
+    id: 'a',
+    accuracyStat: 10,
+    accuracyScore: derived.accuracyScore,
+    od: 4,
+  });
   const target = combatant({ id: 'b', evasion: 8, armor: 5, od: 3, hp: 80 });
   const input = attack({ attacker, target, weaponDamage: 10 });
   const result = resolveAttack(input);
@@ -176,7 +186,14 @@ test('melee at distance 1 uses the same to-hit check and skips the max-range pen
   const attacker = combatant({ id: 'a', accuracyScore: 10, od: 4 });
   const dodging = combatant({ id: 'b', evasion: 10, od: 2, hp: 40 });
   const dodged = resolveAttack(
-    attack({ attacker, target: dodging, melee: true, distance: 1, range: 1, weaponDamage: UNARMED_DAMAGE }),
+    attack({
+      attacker,
+      target: dodging,
+      melee: true,
+      distance: 1,
+      range: 1,
+      weaponDamage: UNARMED_DAMAGE,
+    }),
   );
   expect(dodged.ok).toBe(true);
   if (!dodged.ok) {
@@ -232,7 +249,9 @@ test('a safe zone rejects every attack unless pvpOpen', () => {
   expect(attacker.od).toBe(4);
   expect(target.hp).toBe(40);
 
-  const open = resolveAttack(attack({ attacker, target, safeZone: true, pvpOpen: true, weaponDamage: 10 }));
+  const open = resolveAttack(
+    attack({ attacker, target, safeZone: true, pvpOpen: true, weaponDamage: 10 }),
+  );
   expect(open.ok).toBe(true);
   if (open.ok) {
     expect(open.value.reason).toBe('hit');
@@ -242,9 +261,7 @@ test('a safe zone rejects every attack unless pvpOpen', () => {
 test('allies are protected unless the group friendly-fire flag is on', () => {
   const attacker = combatant({ id: 'a', od: 4 });
   const target = combatant({ id: 'b', hp: 40 });
-  const blocked = resolveAttack(
-    attack({ attacker, target, sameGroup: true, friendlyFire: false }),
-  );
+  const blocked = resolveAttack(attack({ attacker, target, sameGroup: true, friendlyFire: false }));
   expect(blocked).toEqual({ ok: false, code: 'friendly' });
   expect(attacker.od).toBe(4);
   expect(target.hp).toBe(40);
