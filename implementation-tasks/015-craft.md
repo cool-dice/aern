@@ -2,7 +2,7 @@
 
 - id: `015`
 - title: Крафт, навыки и разбор
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `007`, `018`
 
 ## Цель
