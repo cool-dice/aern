@@ -2,7 +2,7 @@
 
 - id: `048`
 - title: Ввод и ребинд
-- status: `pending`
+- status: `done`
 - depends_on: `001`
 
 ## Цель
