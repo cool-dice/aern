@@ -2,7 +2,7 @@
 
 - id: `013`
 - title: Смерть, труп и привязка
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `007`, `010`
 
 ## Цель
