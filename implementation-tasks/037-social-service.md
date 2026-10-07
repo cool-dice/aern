@@ -2,7 +2,7 @@
 
 - id: `037`
 - title: Сервис чата и группы
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `022`, `027`
 
 ## Цель

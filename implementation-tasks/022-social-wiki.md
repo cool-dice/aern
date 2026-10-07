@@ -2,7 +2,7 @@
 
 - id: `022`
 - title: Чат, группа, вики и репутация NPC
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `006`
 
 ## Цель

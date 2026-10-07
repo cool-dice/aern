@@ -12,9 +12,12 @@
     "./dungeon": "./src/dungeon.ts",
     "./economy": "./src/economy.ts",
     "./items": "./src/items.ts",
+    "./language": "./src/language.ts",
+    "./moderation": "./src/moderation.ts",
     "./progression": "./src/progression.ts",
     "./quests": "./src/quests.ts",
     "./result": "./src/result.ts",
+    "./social": "./src/social.ts",
     "./stats": "./src/stats.ts",
     "./world": "./src/world.ts"
   },
