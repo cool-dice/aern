@@ -7,6 +7,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./ai": "./src/ai.ts",
     "./character": "./src/character.ts",
     "./craft": "./src/craft.ts",
     "./dungeon": "./src/dungeon.ts",
