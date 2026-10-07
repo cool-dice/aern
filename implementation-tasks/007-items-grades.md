@@ -2,7 +2,7 @@
 
 - id: `007`
 - title: Предметы, грейды, износ и слоты
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `004`
 
 ## Цель
