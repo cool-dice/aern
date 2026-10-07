@@ -7,8 +7,13 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./character": "./src/character.ts",
     "./craft": "./src/craft.ts",
-    "./quests": "./src/quests.ts"
+    "./items": "./src/items.ts",
+    "./progression": "./src/progression.ts",
+    "./quests": "./src/quests.ts",
+    "./result": "./src/result.ts",
+    "./stats": "./src/stats.ts"
   },
   "scripts": {
     "test": "vitest run",

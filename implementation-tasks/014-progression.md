@@ -2,7 +2,7 @@
 
 - id: `014`
 - title: Опыт, уровни и очки
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `004`
 
 ## Цель
