@@ -49,9 +49,7 @@ function walk(partial: {
 
 test('north decreases y: reaction 10 steps one cell and spends 1 OD in combat', () => {
   expect(step(at(0, 0), 'n')).toEqual(at(0, -1));
-  expect(walk({ reaction: 10, dir: 'n', od: 5 })).toEqual(
-    ok({ cell: at(0, -1), od: 4, cells: 1 }),
-  );
+  expect(walk({ reaction: 10, dir: 'n', od: 5 })).toEqual(ok({ cell: at(0, -1), od: 4, cells: 1 }));
 });
 
 test('facing deltas: +x east, +y south, diagonals are one Chebyshev cell', () => {
@@ -70,9 +68,7 @@ test('facing deltas: +x east, +y south, diagonals are one Chebyshev cell', () =>
 });
 
 test('reaction 15 steps two cells for 1 OD', () => {
-  expect(walk({ reaction: 15, dir: 'n', od: 4 })).toEqual(
-    ok({ cell: at(0, -2), od: 3, cells: 2 }),
-  );
+  expect(walk({ reaction: 15, dir: 'n', od: 4 })).toEqual(ok({ cell: at(0, -2), od: 3, cells: 2 }));
 });
 
 test('reaction 25 run covers 8 cells and spends runOdCost', () => {
@@ -137,13 +133,15 @@ test('overload does not block a walk', () => {
 test('two destroyed legs reject a step with legs', () => {
   expect(walk({ legsDestroyed: 2, od: 5 })).toEqual(err('legs'));
   expect(walk({ legsDestroyed: 2, running: true, reaction: 25, od: 5 })).toEqual(err('legs'));
-  expect(cellsFor({
-    reaction: 25,
-    running: true,
-    overloaded: false,
-    legsDestroyed: 2,
-    downed: false,
-  })).toBe(0);
+  expect(
+    cellsFor({
+      reaction: 25,
+      running: true,
+      overloaded: false,
+      legsDestroyed: 2,
+      downed: false,
+    }),
+  ).toBe(0);
 });
 
 test('one destroyed leg halves distance and keeps at least 1', () => {
