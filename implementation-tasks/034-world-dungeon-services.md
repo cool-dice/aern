@@ -2,7 +2,7 @@
 
 - id: `034`
 - title: Сервисы мира и данжей
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `020`, `021`
 
 ## Цель
