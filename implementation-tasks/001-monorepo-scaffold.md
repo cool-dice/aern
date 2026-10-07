@@ -2,7 +2,7 @@
 
 - id: `001`
 - title: Каркас монорепозитория
-- status: `pending`
+- status: `done`
 - depends_on: нет
 
 ## Цель

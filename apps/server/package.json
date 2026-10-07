@@ -1,0 +1,36 @@
+{
+  "name": "@rift/server",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "dev": "tsx src/main.ts",
+    "lint": "eslint src",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "5.22.0",
+    "@rift/content": "workspace:*",
+    "@rift/domain": "workspace:*",
+    "@rift/protocol": "workspace:*",
+    "bcryptjs": "2.4.3",
+    "fastify": "5.0.0",
+    "ioredis": "5.4.2",
+    "jsonwebtoken": "9.0.2",
+    "ws": "8.18.3",
+    "zod": "3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "2.4.6",
+    "@types/jsonwebtoken": "9.0.10",
+    "@types/node": "20.19.43",
+    "@types/ws": "8.18.2",
+    "eslint": "9.39.5",
+    "prisma": "5.22.0",
+    "tsx": "4.19.4",
+    "typescript": "5.6.3",
+    "vitest": "2.1.4"
+  }
+}
