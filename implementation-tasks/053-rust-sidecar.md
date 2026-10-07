@@ -2,7 +2,7 @@
 
 - id: `053`
 - title: Rust-сайдкар: IPC и mock-policy
-- status: `pending`
+- status: `done`
 - depends_on: `001`, `026`
 
 ## Цель

@@ -1,0 +1,128 @@
+//! Action ids and observation layout copied from `packages/domain/src/ai.ts`.
+//! Order and offsets are the shared contract. This module does not encode.
+
+/// Concatenation order and sizes of the 896-length observation vector.
+pub struct ObservationBlock {
+    pub name: &'static str,
+    pub length: usize,
+    pub offset: usize,
+}
+
+pub const OBSERVATION_LENGTH: usize = 896;
+
+pub const OBSERVATION_BLOCKS: [ObservationBlock; 9] = [
+    ObservationBlock {
+        name: "self",
+        length: 64,
+        offset: 0,
+    },
+    ObservationBlock {
+        name: "grid",
+        length: 128,
+        offset: 64,
+    },
+    ObservationBlock {
+        name: "actors",
+        length: 256,
+        offset: 192,
+    },
+    ObservationBlock {
+        name: "objects",
+        length: 128,
+        offset: 448,
+    },
+    ObservationBlock {
+        name: "events",
+        length: 64,
+        offset: 576,
+    },
+    ObservationBlock {
+        name: "quests",
+        length: 64,
+        offset: 640,
+    },
+    ObservationBlock {
+        name: "economy",
+        length: 32,
+        offset: 704,
+    },
+    ObservationBlock {
+        name: "guild",
+        length: 32,
+        offset: 736,
+    },
+    ObservationBlock {
+        name: "memory",
+        length: 128,
+        offset: 768,
+    },
+];
+
+/// Fixed order of the 64 discrete actions. Index 0 is `step_n`, index 16 is `wait`,
+/// the last id is `scan`. Copied from `ACTION_IDS` in `packages/domain/src/ai.ts`.
+pub const ACTION_IDS: [&str; 64] = [
+    "step_n",
+    "step_ne",
+    "step_e",
+    "step_se",
+    "step_s",
+    "step_sw",
+    "step_w",
+    "step_nw",
+    "run_n",
+    "run_ne",
+    "run_e",
+    "run_se",
+    "run_s",
+    "run_sw",
+    "run_w",
+    "run_nw",
+    "wait",
+    "attack_melee",
+    "attack_ranged",
+    "aim",
+    "ability_1",
+    "ability_2",
+    "ability_3",
+    "dodge",
+    "take",
+    "drop",
+    "use",
+    "open",
+    "hack",
+    "talk",
+    "swap_weapon",
+    "swap_armor",
+    "use_item",
+    "discard",
+    "station",
+    "recipe",
+    "craft_start",
+    "craft_boost",
+    "auction_open",
+    "auction_list",
+    "auction_buy",
+    "auction_sell",
+    "trade",
+    "quest_accept",
+    "quest_abandon",
+    "quest_turnin",
+    "guild_join",
+    "guild_leave",
+    "guild_create",
+    "guild_invite",
+    "guild_vote",
+    "guild_war",
+    "chat",
+    "mail",
+    "title",
+    "bind",
+    "portal",
+    "rest",
+    "sleep",
+    "reload",
+    "crawl",
+    "party_invite",
+    "loot_corpse",
+    "scan",
+];
