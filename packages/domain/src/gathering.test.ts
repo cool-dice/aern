@@ -345,11 +345,13 @@ test('water has no quality even with a master flask', () => {
 });
 
 test('master quality thresholds use nextUnit', () => {
+  // 15% pure is [0, 0.15), so 0.1 is pure. Cleaned starts at 0.15.
   const cases: Array<[number, Quality]> = [
     [0, 'pure'],
-    [0.1, 'cleaned'],
+    [0.1, 'pure'],
     [0.149, 'pure'],
     [0.15, 'cleaned'],
+    [0.2, 'cleaned'],
     [0.49, 'cleaned'],
     [0.5, 'normal'],
     [0.9, 'normal'],
