@@ -1,0 +1,1178 @@
+// PostgreSQL 16 + pgvector. Prisma 5.22. Unit tests do not connect and do not generate the client.
+//
+// Gold columns are Int. Artifact 25 writes numeric(20,2); the domain stores whole gold.
+// Durability and relic degradation are Int centipercent, not Decimal(5,2):
+//   0 = 0.00%, 10000 = 100.00%, and 1 step = 0.01%.
+// Character side is not stored. player → light, bot → dark, derived from controller.
+// Quest rows live in quest_progress. There is no character_quests table.
+// Guild membership source of truth is guild_members.
+// characters.guild_id and guild_rank are a denormalized cache of that membership.
+// damage_log, chats, and action_logs are unpartitioned here so the client can generate.
+// Monthly and daily partitions are described in prisma/sql/partitions.sql.
+// memories.embedding is vector(768). The IVFFlat index is prisma/sql/ivfflat.sql.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Light, dark, and center. Character side is derived and is not a row here.
+model Side {
+  id           String        @id @db.Uuid
+  name         String
+  description  String
+  color        String
+  biomes       Biome[]
+  races        Race[]
+  languages    Language[]
+  regions      Region[]
+  quests       Quest[]
+  wikiArticles WikiArticle[]
+
+  @@map("sides")
+}
+
+model Biome {
+  id               String            @id @db.Uuid
+  name             String
+  sideId           String            @map("side_id") @db.Uuid
+  description      String
+  climate          String
+  resources        Json
+  side             Side              @relation(fields: [sideId], references: [id])
+  races            Race[]
+  regions          Region[]
+  weatherTemplates WeatherTemplate[]
+
+  @@index([sideId])
+  @@map("biomes")
+}
+
+/// Every catalog race fits in this table, including races the prototype does not create.
+/// Prototype creation allows human and demon. `playable` marks that; it does not shrink the column.
+model Race {
+  id            String             @id @db.Uuid
+  name          String
+  sideId        String             @map("side_id") @db.Uuid
+  biomeId       String             @map("biome_id") @db.Uuid
+  description   String
+  appearance    Json
+  playable      Boolean
+  side          Side               @relation(fields: [sideId], references: [id])
+  biome         Biome              @relation(fields: [biomeId], references: [id])
+  statModifiers RaceStatModifier[]
+  languages     RaceLanguage[]
+  characters    Character[]
+
+  @@index([sideId])
+  @@index([biomeId])
+  @@map("races")
+}
+
+model RaceStatModifier {
+  raceId String @map("race_id") @db.Uuid
+  statId String @map("stat_id") @db.Uuid
+  value  Int
+  race   Race   @relation(fields: [raceId], references: [id])
+  stat   Stat   @relation(fields: [statId], references: [id])
+
+  @@id([raceId, statId])
+  @@map("race_stat_modifiers")
+}
+
+model RaceLanguage {
+  raceId      String   @map("race_id") @db.Uuid
+  languageId  String   @map("language_id") @db.Uuid
+  startingUpy Int      @map("starting_upy")
+  race        Race     @relation(fields: [raceId], references: [id])
+  language    Language @relation(fields: [languageId], references: [id])
+
+  @@id([raceId, languageId])
+  @@map("race_languages")
+}
+
+model Stat {
+  id             String             @id @db.Uuid
+  name           String
+  description    String
+  formula        String
+  raceModifiers  RaceStatModifier[]
+  characterStats CharacterStat[]
+
+  @@map("stats")
+}
+
+model Language {
+  id                 String              @id @db.Uuid
+  name               String
+  type               String
+  sideId             String?             @map("side_id") @db.Uuid
+  description        String
+  side               Side?               @relation(fields: [sideId], references: [id])
+  raceLanguages      RaceLanguage[]
+  characterLanguages CharacterLanguage[]
+  chats              ChatMessage[]
+
+  @@index([sideId])
+  @@map("languages")
+}
+
+model CraftSkill {
+  id              String           @id @db.Uuid
+  name            String
+  category        String
+  description     String
+  maxLevel        Int              @map("max_level")
+  station         String
+  characterSkills CharacterSkill[]
+
+  @@map("craft_skills")
+}
+
+model TitleTemplate {
+  id          String           @id @db.Uuid
+  name        String
+  type        String
+  effect      Json
+  description String
+  titles      CharacterTitle[]
+
+  @@map("title_templates")
+}
+
+model ItemGrade {
+  id            String  @id @db.Uuid
+  name          String
+  statCount     Int     @map("stat_count")
+  activeSkills  Int     @map("active_skills")
+  passiveSkills Int     @map("passive_skills")
+  minValue      Int     @map("min_value")
+  maxValue      Int     @map("max_value")
+  coefficient   Decimal @map("coefficient") @db.Decimal(5, 2)
+  items         Item[]
+
+  @@map("item_grades")
+}
+
+model ItemType {
+  id          String         @id @db.Uuid
+  name        String
+  description String
+  subtypes    ItemSubtype[]
+  templates   ItemTemplate[]
+
+  @@map("item_types")
+}
+
+model ItemSubtype {
+  id             String          @id @db.Uuid
+  typeId         String          @map("type_id") @db.Uuid
+  name           String
+  slot           String
+  type           ItemType        @relation(fields: [typeId], references: [id])
+  templates      ItemTemplate[]
+  relics         Relic[]
+  relicTemplates RelicTemplate[]
+  equippedSlots  InventorySlot[]
+
+  @@index([typeId])
+  @@map("item_subtypes")
+}
+
+model DamageType {
+  id          String      @id @db.Uuid
+  name        String
+  description String
+  resistStat  String      @map("resist_stat")
+  damageLogs  DamageLog[]
+
+  @@map("damage_types")
+}
+
+model StatusTemplate {
+  id         String         @id @db.Uuid
+  name       String
+  effect     Json
+  duration   Int
+  resistStat String         @map("resist_stat")
+  effects    StatusEffect[]
+
+  @@map("status_templates")
+}
+
+model NodeType {
+  id          String  @id @db.Uuid
+  name        String
+  safeZone    Boolean @map("safe_zone")
+  hasPortal   Boolean @map("has_portal")
+  hasBind     Boolean @map("has_bind")
+  description String
+  nodes       Node[]
+
+  @@map("node_types")
+}
+
+model EdgeType {
+  id       String @id @db.Uuid
+  name     String
+  minRooms Int    @map("min_rooms")
+  maxRooms Int    @map("max_rooms")
+  edges    Edge[]
+
+  @@map("edge_types")
+}
+
+model ResourceType {
+  id          String         @id @db.Uuid
+  name        String
+  tier        Int
+  weight      Decimal        @db.Decimal(5, 2)
+  description String
+  nodes       ResourceNode[]
+
+  @@map("resource_types")
+}
+
+model EventTemplate {
+  id              String       @id @db.Uuid
+  name            String
+  scope           String
+  defaultDuration Int          @map("default_duration")
+  parameters      Json
+  events          WorldEvent[]
+
+  @@map("event_templates")
+}
+
+model WeatherTemplate {
+  id          String    @id @db.Uuid
+  name        String
+  biomeId     String?   @map("biome_id") @db.Uuid
+  effects     Json
+  durationMin Int       @map("duration_min")
+  durationMax Int       @map("duration_max")
+  biome       Biome?    @relation(fields: [biomeId], references: [id])
+  weather     Weather[]
+
+  @@index([biomeId])
+  @@map("weather_templates")
+}
+
+model Account {
+  id           String      @id @db.Uuid
+  email        String      @unique
+  passwordHash String      @map("password_hash")
+  createdAt    DateTime    @map("created_at") @db.Timestamptz(6)
+  lastLogin    DateTime?   @map("last_login") @db.Timestamptz(6)
+  banned       Boolean
+  banReason    String?     @map("ban_reason")
+  banUntil     DateTime?   @map("ban_until") @db.Timestamptz(6)
+  role         String
+  characters   Character[]
+  bots         Bot[]
+
+  @@map("accounts")
+}
+
+/// Side is not a column. It is derived from controller: player → light, bot → dark.
+/// guild_id and guild_rank cache guild_members. They are not the membership source of truth.
+model Character {
+  id            String    @id @db.Uuid
+  accountId     String    @map("account_id") @db.Uuid
+  name          String    @unique
+  raceId        String    @map("race_id") @db.Uuid
+  controller    String
+  level         Int
+  experience    BigInt
+  isClean       Boolean   @map("is_clean")
+  createdAt     DateTime  @map("created_at") @db.Timestamptz(6)
+  lastPlayed    DateTime? @map("last_played") @db.Timestamptz(6)
+  guildId       String?   @map("guild_id") @db.Uuid
+  guildRank     String?   @map("guild_rank")
+  currentNodeId String?   @map("current_node") @db.Uuid
+  bindNodeId    String?   @map("bind_node") @db.Uuid
+  hpCurrent     Int       @map("hp_current")
+  odCurrent     Decimal   @map("od_current") @db.Decimal(5, 2)
+  nnCurrent     Int       @map("nn_current")
+  weightCurrent Decimal   @map("weight_current") @db.Decimal(10, 2)
+  online        Boolean
+  appearance    Json
+
+  account     Account @relation(fields: [accountId], references: [id])
+  race        Race    @relation(fields: [raceId], references: [id])
+  guild       Guild?  @relation("CharacterGuildCache", fields: [guildId], references: [id])
+  currentNode Node?   @relation("CharacterCurrentNode", fields: [currentNodeId], references: [id])
+  bindNode    Node?   @relation("CharacterBindNode", fields: [bindNodeId], references: [id])
+
+  stats             CharacterStat[]
+  languages         CharacterLanguage[]
+  skills            CharacterSkill[]
+  titles            CharacterTitle[]
+  reputations       CharacterReputationNpc[]
+  journals          CharacterJournal[]
+  questProgress     QuestProgress[]
+  ownedItems        Item[]                   @relation("ItemOwner")
+  inventory         InventorySlot[]
+  paths             Path[]
+  statusEffects     StatusEffect[]           @relation("StatusSubject")
+  statusSources     StatusEffect[]           @relation("StatusSource")
+  damageDealt       DamageLog[]              @relation("DamageAttacker")
+  damageTaken       DamageLog[]              @relation("DamageTarget")
+  auctionsSold      Auction[]                @relation("AuctionSeller")
+  auctionsBid       Auction[]                @relation("AuctionBidder")
+  tradesOpened      Trade[]                  @relation("TradeInitiator")
+  tradesReceived    Trade[]                  @relation("TradeReceiver")
+  storages          Storage[]
+  guildsLed         Guild[]                  @relation("GuildLeader")
+  memberships       GuildMember[]
+  chatMessages      ChatMessage[]
+  mailSent          Mail[]                   @relation("MailSender")
+  mailReceived      Mail[]                   @relation("MailReceiver")
+  contractsIssued   Contract[]               @relation("ContractIssuer")
+  contractsTargeted Contract[]               @relation("ContractTarget")
+  reportsFiled      Report[]                 @relation("ReportReporter")
+  reportsAgainst    Report[]                 @relation("ReportTarget")
+  mutes             Mute[]
+  bot               Bot?
+  wikiArticles      WikiArticle[]
+  wikiVersions      WikiVersion[]
+  wikiVotes         WikiVote[]
+
+  @@index([accountId])
+  @@index([raceId])
+  @@index([guildId])
+  @@index([currentNodeId])
+  @@index([controller])
+  @@map("characters")
+}
+
+model CharacterStat {
+  characterId     String    @map("character_id") @db.Uuid
+  statId          String    @map("stat_id") @db.Uuid
+  baseValue       Int       @map("base_value")
+  racialModifier  Int       @map("racial_modifier")
+  finalValue      Int       @map("final_value")
+  statPointsSpent Int       @map("stat_points_spent")
+  character       Character @relation(fields: [characterId], references: [id])
+  stat            Stat      @relation(fields: [statId], references: [id])
+
+  @@id([characterId, statId])
+  @@map("character_stats")
+}
+
+model CharacterLanguage {
+  characterId String    @map("character_id") @db.Uuid
+  languageId  String    @map("language_id") @db.Uuid
+  upy         Int
+  character   Character @relation(fields: [characterId], references: [id])
+  language    Language  @relation(fields: [languageId], references: [id])
+
+  @@id([characterId, languageId])
+  @@map("character_languages")
+}
+
+model CharacterSkill {
+  characterId String     @map("character_id") @db.Uuid
+  skillId     String     @map("skill_id") @db.Uuid
+  level       Int
+  experience  Int
+  character   Character  @relation(fields: [characterId], references: [id])
+  skill       CraftSkill @relation(fields: [skillId], references: [id])
+
+  @@id([characterId, skillId])
+  @@map("character_skills")
+}
+
+model CharacterTitle {
+  id              String        @id @db.Uuid
+  characterId     String        @map("character_id") @db.Uuid
+  titleTemplateId String        @map("title_template_id") @db.Uuid
+  guildId         String?       @map("guild_id") @db.Uuid
+  createdAt       DateTime      @map("created_at") @db.Timestamptz(6)
+  character       Character     @relation(fields: [characterId], references: [id])
+  titleTemplate   TitleTemplate @relation(fields: [titleTemplateId], references: [id])
+  guild           Guild?        @relation(fields: [guildId], references: [id])
+
+  @@index([characterId])
+  @@index([guildId])
+  @@map("character_titles")
+}
+
+model CharacterReputationNpc {
+  characterId String    @map("character_id") @db.Uuid
+  npcId       String    @map("npc_id") @db.Uuid
+  value       Int
+  character   Character @relation(fields: [characterId], references: [id])
+  npc         Npc       @relation(fields: [npcId], references: [id])
+
+  @@id([characterId, npcId])
+  @@map("character_reputation_npc")
+}
+
+model Quest {
+  id          String          @id @db.Uuid
+  name        String
+  type        String
+  description String
+  objectives  Json
+  rewards     Json
+  levelReq    Int             @map("level_req")
+  repeatable  Boolean
+  daily       Boolean
+  sideId      String?         @map("side_id") @db.Uuid
+  side        Side?           @relation(fields: [sideId], references: [id])
+  progress    QuestProgress[]
+
+  @@index([sideId])
+  @@map("quests")
+}
+
+model QuestProgress {
+  id          String    @id @db.Uuid
+  characterId String    @map("character_id") @db.Uuid
+  questId     String    @map("quest_id") @db.Uuid
+  status      String
+  progress    Json
+  updatedAt   DateTime  @map("updated_at") @db.Timestamptz(6)
+  character   Character @relation(fields: [characterId], references: [id])
+  quest       Quest     @relation(fields: [questId], references: [id])
+
+  @@index([characterId])
+  @@index([questId])
+  @@map("quest_progress")
+}
+
+model CharacterJournal {
+  id          String    @id @db.Uuid
+  characterId String    @map("character_id") @db.Uuid
+  entry       String
+  createdAt   DateTime  @map("created_at") @db.Timestamptz(6)
+  character   Character @relation(fields: [characterId], references: [id])
+
+  @@index([characterId])
+  @@map("character_journal")
+}
+
+model ItemTemplate {
+  id           String      @id @db.Uuid
+  name         String
+  typeId       String      @map("type_id") @db.Uuid
+  subtypeId    String      @map("subtype_id") @db.Uuid
+  baseStats    Json        @map("base_stats")
+  weight       Decimal     @db.Decimal(5, 2)
+  requirements Json
+  description  String
+  type         ItemType    @relation(fields: [typeId], references: [id])
+  subtype      ItemSubtype @relation(fields: [subtypeId], references: [id])
+  items        Item[]
+
+  @@index([typeId])
+  @@index([subtypeId])
+  @@map("item_templates")
+}
+
+model Item {
+  id             String          @id @db.Uuid
+  templateId     String          @map("template_id") @db.Uuid
+  ownerId        String?         @map("owner_id") @db.Uuid
+  /// Centipercent: 0 = 0.00%, 10000 = 100.00%.
+  durability     Int
+  level          Int
+  gradeId        String          @map("grade_id") @db.Uuid
+  stats          Json
+  activeSkills   Json            @map("active_skills")
+  passiveSkills  Json            @map("passive_skills")
+  sockets        Json
+  createdAt      DateTime        @map("created_at") @db.Timestamptz(6)
+  template       ItemTemplate    @relation(fields: [templateId], references: [id])
+  owner          Character?      @relation("ItemOwner", fields: [ownerId], references: [id])
+  grade          ItemGrade       @relation(fields: [gradeId], references: [id])
+  inventorySlots InventorySlot[]
+  relic          Relic?
+  echoes         Echo[]
+  core           Core?
+  auctions       Auction[]
+
+  @@index([templateId])
+  @@index([ownerId])
+  @@index([gradeId])
+  @@map("items")
+}
+
+model InventorySlot {
+  id             String       @id @db.Uuid
+  characterId    String       @map("character_id") @db.Uuid
+  itemId         String       @map("item_id") @db.Uuid
+  quantity       Int
+  slot           Int
+  equipped       Boolean
+  equippedSlotId String?      @map("equipped_slot_id") @db.Uuid
+  character      Character    @relation(fields: [characterId], references: [id])
+  item           Item         @relation(fields: [itemId], references: [id])
+  equippedSlot   ItemSubtype? @relation(fields: [equippedSlotId], references: [id])
+
+  @@index([characterId])
+  @@index([itemId])
+  @@map("inventory")
+}
+
+model Relic {
+  itemId      String      @id @map("item_id") @db.Uuid
+  relicType   String      @map("relic_type")
+  subtypeId   String      @map("subtype_id") @db.Uuid
+  /// Centipercent: 0 = 0.00%, 10000 = 100.00%.
+  degradation Int
+  feeding     Json
+  mutation    Json
+  item        Item        @relation(fields: [itemId], references: [id])
+  subtype     ItemSubtype @relation(fields: [subtypeId], references: [id])
+
+  @@index([subtypeId])
+  @@map("relics")
+}
+
+model RelicTemplate {
+  id              String      @id @db.Uuid
+  name            String
+  relicType       String      @map("relic_type")
+  subtypeId       String      @map("subtype_id") @db.Uuid
+  setupTime       Int         @map("setup_time")
+  degradationRate Decimal     @map("degradation_rate") @db.Decimal(5, 2)
+  feedingType     String      @map("feeding_type")
+  feedingInterval Int         @map("feeding_interval")
+  risks           Json
+  subtype         ItemSubtype @relation(fields: [subtypeId], references: [id])
+
+  @@index([subtypeId])
+  @@map("relic_templates")
+}
+
+model EchoTemplate {
+  id       String @id @db.Uuid
+  name     String
+  grade    Int
+  type     String
+  effect   Json
+  nnCost   Int    @map("nn_cost")
+  cooldown Int
+  radius   Int
+  echoes   Echo[]
+
+  @@map("echo_templates")
+}
+
+model Echo {
+  id          String       @id @db.Uuid
+  itemId      String       @map("item_id") @db.Uuid
+  templateId  String       @map("template_id") @db.Uuid
+  grade       Int
+  installedAt DateTime     @map("installed_at") @db.Timestamptz(6)
+  item        Item         @relation(fields: [itemId], references: [id])
+  template    EchoTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([itemId])
+  @@index([templateId])
+  @@map("echoes")
+}
+
+model PathTemplate {
+  id        String @id @db.Uuid
+  name      String
+  grade     Int
+  type      String
+  effect    Json
+  nnCost    Int    @map("nn_cost")
+  studyTime Int    @map("study_time")
+  cooldown  Int
+  paths     Path[]
+
+  @@map("path_templates")
+}
+
+model Path {
+  characterId String       @map("character_id") @db.Uuid
+  templateId  String       @map("template_id") @db.Uuid
+  grade       Int
+  learnedAt   DateTime     @map("learned_at") @db.Timestamptz(6)
+  forgetting  Int
+  lastUsed    DateTime?    @map("last_used") @db.Timestamptz(6)
+  character   Character    @relation(fields: [characterId], references: [id])
+  template    PathTemplate @relation(fields: [templateId], references: [id])
+
+  @@id([characterId, templateId])
+  @@map("paths")
+}
+
+model CoreTemplate {
+  id           String @id @db.Uuid
+  name         String
+  grade        Int
+  type         String
+  skills       Json
+  nnCost       Int    @map("nn_cost")
+  requirements Json
+  cores        Core[]
+
+  @@map("core_templates")
+}
+
+model Core {
+  itemId     String       @id @map("item_id") @db.Uuid
+  templateId String       @map("template_id") @db.Uuid
+  grade      Int
+  type       String
+  item       Item         @relation(fields: [itemId], references: [id])
+  template   CoreTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([templateId])
+  @@map("cores")
+}
+
+model Region {
+  id          String    @id @db.Uuid
+  name        String
+  sideId      String    @map("side_id") @db.Uuid
+  biomeId     String    @map("biome_id") @db.Uuid
+  levelMin    Int       @map("level_min")
+  levelMax    Int       @map("level_max")
+  description String
+  side        Side      @relation(fields: [sideId], references: [id])
+  biome       Biome     @relation(fields: [biomeId], references: [id])
+  nodes       Node[]
+  weather     Weather[]
+
+  @@index([sideId])
+  @@index([biomeId])
+  @@map("regions")
+}
+
+model Node {
+  id                String            @id @db.Uuid
+  regionId          String            @map("region_id") @db.Uuid
+  name              String
+  typeId            String            @map("type_id") @db.Uuid
+  x                 Int
+  y                 Int
+  ownerGuildId      String?           @map("owner_guild_id") @db.Uuid
+  metadata          Json
+  region            Region            @relation(fields: [regionId], references: [id])
+  type              NodeType          @relation(fields: [typeId], references: [id])
+  ownerGuild        Guild?            @relation(fields: [ownerGuildId], references: [id])
+  currentCharacters Character[]       @relation("CharacterCurrentNode")
+  bindCharacters    Character[]       @relation("CharacterBindNode")
+  edgesFrom         Edge[]            @relation("EdgeFrom")
+  edgesTo           Edge[]            @relation("EdgeTo")
+  resourceNodes     ResourceNode[]
+  control           GuildNodeControl?
+  combats           Combat[]
+  auctions          Auction[]
+  npcs              Npc[]
+  wars              GuildWar[]
+
+  @@index([regionId])
+  @@index([typeId])
+  @@index([ownerGuildId])
+  @@map("nodes")
+}
+
+model Edge {
+  id         String   @id @db.Uuid
+  fromNodeId String   @map("from_node") @db.Uuid
+  toNodeId   String   @map("to_node") @db.Uuid
+  typeId     String   @map("type_id") @db.Uuid
+  length     Int
+  seed       String
+  difficulty String
+  fromNode   Node     @relation("EdgeFrom", fields: [fromNodeId], references: [id])
+  toNode     Node     @relation("EdgeTo", fields: [toNodeId], references: [id])
+  type       EdgeType @relation(fields: [typeId], references: [id])
+
+  @@index([fromNodeId])
+  @@index([toNodeId])
+  @@index([typeId])
+  @@map("edges")
+}
+
+model ResourceNode {
+  id             String       @id @db.Uuid
+  nodeId         String       @map("node_id") @db.Uuid
+  resourceTypeId String       @map("resource_type_id") @db.Uuid
+  amount         Int
+  respawnAt      DateTime?    @map("respawn_at") @db.Timestamptz(6)
+  ownerGuildId   String?      @map("owner_guild_id") @db.Uuid
+  taxRate        Int          @map("tax_rate")
+  quality        String
+  node           Node         @relation(fields: [nodeId], references: [id])
+  resourceType   ResourceType @relation(fields: [resourceTypeId], references: [id])
+  ownerGuild     Guild?       @relation(fields: [ownerGuildId], references: [id])
+
+  @@index([nodeId])
+  @@index([resourceTypeId])
+  @@index([ownerGuildId])
+  @@map("resource_nodes")
+}
+
+model GuildNodeControl {
+  nodeId    String   @id @map("node_id") @db.Uuid
+  guildId   String   @map("guild_id") @db.Uuid
+  flagSetAt DateTime @map("flag_set_at") @db.Timestamptz(6)
+  chest     Json
+  taxRate   Int      @map("tax_rate")
+  node      Node     @relation(fields: [nodeId], references: [id])
+  guild     Guild    @relation(fields: [guildId], references: [id])
+
+  @@index([guildId])
+  @@map("guild_node_control")
+}
+
+/// Redis `instance:{id}` is the live copy. This row is the durable record.
+model InstanceRecord {
+  id        String   @id @db.Uuid
+  seed      String
+  type      String
+  data      Json
+  createdAt DateTime @map("created_at") @db.Timestamptz(6)
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@map("instances")
+}
+
+model Combat {
+  id        String      @id @db.Uuid
+  nodeId    String      @map("node_id") @db.Uuid
+  type      String
+  startedAt DateTime    @map("started_at") @db.Timestamptz(6)
+  endedAt   DateTime?   @map("ended_at") @db.Timestamptz(6)
+  winner    String?
+  node      Node        @relation(fields: [nodeId], references: [id])
+  damage    DamageLog[]
+
+  @@index([nodeId])
+  @@map("combats")
+}
+
+/// Unpartitioned. Monthly partitions are comments in prisma/sql/partitions.sql.
+model DamageLog {
+  id           BigInt     @id @default(autoincrement())
+  combatId     String     @map("combat_id") @db.Uuid
+  attackerId   String     @map("attacker_id") @db.Uuid
+  targetId     String     @map("target_id") @db.Uuid
+  damage       Int
+  damageTypeId String     @map("damage_type_id") @db.Uuid
+  limb         String
+  timestamp    DateTime   @db.Timestamptz(6)
+  combat       Combat     @relation(fields: [combatId], references: [id])
+  attacker     Character  @relation("DamageAttacker", fields: [attackerId], references: [id])
+  target       Character  @relation("DamageTarget", fields: [targetId], references: [id])
+  damageType   DamageType @relation(fields: [damageTypeId], references: [id])
+
+  @@index([combatId])
+  @@index([attackerId])
+  @@index([targetId])
+  @@map("damage_log")
+}
+
+model StatusEffect {
+  id          String         @id @db.Uuid
+  characterId String         @map("character_id") @db.Uuid
+  templateId  String         @map("template_id") @db.Uuid
+  sourceId    String         @map("source_id") @db.Uuid
+  expiresAt   DateTime       @map("expires_at") @db.Timestamptz(6)
+  character   Character      @relation("StatusSubject", fields: [characterId], references: [id])
+  template    StatusTemplate @relation(fields: [templateId], references: [id])
+  source      Character      @relation("StatusSource", fields: [sourceId], references: [id])
+
+  @@index([characterId])
+  @@index([templateId])
+  @@index([sourceId])
+  @@map("status_effects")
+}
+
+model Auction {
+  id          String     @id @db.Uuid
+  sellerId    String     @map("seller_id") @db.Uuid
+  itemId      String     @map("item_id") @db.Uuid
+  startPrice  Int        @map("start_price")
+  buyoutPrice Int        @map("buyout_price")
+  currentBid  Int?       @map("current_bid")
+  bidderId    String?    @map("bidder_id") @db.Uuid
+  cityNodeId  String     @map("city_node_id") @db.Uuid
+  expiresAt   DateTime   @map("expires_at") @db.Timestamptz(6)
+  status      String
+  createdAt   DateTime   @map("created_at") @db.Timestamptz(6)
+  seller      Character  @relation("AuctionSeller", fields: [sellerId], references: [id])
+  bidder      Character? @relation("AuctionBidder", fields: [bidderId], references: [id])
+  item        Item       @relation(fields: [itemId], references: [id])
+  cityNode    Node       @relation(fields: [cityNodeId], references: [id])
+
+  @@index([sellerId])
+  @@index([itemId])
+  @@index([cityNodeId])
+  @@index([expiresAt])
+  @@map("auctions")
+}
+
+model Trade {
+  id          String    @id @db.Uuid
+  initiatorId String    @map("initiator_id") @db.Uuid
+  receiverId  String    @map("receiver_id") @db.Uuid
+  offer       Json
+  request     Json
+  status      String
+  createdAt   DateTime  @map("created_at") @db.Timestamptz(6)
+  initiator   Character @relation("TradeInitiator", fields: [initiatorId], references: [id])
+  receiver    Character @relation("TradeReceiver", fields: [receiverId], references: [id])
+
+  @@index([initiatorId])
+  @@index([receiverId])
+  @@map("trades")
+}
+
+model GuildBank {
+  guildId   String @id @map("guild_id") @db.Uuid
+  gold      Int
+  items     Json
+  resources Json
+  guild     Guild  @relation(fields: [guildId], references: [id])
+
+  @@map("guild_bank")
+}
+
+model Storage {
+  id      String    @id @db.Uuid
+  ownerId String    @map("owner_id") @db.Uuid
+  items   Json
+  gold    Int
+  slots   Int
+  owner   Character @relation(fields: [ownerId], references: [id])
+
+  @@index([ownerId])
+  @@map("storage")
+}
+
+model Guild {
+  id                String             @id @db.Uuid
+  name              String             @unique
+  tag               String
+  leaderId          String             @map("leader_id") @db.Uuid
+  createdAt         DateTime           @map("created_at") @db.Timestamptz(6)
+  doctrine          String?
+  doctrineChangedAt DateTime?          @map("doctrine_changed_at") @db.Timestamptz(6)
+  taxRate           Int                @map("tax_rate")
+  leader            Character          @relation("GuildLeader", fields: [leaderId], references: [id])
+  members           GuildMember[]
+  cachedCharacters  Character[]        @relation("CharacterGuildCache")
+  titles            CharacterTitle[]
+  ownedNodes        Node[]
+  ownedResources    ResourceNode[]
+  controlledNodes   GuildNodeControl[]
+  bank              GuildBank?
+  warsAttacked      GuildWar[]         @relation("WarAttacker")
+  warsDefended      GuildWar[]         @relation("WarDefender")
+  warsWon           GuildWar[]         @relation("WarWinner")
+  diplomacyAsA      GuildDiplomacy[]   @relation("DiplomacyA")
+  diplomacyAsB      GuildDiplomacy[]   @relation("DiplomacyB")
+
+  @@index([leaderId])
+  @@map("guilds")
+}
+
+/// Source of truth for guild membership. characters.guild_id is only a cache.
+model GuildMember {
+  guildId     String    @map("guild_id") @db.Uuid
+  characterId String    @map("character_id") @db.Uuid
+  rank        String
+  joinedAt    DateTime  @map("joined_at") @db.Timestamptz(6)
+  guild       Guild     @relation(fields: [guildId], references: [id])
+  character   Character @relation(fields: [characterId], references: [id])
+
+  @@id([guildId, characterId])
+  @@map("guild_members")
+}
+
+model GuildWar {
+  id         String    @id @db.Uuid
+  attackerId String    @map("attacker_id") @db.Uuid
+  defenderId String    @map("defender_id") @db.Uuid
+  cityNodeId String    @map("city_node_id") @db.Uuid
+  startAt    DateTime  @map("start_at") @db.Timestamptz(6)
+  endAt      DateTime? @map("end_at") @db.Timestamptz(6)
+  winnerId   String?   @map("winner_id") @db.Uuid
+  status     String
+  attacker   Guild     @relation("WarAttacker", fields: [attackerId], references: [id])
+  defender   Guild     @relation("WarDefender", fields: [defenderId], references: [id])
+  winner     Guild?    @relation("WarWinner", fields: [winnerId], references: [id])
+  cityNode   Node      @relation(fields: [cityNodeId], references: [id])
+
+  @@index([attackerId])
+  @@index([defenderId])
+  @@index([cityNodeId])
+  @@index([winnerId])
+  @@map("guild_wars")
+}
+
+model GuildDiplomacy {
+  id        String    @id @db.Uuid
+  guildAId  String    @map("guild_a") @db.Uuid
+  guildBId  String    @map("guild_b") @db.Uuid
+  type      String
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz(6)
+  guildA    Guild     @relation("DiplomacyA", fields: [guildAId], references: [id])
+  guildB    Guild     @relation("DiplomacyB", fields: [guildBId], references: [id])
+
+  @@index([guildAId])
+  @@index([guildBId])
+  @@map("guild_diplomacy")
+}
+
+/// Unpartitioned. Monthly partitions are comments in prisma/sql/partitions.sql.
+model ChatMessage {
+  id         BigInt    @id @default(autoincrement())
+  channel    String
+  senderId   String    @map("sender_id") @db.Uuid
+  message    String
+  languageId String    @map("language_id") @db.Uuid
+  createdAt  DateTime  @map("created_at") @db.Timestamptz(6)
+  sender     Character @relation(fields: [senderId], references: [id])
+  language   Language  @relation(fields: [languageId], references: [id])
+
+  @@index([channel])
+  @@index([createdAt])
+  @@index([senderId])
+  @@map("chats")
+}
+
+model Mail {
+  id         String    @id @db.Uuid
+  senderId   String    @map("sender_id") @db.Uuid
+  receiverId String    @map("receiver_id") @db.Uuid
+  subject    String
+  body       String
+  items      Json
+  gold       Int
+  read       Boolean
+  createdAt  DateTime  @map("created_at") @db.Timestamptz(6)
+  sender     Character @relation("MailSender", fields: [senderId], references: [id])
+  receiver   Character @relation("MailReceiver", fields: [receiverId], references: [id])
+
+  @@index([senderId])
+  @@index([receiverId])
+  @@map("mail")
+}
+
+model Contract {
+  id        String    @id @db.Uuid
+  issuerId  String    @map("issuer_id") @db.Uuid
+  targetId  String    @map("target_id") @db.Uuid
+  type      String
+  reward    Json
+  status    String
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  issuer    Character @relation("ContractIssuer", fields: [issuerId], references: [id])
+  target    Character @relation("ContractTarget", fields: [targetId], references: [id])
+
+  @@index([issuerId])
+  @@index([targetId])
+  @@map("contracts")
+}
+
+model Report {
+  id         String    @id @db.Uuid
+  reporterId String    @map("reporter_id") @db.Uuid
+  targetId   String    @map("target_id") @db.Uuid
+  reason     String
+  status     String
+  createdAt  DateTime  @map("created_at") @db.Timestamptz(6)
+  reporter   Character @relation("ReportReporter", fields: [reporterId], references: [id])
+  target     Character @relation("ReportTarget", fields: [targetId], references: [id])
+
+  @@index([reporterId])
+  @@index([targetId])
+  @@map("reports")
+}
+
+model Mute {
+  id          String    @id @db.Uuid
+  characterId String    @map("character_id") @db.Uuid
+  until       DateTime  @db.Timestamptz(6)
+  reason      String
+  character   Character @relation(fields: [characterId], references: [id])
+
+  @@index([characterId])
+  @@map("mutes")
+}
+
+model Npc {
+  id          String                   @id @db.Uuid
+  name        String
+  role        String
+  nodeId      String                   @map("node_id") @db.Uuid
+  functions   Json
+  dialogues   Json
+  node        Node                     @relation(fields: [nodeId], references: [id])
+  reputations CharacterReputationNpc[]
+
+  @@index([nodeId])
+  @@map("npcs")
+}
+
+model Bot {
+  characterId    String          @id @map("character_id") @db.Uuid
+  ownerAccountId String          @map("owner_account_id") @db.Uuid
+  adapterPath    String          @map("adapter_path")
+  lastTrained    DateTime?       @map("last_trained") @db.Timestamptz(6)
+  policyVersion  String          @map("policy_version")
+  llmVersion     String          @map("llm_version")
+  character      Character       @relation(fields: [characterId], references: [id])
+  owner          Account         @relation(fields: [ownerAccountId], references: [id])
+  memories       Memory[]
+  knowledge      KnowledgeNode[]
+  actionLogs     ActionLog[]
+
+  @@index([ownerAccountId])
+  @@map("bots")
+}
+
+model Memory {
+  id        String                      @id @db.Uuid
+  botId     String                      @map("bot_id") @db.Uuid
+  /// pgvector(768). IVFFlat index is created by prisma/sql/ivfflat.sql, not by Prisma.
+  embedding Unsupported("vector(768)")?
+  content   Json
+  timestamp DateTime                    @db.Timestamptz(6)
+  bot       Bot                         @relation(fields: [botId], references: [characterId])
+
+  @@index([botId])
+  @@map("memories")
+}
+
+model KnowledgeNode {
+  id        String          @id @db.Uuid
+  botId     String          @map("bot_id") @db.Uuid
+  type      String
+  data      Json
+  bot       Bot             @relation(fields: [botId], references: [characterId])
+  edgesFrom KnowledgeEdge[] @relation("KnowledgeFrom")
+  edgesTo   KnowledgeEdge[] @relation("KnowledgeTo")
+
+  @@index([botId])
+  @@map("knowledge_nodes")
+}
+
+model KnowledgeEdge {
+  id         String        @id @db.Uuid
+  fromNodeId String        @map("from_node") @db.Uuid
+  toNodeId   String        @map("to_node") @db.Uuid
+  relation   String
+  weight     Decimal       @db.Decimal(5, 2)
+  fromNode   KnowledgeNode @relation("KnowledgeFrom", fields: [fromNodeId], references: [id])
+  toNode     KnowledgeNode @relation("KnowledgeTo", fields: [toNodeId], references: [id])
+
+  @@index([fromNodeId])
+  @@index([toNodeId])
+  @@map("knowledge_edges")
+}
+
+/// Unpartitioned. Daily partitions are comments in prisma/sql/partitions.sql.
+model ActionLog {
+  id        BigInt   @id @default(autoincrement())
+  botId     String   @map("bot_id") @db.Uuid
+  action    Json
+  reward    Decimal  @db.Decimal(10, 2)
+  timestamp DateTime @db.Timestamptz(6)
+  bot       Bot      @relation(fields: [botId], references: [characterId])
+
+  @@index([botId])
+  @@map("action_logs")
+}
+
+model WikiArticle {
+  id        String        @id @db.Uuid
+  title     String
+  content   String
+  authorId  String        @map("author_id") @db.Uuid
+  sideId    String        @map("side_id") @db.Uuid
+  createdAt DateTime      @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime      @map("updated_at") @db.Timestamptz(6)
+  rating    Int
+  author    Character     @relation(fields: [authorId], references: [id])
+  side      Side          @relation(fields: [sideId], references: [id])
+  versions  WikiVersion[]
+  votes     WikiVote[]
+
+  @@index([authorId])
+  @@index([sideId])
+  @@map("wiki_articles")
+}
+
+model WikiVersion {
+  id        String      @id @db.Uuid
+  articleId String      @map("article_id") @db.Uuid
+  content   String
+  authorId  String      @map("author_id") @db.Uuid
+  createdAt DateTime    @map("created_at") @db.Timestamptz(6)
+  article   WikiArticle @relation(fields: [articleId], references: [id])
+  author    Character   @relation(fields: [authorId], references: [id])
+
+  @@index([articleId])
+  @@index([authorId])
+  @@map("wiki_versions")
+}
+
+model WikiVote {
+  articleId String      @map("article_id") @db.Uuid
+  voterId   String      @map("voter_id") @db.Uuid
+  value     Int
+  article   WikiArticle @relation(fields: [articleId], references: [id])
+  voter     Character   @relation(fields: [voterId], references: [id])
+
+  @@id([articleId, voterId])
+  @@map("wiki_votes")
+}
+
+model WorldEvent {
+  id         String        @id @db.Uuid
+  templateId String        @map("template_id") @db.Uuid
+  data       Json
+  startedAt  DateTime      @map("started_at") @db.Timestamptz(6)
+  endedAt    DateTime?     @map("ended_at") @db.Timestamptz(6)
+  template   EventTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([templateId])
+  @@map("world_events")
+}
+
+model Season {
+  id      String   @id @db.Uuid
+  name    String
+  startAt DateTime @map("start_at") @db.Timestamptz(6)
+  endAt   DateTime @map("end_at") @db.Timestamptz(6)
+
+  @@map("seasons")
+}
+
+model Weather {
+  id         String          @id @db.Uuid
+  regionId   String          @map("region_id") @db.Uuid
+  templateId String          @map("template_id") @db.Uuid
+  startedAt  DateTime        @map("started_at") @db.Timestamptz(6)
+  endedAt    DateTime?       @map("ended_at") @db.Timestamptz(6)
+  region     Region          @relation(fields: [regionId], references: [id])
+  template   WeatherTemplate @relation(fields: [templateId], references: [id])
+
+  @@index([regionId])
+  @@index([templateId])
+  @@map("weather")
+}
+
+/// schema_version for artifact 25 §18. Migrations advance this row; they do not rewrite history.
+model Meta {
+  id            Int @id @default(1)
+  schemaVersion Int @map("schema_version")
+
+  @@map("meta")
+}
