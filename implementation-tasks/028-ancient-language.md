@@ -2,7 +2,7 @@
 
 - id: `028`
 - title: Древний язык: шифр людям и JSON ботам
-- status: `pending`
+- status: `done`
 - depends_on: `002`
 
 ## Цель
