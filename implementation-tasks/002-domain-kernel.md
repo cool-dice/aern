@@ -2,7 +2,7 @@
 
 - id: `002`
 - title: Время, ГПСЧ, идентификаторы и ошибки
-- status: `pending`
+- status: `done`
 - depends_on: `001`
 
 ## Цель
