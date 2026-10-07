@@ -2,7 +2,7 @@
 
 - id: `035`
 - title: Сервис крафта
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `015`, `029`
 
 ## Цель
