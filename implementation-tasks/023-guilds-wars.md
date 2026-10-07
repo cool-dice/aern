@@ -2,7 +2,7 @@
 
 - id: `023`
 - title: Гильдии, войны, доктрины и контракты
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `018`
 
 ## Цель

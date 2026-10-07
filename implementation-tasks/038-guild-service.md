@@ -2,7 +2,7 @@
 
 - id: `038`
 - title: Сервис гильдий-заглушка
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `023`
 
 ## Цель
