@@ -2,7 +2,7 @@
 
 - id: `040`
 - title: Сервис событий мира
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `025`
 
 ## Цель
