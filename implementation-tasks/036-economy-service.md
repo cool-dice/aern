@@ -2,7 +2,7 @@
 
 - id: `036`
 - title: Сервис экономики
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `018`
 
 ## Цель
