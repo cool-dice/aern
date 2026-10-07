@@ -2,7 +2,7 @@
 
 - id: `003`
 - title: Конверт протокола
-- status: `pending`
+- status: `done`
 - depends_on: `001`
 
 ## Цель
