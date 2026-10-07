@@ -2,7 +2,7 @@
 
 - id: `033`
 - title: Симулятор тика 10 Гц
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `004`, `010`, `011`, `012`
 
 ## Цель

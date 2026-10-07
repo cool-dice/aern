@@ -21,8 +21,11 @@
     "./progression": "./src/progression.ts",
     "./quests": "./src/quests.ts",
     "./result": "./src/result.ts",
+    "./rng": "./src/rng.ts",
     "./social": "./src/social.ts",
     "./stats": "./src/stats.ts",
+    "./status": "./src/status.ts",
+    "./time": "./src/time.ts",
     "./world": "./src/world.ts"
   },
   "scripts": {
