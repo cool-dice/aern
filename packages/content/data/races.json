@@ -1,0 +1,98 @@
+[
+  {
+    "id": "human",
+    "side": "light",
+    "modifiers": {
+      "body": 1,
+      "reaction": 1,
+      "accuracy": 1,
+      "will": 1,
+      "perception": 1,
+      "technique": 1
+    }
+  },
+  {
+    "id": "demon",
+    "side": "dark",
+    "modifiers": {
+      "body": 1,
+      "reaction": 1,
+      "accuracy": 1,
+      "will": 1,
+      "perception": 1,
+      "technique": 1
+    }
+  },
+  {
+    "id": "elf",
+    "side": "light",
+    "modifiers": {
+      "body": -2,
+      "reaction": 3,
+      "accuracy": 1,
+      "will": 2,
+      "perception": 2,
+      "technique": 0
+    }
+  },
+  {
+    "id": "dark_elf",
+    "side": "dark",
+    "modifiers": {
+      "body": 2,
+      "reaction": 3,
+      "accuracy": 1,
+      "will": -2,
+      "perception": 2,
+      "technique": 0
+    }
+  },
+  {
+    "id": "dwarf",
+    "side": "light",
+    "modifiers": {
+      "body": 3,
+      "reaction": -2,
+      "accuracy": 0,
+      "will": 1,
+      "perception": 2,
+      "technique": 2
+    }
+  },
+  {
+    "id": "goblin",
+    "side": "dark",
+    "modifiers": {
+      "body": -2,
+      "reaction": 2,
+      "accuracy": 1,
+      "will": 0,
+      "perception": 2,
+      "technique": 3
+    }
+  },
+  {
+    "id": "troll",
+    "side": "light",
+    "modifiers": {
+      "body": 3,
+      "reaction": 1,
+      "accuracy": -2,
+      "will": 2,
+      "perception": 0,
+      "technique": 2
+    }
+  },
+  {
+    "id": "ogre",
+    "side": "dark",
+    "modifiers": {
+      "body": 3,
+      "reaction": -2,
+      "accuracy": 0,
+      "will": 2,
+      "perception": 1,
+      "technique": 2
+    }
+  }
+]

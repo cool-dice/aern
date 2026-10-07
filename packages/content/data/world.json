@@ -1,0 +1,252 @@
+{
+  "nodes": [
+    {
+      "id": "fort_humans",
+      "kind": "city",
+      "safe": true,
+      "side": "light",
+      "regionId": "plains",
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": "edge_light",
+      "kind": "dungeon",
+      "safe": false,
+      "side": "light",
+      "regionId": "plains",
+      "x": 10,
+      "y": 0
+    },
+    {
+      "id": "cross_light",
+      "kind": "hub",
+      "safe": false,
+      "side": "light",
+      "regionId": "plains",
+      "x": 20,
+      "y": 0
+    },
+    {
+      "id": "light_dungeon",
+      "kind": "dungeon",
+      "safe": false,
+      "side": "light",
+      "regionId": "plains",
+      "x": 30,
+      "y": 0
+    },
+    {
+      "id": "plains_mine",
+      "kind": "resource",
+      "safe": false,
+      "side": "light",
+      "regionId": "plains",
+      "x": 0,
+      "y": 10
+    },
+    {
+      "id": "plains_grove",
+      "kind": "resource",
+      "safe": false,
+      "side": "light",
+      "regionId": "plains",
+      "x": 0,
+      "y": -10
+    },
+    {
+      "id": "barrier_gate",
+      "kind": "barrier",
+      "safe": false,
+      "side": "center",
+      "regionId": "center",
+      "x": 40,
+      "y": 0
+    },
+    {
+      "id": "obsidian_tower",
+      "kind": "city",
+      "safe": true,
+      "side": "dark",
+      "regionId": "lava",
+      "x": 0,
+      "y": 100
+    },
+    {
+      "id": "cross_dark",
+      "kind": "hub",
+      "safe": false,
+      "side": "dark",
+      "regionId": "lava",
+      "x": 20,
+      "y": 100
+    },
+    {
+      "id": "dark_dungeon",
+      "kind": "dungeon",
+      "safe": false,
+      "side": "dark",
+      "regionId": "lava",
+      "x": 30,
+      "y": 100
+    },
+    {
+      "id": "lava_mine",
+      "kind": "resource",
+      "safe": false,
+      "side": "dark",
+      "regionId": "lava",
+      "x": 0,
+      "y": 110
+    },
+    {
+      "id": "lava_fungus",
+      "kind": "resource",
+      "safe": false,
+      "side": "dark",
+      "regionId": "lava",
+      "x": 0,
+      "y": 90
+    },
+    {
+      "id": "primordial_city",
+      "kind": "primordial",
+      "safe": false,
+      "side": "center",
+      "regionId": "center",
+      "x": 50,
+      "y": 0,
+      "unlocked": false
+    }
+  ],
+  "edges": [
+    {
+      "id": "edge_light__fort_humans",
+      "a": "fort_humans",
+      "b": "edge_light",
+      "length": 10
+    },
+    {
+      "id": "cross_light__edge_light",
+      "a": "edge_light",
+      "b": "cross_light",
+      "length": 10
+    },
+    {
+      "id": "cross_light__light_dungeon",
+      "a": "cross_light",
+      "b": "light_dungeon",
+      "length": 10
+    },
+    {
+      "id": "fort_humans__plains_mine",
+      "a": "fort_humans",
+      "b": "plains_mine",
+      "length": 10
+    },
+    {
+      "id": "fort_humans__plains_grove",
+      "a": "fort_humans",
+      "b": "plains_grove",
+      "length": 10
+    },
+    {
+      "id": "barrier_gate__cross_light",
+      "a": "cross_light",
+      "b": "barrier_gate",
+      "length": 20
+    },
+    {
+      "id": "cross_dark__obsidian_tower",
+      "a": "obsidian_tower",
+      "b": "cross_dark",
+      "length": 20
+    },
+    {
+      "id": "cross_dark__dark_dungeon",
+      "a": "cross_dark",
+      "b": "dark_dungeon",
+      "length": 10
+    },
+    {
+      "id": "lava_mine__obsidian_tower",
+      "a": "obsidian_tower",
+      "b": "lava_mine",
+      "length": 10
+    },
+    {
+      "id": "lava_fungus__obsidian_tower",
+      "a": "obsidian_tower",
+      "b": "lava_fungus",
+      "length": 10
+    },
+    {
+      "id": "barrier_gate__cross_dark",
+      "a": "cross_dark",
+      "b": "barrier_gate",
+      "length": 20
+    }
+  ],
+  "regions": [
+    {
+      "id": "plains",
+      "levelMin": 1,
+      "levelMax": 5,
+      "side": "light"
+    },
+    {
+      "id": "forest",
+      "levelMin": 5,
+      "levelMax": 12,
+      "side": "light"
+    },
+    {
+      "id": "mountains",
+      "levelMin": 12,
+      "levelMax": 20,
+      "side": "light"
+    },
+    {
+      "id": "caves",
+      "levelMin": 20,
+      "levelMax": 35,
+      "side": "light"
+    },
+    {
+      "id": "lava",
+      "levelMin": 1,
+      "levelMax": 5,
+      "side": "dark"
+    },
+    {
+      "id": "wastes",
+      "levelMin": 5,
+      "levelMax": 12,
+      "side": "dark"
+    },
+    {
+      "id": "ash",
+      "levelMin": 12,
+      "levelMax": 20,
+      "side": "dark"
+    },
+    {
+      "id": "dark_caves",
+      "levelMin": 20,
+      "levelMax": 35,
+      "side": "dark"
+    },
+    {
+      "id": "primordial",
+      "levelMin": 40,
+      "levelMax": 50,
+      "side": "center"
+    },
+    {
+      "id": "center",
+      "levelMin": 40,
+      "levelMax": 50,
+      "side": "center"
+    }
+  ]
+}

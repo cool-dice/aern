@@ -1,0 +1,2721 @@
+[
+  {
+    "id": "rusty_sword",
+    "kind": "weapon",
+    "grade": "common",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 5
+  },
+  {
+    "id": "sledgehammer",
+    "kind": "weapon",
+    "grade": "common",
+    "weightKg": 6,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 7
+  },
+  {
+    "id": "spear",
+    "kind": "weapon",
+    "grade": "common",
+    "weightKg": 4,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 6
+  },
+  {
+    "id": "steel_sword",
+    "kind": "weapon",
+    "grade": "rare",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 8
+  },
+  {
+    "id": "two_handed_axe",
+    "kind": "weapon",
+    "grade": "rare",
+    "weightKg": 8,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 8
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": true,
+    "damage": 11
+  },
+  {
+    "id": "paired_blades",
+    "kind": "weapon",
+    "grade": "rare",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "reaction",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "reaction",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 6
+  },
+  {
+    "id": "energy_blade",
+    "kind": "weapon",
+    "grade": "epic",
+    "weightKg": 2.5,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "accuracy",
+        "amount": 2
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 12
+  },
+  {
+    "id": "plasma_cutter",
+    "kind": "weapon",
+    "grade": "epic",
+    "weightKg": 4,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 8
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 14
+  },
+  {
+    "id": "precursor_blade",
+    "kind": "weapon",
+    "grade": "epic",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "reaction",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 13
+  },
+  {
+    "id": "rift_blade",
+    "kind": "weapon",
+    "grade": "unique",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 18,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "primordial_hammer",
+    "kind": "weapon",
+    "grade": "unique",
+    "weightKg": 6,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 10
+      }
+    ],
+    "bonuses": [],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 20,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "precursor_scythe",
+    "kind": "weapon",
+    "grade": "unique",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 17,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "rusty_pistol",
+    "kind": "weapon",
+    "grade": "common",
+    "weightKg": 1,
+    "range": 10,
+    "ammo": "light",
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 4
+  },
+  {
+    "id": "shotgun",
+    "kind": "weapon",
+    "grade": "common",
+    "weightKg": 4,
+    "range": 8,
+    "ammo": "heavy",
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 8
+  },
+  {
+    "id": "bow",
+    "kind": "weapon",
+    "grade": "common",
+    "weightKg": 2,
+    "range": 12,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 5
+  },
+  {
+    "id": "rifle",
+    "kind": "weapon",
+    "grade": "rare",
+    "weightKg": 5,
+    "range": 20,
+    "ammo": "heavy",
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "accuracy",
+        "amount": 2
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 7
+  },
+  {
+    "id": "smg",
+    "kind": "weapon",
+    "grade": "rare",
+    "weightKg": 3,
+    "range": 12,
+    "ammo": "light",
+    "requirements": [
+      {
+        "stat": "reaction",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "reaction",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 5
+  },
+  {
+    "id": "crossbow",
+    "kind": "weapon",
+    "grade": "rare",
+    "weightKg": 4,
+    "range": 15,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "accuracy",
+        "amount": 2
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 9
+  },
+  {
+    "id": "plasmer",
+    "kind": "weapon",
+    "grade": "epic",
+    "weightKg": 4,
+    "range": 15,
+    "ammo": "cell",
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 10
+  },
+  {
+    "id": "laser_rifle",
+    "kind": "weapon",
+    "grade": "epic",
+    "weightKg": 5,
+    "range": 25,
+    "ammo": "cell",
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 8
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "accuracy",
+        "amount": 2
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 12
+  },
+  {
+    "id": "railgun",
+    "kind": "weapon",
+    "grade": "epic",
+    "weightKg": 7,
+    "range": 30,
+    "ammo": "heavy",
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 8
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "main_hand",
+    "twoHanded": true,
+    "damage": 15
+  },
+  {
+    "id": "rift_plasmer",
+    "kind": "weapon",
+    "grade": "unique",
+    "weightKg": 4,
+    "range": 20,
+    "ammo": "cell",
+    "requirements": [],
+    "bonuses": [],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 16,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "precursor_rifle",
+    "kind": "weapon",
+    "grade": "unique",
+    "weightKg": 5,
+    "range": 35,
+    "ammo": "cell",
+    "requirements": [],
+    "bonuses": [],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 18,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "primordial_shotgun",
+    "kind": "weapon",
+    "grade": "unique",
+    "weightKg": 6,
+    "range": 10,
+    "ammo": "heavy",
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 10
+      }
+    ],
+    "bonuses": [],
+    "slot": "main_hand",
+    "twoHanded": false,
+    "damage": 20,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "dagger",
+    "kind": "weapon",
+    "grade": "common",
+    "weightKg": 0.5,
+    "range": 1,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      }
+    ],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 3
+  },
+  {
+    "id": "club",
+    "kind": "weapon",
+    "grade": "common",
+    "weightKg": 1,
+    "range": 1,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 4
+  },
+  {
+    "id": "throwing_knife",
+    "kind": "weapon",
+    "grade": "common",
+    "weightKg": 0.3,
+    "range": 5,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 2
+  },
+  {
+    "id": "short_sword",
+    "kind": "weapon",
+    "grade": "rare",
+    "weightKg": 1.5,
+    "range": 1,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "reaction",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "body",
+        "amount": 1
+      }
+    ],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 5
+  },
+  {
+    "id": "machine_pistol",
+    "kind": "weapon",
+    "grade": "rare",
+    "weightKg": 2,
+    "range": 10,
+    "ammo": "light",
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "reaction",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 4
+  },
+  {
+    "id": "stunner",
+    "kind": "weapon",
+    "grade": "rare",
+    "weightKg": 1,
+    "range": 1,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 3
+  },
+  {
+    "id": "plasma_pistol",
+    "kind": "weapon",
+    "grade": "epic",
+    "weightKg": 1.5,
+    "range": 10,
+    "ammo": "cell",
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 7
+  },
+  {
+    "id": "grenade_launcher",
+    "kind": "weapon",
+    "grade": "epic",
+    "weightKg": 5,
+    "range": 8,
+    "ammo": "special",
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "off_hand",
+    "twoHanded": true,
+    "damage": 12
+  },
+  {
+    "id": "neuro_whip",
+    "kind": "weapon",
+    "grade": "epic",
+    "weightKg": 1,
+    "range": 3,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "will",
+        "amount": 2
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 6
+  },
+  {
+    "id": "rift_dagger",
+    "kind": "weapon",
+    "grade": "unique",
+    "weightKg": 0.5,
+    "range": 1,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 10,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "precursor_pistol",
+    "kind": "weapon",
+    "grade": "unique",
+    "weightKg": 1,
+    "range": 15,
+    "ammo": "cell",
+    "requirements": [],
+    "bonuses": [],
+    "slot": "off_hand",
+    "twoHanded": false,
+    "damage": 12,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "primordial_shield",
+    "kind": "weapon",
+    "grade": "unique",
+    "weightKg": 4,
+    "range": 1,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "off_hand",
+    "twoHanded": true,
+    "damage": 8,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "leather_hood",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 0.5,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "perception",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 1
+  },
+  {
+    "id": "rusty_helmet",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 2
+  },
+  {
+    "id": "neuro_circlet",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 0.3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 0
+  },
+  {
+    "id": "steel_helmet",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 3
+  },
+  {
+    "id": "bio_respirator",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 1,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "perception",
+        "amount": 2
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 1
+  },
+  {
+    "id": "tactical_helmet",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "perception",
+        "amount": 2
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 3
+  },
+  {
+    "id": "energy_helmet",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 5
+  },
+  {
+    "id": "precursor_helmet",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "will",
+        "amount": 2
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 4
+  },
+  {
+    "id": "rift_helmet",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 4,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 8
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 6
+  },
+  {
+    "id": "primordial_crown",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 1,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 8,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "precursor_helmet_unique",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 9,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "neuro_crown",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 1.5,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "will",
+        "min": 10
+      }
+    ],
+    "bonuses": [],
+    "slot": "head",
+    "twoHanded": false,
+    "armor": 7,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "leather_jacket",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 2
+  },
+  {
+    "id": "quilted_armor",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 5,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 3
+  },
+  {
+    "id": "rig",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 1
+  },
+  {
+    "id": "steel_cuirass",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 8,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 5
+  },
+  {
+    "id": "ranger_cloak",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "perception",
+        "amount": 2
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 2
+  },
+  {
+    "id": "bio_armor",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 4,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 4
+  },
+  {
+    "id": "energy_armor",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 7,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 7
+  },
+  {
+    "id": "precursor_armor",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 5,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "will",
+        "amount": 2
+      },
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 6
+  },
+  {
+    "id": "rift_armor",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 9,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 8
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 8
+  },
+  {
+    "id": "primordial_shell",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 8,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 10
+      }
+    ],
+    "bonuses": [],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 11,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "precursor_mantle",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 9,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "rift_armor_unique",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 10,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 12
+      }
+    ],
+    "bonuses": [],
+    "slot": "torso",
+    "twoHanded": false,
+    "armor": 12,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "leather_gloves",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 0.5,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      }
+    ],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 1
+  },
+  {
+    "id": "work_gauntlets",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 1,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 1
+  },
+  {
+    "id": "bracers",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 1.5,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 2
+  },
+  {
+    "id": "steel_gloves",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 3
+  },
+  {
+    "id": "cyber_arm_mech",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 2
+  },
+  {
+    "id": "cyber_arm_bio",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 2
+  },
+  {
+    "id": "energy_gloves",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 1.5,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 4
+  },
+  {
+    "id": "precursor_gloves",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 1,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "will",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 3
+  },
+  {
+    "id": "rift_gloves",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 8
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 5
+  },
+  {
+    "id": "primordial_hand",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 1.5,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 7,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "precursor_cyber_arm",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 10
+      }
+    ],
+    "bonuses": [],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 6,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "rift_gloves_unique",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "hands",
+    "twoHanded": false,
+    "armor": 8,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "leather_boots",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 1,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 1
+  },
+  {
+    "id": "work_boots",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 2,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 2
+  },
+  {
+    "id": "greaves",
+    "kind": "armor",
+    "grade": "common",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 2
+  },
+  {
+    "id": "steel_greaves",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 5,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      }
+    ],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 4
+  },
+  {
+    "id": "leg_boosters",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      }
+    ],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 2
+  },
+  {
+    "id": "bio_leg_prosthetics",
+    "kind": "armor",
+    "grade": "rare",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      }
+    ],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 3
+  },
+  {
+    "id": "energy_legs",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 4,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 6
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "technique",
+        "amount": 2
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      }
+    ],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 5
+  },
+  {
+    "id": "precursor_greaves",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [
+      {
+        "stat": "will",
+        "amount": 2
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "perception",
+        "amount": 1
+      },
+      {
+        "stat": "technique",
+        "amount": 1
+      }
+    ],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 4
+  },
+  {
+    "id": "rift_greaves",
+    "kind": "armor",
+    "grade": "epic",
+    "weightKg": 6,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 8
+      }
+    ],
+    "bonuses": [
+      {
+        "stat": "body",
+        "amount": 2
+      },
+      {
+        "stat": "will",
+        "amount": 1
+      },
+      {
+        "stat": "reaction",
+        "amount": 1
+      },
+      {
+        "stat": "accuracy",
+        "amount": 1
+      }
+    ],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 6
+  },
+  {
+    "id": "primordial_boots",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 3,
+    "range": null,
+    "ammo": null,
+    "requirements": [],
+    "bonuses": [],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 9,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "precursor_legs_unique",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 4,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "technique",
+        "min": 10
+      }
+    ],
+    "bonuses": [],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 8,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "rift_greaves_unique",
+    "kind": "armor",
+    "grade": "unique",
+    "weightKg": 6,
+    "range": null,
+    "ammo": null,
+    "requirements": [
+      {
+        "stat": "body",
+        "min": 12
+      }
+    ],
+    "bonuses": [],
+    "slot": "legs",
+    "twoHanded": false,
+    "armor": 10,
+    "uniqueProfile": {
+      "statCount": 6,
+      "statMin": 5,
+      "statMax": 30,
+      "active": 2,
+      "passiveMin": 2,
+      "passiveMax": 3
+    }
+  },
+  {
+    "id": "metal",
+    "kind": "resource"
+  },
+  {
+    "id": "wood",
+    "kind": "resource"
+  },
+  {
+    "id": "leather",
+    "kind": "resource"
+  },
+  {
+    "id": "cloth",
+    "kind": "resource"
+  },
+  {
+    "id": "stone",
+    "kind": "resource"
+  },
+  {
+    "id": "titanium",
+    "kind": "resource"
+  },
+  {
+    "id": "crystals",
+    "kind": "resource"
+  },
+  {
+    "id": "alloys",
+    "kind": "resource"
+  },
+  {
+    "id": "spores",
+    "kind": "resource"
+  },
+  {
+    "id": "amino",
+    "kind": "resource"
+  },
+  {
+    "id": "organic_matrix",
+    "kind": "resource"
+  },
+  {
+    "id": "relic_shard",
+    "kind": "resource"
+  },
+  {
+    "id": "energy_cell",
+    "kind": "resource",
+    "weightKg": 0.05
+  },
+  {
+    "id": "memory_crystal",
+    "kind": "resource"
+  },
+  {
+    "id": "bones",
+    "kind": "resource"
+  },
+  {
+    "id": "hides",
+    "kind": "resource"
+  },
+  {
+    "id": "feathers",
+    "kind": "resource"
+  },
+  {
+    "id": "mechanisms",
+    "kind": "resource"
+  },
+  {
+    "id": "water",
+    "kind": "resource"
+  },
+  {
+    "id": "gold",
+    "kind": "resource"
+  },
+  {
+    "id": "ammo_light",
+    "kind": "ammo",
+    "weightKg": 0.01,
+    "ammo": "light"
+  },
+  {
+    "id": "ammo_heavy",
+    "kind": "ammo",
+    "weightKg": 0.03,
+    "ammo": "heavy"
+  },
+  {
+    "id": "ammo_special",
+    "kind": "ammo",
+    "weightKgMin": 0.5,
+    "weightKgMax": 2,
+    "ammo": "special"
+  },
+  {
+    "id": "bandage",
+    "kind": "consumable",
+    "weightKg": 0.1,
+    "healHp": 15,
+    "apCost": 1,
+    "effect": "Лечение 15 HP",
+    "duration": "instant"
+  },
+  {
+    "id": "unique_component",
+    "kind": "component"
+  },
+  {
+    "id": "matron_sporophyte",
+    "kind": "component",
+    "bossId": "spore_matron",
+    "countsAs": "unique_component"
+  },
+  {
+    "id": "royal_mechanism",
+    "kind": "component",
+    "bossId": "goblin_king",
+    "countsAs": "unique_component"
+  },
+  {
+    "id": "guardian_core",
+    "kind": "component",
+    "bossId": "ancient_guardian",
+    "countsAs": "unique_component"
+  },
+  {
+    "id": "rust_heart",
+    "kind": "component",
+    "bossId": "rust_colossus",
+    "countsAs": "unique_component"
+  },
+  {
+    "id": "lava_core",
+    "kind": "component",
+    "bossId": "lava_titan",
+    "countsAs": "unique_component"
+  },
+  {
+    "id": "ash_crown",
+    "kind": "component",
+    "bossId": "ash_queen",
+    "countsAs": "unique_component"
+  },
+  {
+    "id": "keeper_core",
+    "kind": "component",
+    "bossId": "keeper_enhanced",
+    "countsAs": "unique_component"
+  },
+  {
+    "id": "spore_relic",
+    "kind": "relic",
+    "subtype": "spore"
+  },
+  {
+    "id": "culture_relic",
+    "kind": "relic",
+    "subtype": "culture"
+  },
+  {
+    "id": "symbiont_relic",
+    "kind": "relic",
+    "subtype": "symbiont"
+  },
+  {
+    "id": "unique_bio_relic",
+    "kind": "relic",
+    "grade": "unique",
+    "subtype": "spore"
+  },
+  {
+    "id": "plate_relic",
+    "kind": "relic",
+    "subtype": "plate"
+  },
+  {
+    "id": "mechanism_relic",
+    "kind": "relic",
+    "subtype": "mechanism"
+  },
+  {
+    "id": "crystal_relic",
+    "kind": "relic",
+    "subtype": "crystal"
+  },
+  {
+    "id": "unique_mech_relic",
+    "kind": "relic",
+    "grade": "unique",
+    "subtype": "plate"
+  },
+  {
+    "id": "weapon_oil",
+    "kind": "consumable",
+    "effect": "+10% к урону оружия",
+    "duration": "10 min"
+  },
+  {
+    "id": "armor_piercing",
+    "kind": "consumable",
+    "effect": "Игнорирует 20% брони",
+    "duration": "5 min"
+  },
+  {
+    "id": "stabilizer",
+    "kind": "consumable",
+    "effect": "+10% к точности",
+    "duration": "5 min"
+  },
+  {
+    "id": "grenade",
+    "kind": "consumable",
+    "effect": "Урон по площади 30",
+    "duration": "instant"
+  },
+  {
+    "id": "smoke_grenade",
+    "kind": "consumable",
+    "effect": "−50% к точности врагов в области",
+    "duration": "10 sec"
+  },
+  {
+    "id": "repair_kit",
+    "kind": "consumable",
+    "effect": "Восстанавливает 20% прочности",
+    "duration": "instant"
+  },
+  {
+    "id": "armor_plate",
+    "kind": "consumable",
+    "effect": "+5 к броне",
+    "duration": "10 min"
+  },
+  {
+    "id": "energy_shield",
+    "kind": "consumable",
+    "effect": "Поглощает 50 урона",
+    "duration": "10 sec"
+  },
+  {
+    "id": "spore_concentrate",
+    "kind": "consumable",
+    "effect": "+10% к HP",
+    "duration": "10 min"
+  },
+  {
+    "id": "bio_stimulant",
+    "kind": "consumable",
+    "effect": "+20% к регенерации",
+    "duration": "5 min"
+  },
+  {
+    "id": "antidote",
+    "kind": "consumable",
+    "effect": "Снимает отравление",
+    "duration": "instant"
+  },
+  {
+    "id": "antimutagen",
+    "kind": "consumable",
+    "effect": "Снимает мутацию",
+    "duration": "instant"
+  },
+  {
+    "id": "energy_stimulant",
+    "kind": "consumable",
+    "effect": "+20% к регену ОД",
+    "duration": "10 sec"
+  },
+  {
+    "id": "crystal_charge",
+    "kind": "consumable",
+    "effect": "+15% к урону энергооружия",
+    "duration": "5 min"
+  },
+  {
+    "id": "resonator",
+    "kind": "consumable",
+    "effect": "+10% к сопротивлению эффектам",
+    "duration": "10 min"
+  },
+  {
+    "id": "healing_draught",
+    "kind": "consumable",
+    "healHp": 30,
+    "effect": "Восстанавливает 30 HP",
+    "duration": "instant"
+  },
+  {
+    "id": "strength_potion",
+    "kind": "consumable",
+    "effect": "+15% к урону",
+    "duration": "10 min"
+  },
+  {
+    "id": "fortitude_potion",
+    "kind": "consumable",
+    "effect": "+15% к HP",
+    "duration": "10 min"
+  },
+  {
+    "id": "reaction_potion",
+    "kind": "consumable",
+    "effect": "+15% к скорости",
+    "duration": "10 min"
+  },
+  {
+    "id": "will_potion",
+    "kind": "consumable",
+    "effect": "+15% к сопротивлению эффектам",
+    "duration": "10 min"
+  },
+  {
+    "id": "stimulant",
+    "kind": "consumable",
+    "effect": "+1 ОД мгновенно",
+    "duration": "instant"
+  },
+  {
+    "id": "poison",
+    "kind": "consumable",
+    "effect": "−10 HP/сек",
+    "duration": "10 sec"
+  },
+  {
+    "id": "weakness_potion",
+    "kind": "consumable",
+    "effect": "−15% к урону цели",
+    "duration": "10 min"
+  },
+  {
+    "id": "slowing_mixture",
+    "kind": "consumable",
+    "effect": "−30% к скорости цели",
+    "duration": "5 sec"
+  },
+  {
+    "id": "ration",
+    "kind": "consumable",
+    "healHp": 20,
+    "effect": "Восстанавливает 20 HP вне боя",
+    "duration": "instant"
+  },
+  {
+    "id": "hearty_dinner",
+    "kind": "consumable",
+    "effect": "+5% к HP",
+    "duration": "30 min"
+  },
+  {
+    "id": "rift_elixir",
+    "kind": "consumable",
+    "effect": "+30% ко всем статам",
+    "duration": "5 min"
+  },
+  {
+    "id": "precursor_poison",
+    "kind": "consumable",
+    "effect": "−30 HP/сек, игнорирует сопротивление",
+    "duration": "10 sec"
+  },
+  {
+    "id": "primordial_nectar",
+    "kind": "consumable",
+    "effect": "Полное восстановление HP",
+    "duration": "instant"
+  },
+  {
+    "id": "truth_serum",
+    "kind": "consumable",
+    "effect": "Цель не может лгать",
+    "duration": "5 min"
+  },
+  {
+    "id": "core_berserk",
+    "kind": "core",
+    "implant": true,
+    "coreGrade": 3,
+    "nn": 2,
+    "requirementsText": "Реликт в торсе",
+    "skills": "Ярость: +50% урона, −30% брони на 10 сек (КД 120 сек); Пассив: +10% к урону при HP < 50%",
+    "slot": "core"
+  },
+  {
+    "id": "core_ghost",
+    "kind": "core",
+    "implant": true,
+    "coreGrade": 4,
+    "nn": 2,
+    "requirementsText": "Реликт в ногах",
+    "skills": "Невидимость на 5 сек (КД 180 сек); Пассив: −20% к заметности",
+    "slot": "core"
+  },
+  {
+    "id": "core_titan",
+    "kind": "core",
+    "implant": true,
+    "coreGrade": 5,
+    "nn": 3,
+    "requirementsText": "2+ реликта",
+    "skills": "Щит 150 HP на 15 сек (КД 240 сек); Пассив: +15% к броне",
+    "slot": "core"
+  },
+  {
+    "id": "core_sniper",
+    "kind": "core",
+    "implant": true,
+    "coreGrade": 3,
+    "nn": 2,
+    "requirementsText": "Реликт в руках",
+    "skills": "Меткий выстрел: +100% к урону, игнорирует броню (КД 90 сек); Пассив: +10% к дальности",
+    "slot": "core"
+  },
+  {
+    "id": "core_necromancer",
+    "kind": "core",
+    "implant": true,
+    "coreGrade": 5,
+    "nn": 3,
+    "requirementsText": "Реликт в голове",
+    "skills": "Поднять павшего союзника с 30% HP (КД 600 сек); Пассив: +10% к лечению",
+    "slot": "core"
+  },
+  {
+    "id": "core_medic",
+    "kind": "core",
+    "implant": false,
+    "coreGrade": 3,
+    "nn": 2,
+    "requirementsText": "Нет",
+    "skills": "Лечение 50 HP союзнику (КД 60 сек); Пассив: +10% к скорости лечения",
+    "slot": "core"
+  },
+  {
+    "id": "core_tech",
+    "kind": "core",
+    "implant": false,
+    "coreGrade": 3,
+    "nn": 2,
+    "requirementsText": "Нет",
+    "skills": "Взлом: +50% к скорости взлома на 10 сек (КД 120 сек); Пассив: +10% к крафту",
+    "slot": "core"
+  },
+  {
+    "id": "core_scout",
+    "kind": "core",
+    "implant": false,
+    "coreGrade": 4,
+    "nn": 2,
+    "requirementsText": "Нет",
+    "skills": "Сканер: подсвечивает врагов на 20 сек (КД 180 сек); Пассив: +15% к обнаружению",
+    "slot": "core"
+  },
+  {
+    "id": "core_engineer",
+    "kind": "core",
+    "implant": false,
+    "coreGrade": 4,
+    "nn": 2,
+    "requirementsText": "Нет",
+    "skills": "Турель: ставит турель на 30 сек (КД 300 сек); Пассив: +10% к ремонту",
+    "slot": "core"
+  },
+  {
+    "id": "core_first_engineer",
+    "kind": "core",
+    "implant": false,
+    "coreGrade": 5,
+    "nn": 3,
+    "requirementsText": "Только чистый, высокий уровень Пути",
+    "skills": "+1 навык сверх нормы; Пассив: +10% ко всем статам",
+    "slot": "core",
+    "domainTemplateId": "first_engineer_kit"
+  }
+]

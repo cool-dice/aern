@@ -1,0 +1,144 @@
+[
+  {
+    "id": "tutorial",
+    "prototype": true,
+    "story": true,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "easy",
+    "objectives": [
+      {
+        "id": "wake",
+        "kind": "wake",
+        "target": 1
+      },
+      {
+        "id": "look",
+        "kind": "look",
+        "target": 1
+      },
+      {
+        "id": "steps",
+        "kind": "steps",
+        "target": 10
+      },
+      {
+        "id": "talk",
+        "kind": "talk",
+        "target": 1
+      },
+      {
+        "id": "equip",
+        "kind": "equip",
+        "target": 1
+      },
+      {
+        "id": "kill_rat",
+        "kind": "kill",
+        "target": 1,
+        "monsterId": "spore_rat"
+      },
+      {
+        "id": "loot",
+        "kind": "loot",
+        "target": 1
+      },
+      {
+        "id": "inventory",
+        "kind": "inventory",
+        "target": 1
+      },
+      {
+        "id": "craft",
+        "kind": "craft",
+        "target": 1
+      },
+      {
+        "id": "bind",
+        "kind": "bind",
+        "target": 1
+      }
+    ]
+  },
+  {
+    "id": "kill_rats",
+    "prototype": true,
+    "story": false,
+    "daily": false,
+    "repeatable": true,
+    "difficulty": "normal",
+    "objectives": [
+      {
+        "id": "kill",
+        "kind": "kill",
+        "target": 5,
+        "monsterId": "spore_rat"
+      }
+    ]
+  },
+  {
+    "id": "gather_metal",
+    "prototype": true,
+    "story": false,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "easy",
+    "objectives": [
+      {
+        "id": "gather",
+        "kind": "gather",
+        "target": 3,
+        "itemId": "metal",
+        "side": "light"
+      }
+    ]
+  },
+  {
+    "id": "gather_spores",
+    "prototype": true,
+    "story": false,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "easy",
+    "objectives": [
+      {
+        "id": "gather",
+        "kind": "gather",
+        "target": 3,
+        "itemId": "spores",
+        "side": "dark"
+      }
+    ]
+  },
+  {
+    "id": "first_craft",
+    "prototype": true,
+    "story": false,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "easy",
+    "objectives": [
+      {
+        "id": "craft",
+        "kind": "craft",
+        "target": 1
+      }
+    ]
+  },
+  {
+    "id": "visit_hub",
+    "prototype": true,
+    "story": false,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "easy",
+    "objectives": [
+      {
+        "id": "visit",
+        "kind": "visit",
+        "target": 1,
+        "hub": "own"
+      }
+    ]
+  }
+]

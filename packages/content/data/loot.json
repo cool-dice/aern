@@ -1,0 +1,1119 @@
+{
+  "base": [
+    {
+      "itemId": "gold",
+      "chance": 1,
+      "min": 1,
+      "max": 3,
+      "kind": "gold",
+      "goldFormula": "type"
+    },
+    {
+      "itemId": "metal",
+      "chance": 0.3,
+      "min": 1,
+      "max": 3,
+      "kind": "resource"
+    },
+    {
+      "itemId": "leather",
+      "chance": 0.2,
+      "min": 1,
+      "max": 2,
+      "kind": "resource"
+    },
+    {
+      "itemId": "cloth",
+      "chance": 0.2,
+      "min": 1,
+      "max": 2,
+      "kind": "resource"
+    },
+    {
+      "itemId": "wood",
+      "chance": 0.15,
+      "min": 1,
+      "max": 2,
+      "kind": "resource"
+    },
+    {
+      "itemId": "stone",
+      "chance": 0.15,
+      "min": 1,
+      "max": 2,
+      "kind": "resource"
+    }
+  ],
+  "rare": [
+    {
+      "itemId": "crystals",
+      "chance": 0.15,
+      "min": 1,
+      "max": 2,
+      "kind": "resource"
+    },
+    {
+      "itemId": "spores",
+      "chance": 0.15,
+      "min": 1,
+      "max": 3,
+      "kind": "resource"
+    },
+    {
+      "itemId": "amino",
+      "chance": 0.1,
+      "min": 1,
+      "max": 2,
+      "kind": "resource"
+    },
+    {
+      "itemId": "relic_shard",
+      "chance": 0.1,
+      "min": 1,
+      "max": 1,
+      "kind": "resource"
+    },
+    {
+      "itemId": "energy_cell",
+      "chance": 0.1,
+      "min": 1,
+      "max": 1,
+      "kind": "resource"
+    }
+  ],
+  "byType": {
+    "pack": [
+      {
+        "itemId": "bones",
+        "chance": 0.4,
+        "min": 1,
+        "max": 2,
+        "kind": "resource"
+      },
+      {
+        "itemId": "hides",
+        "chance": 0.25,
+        "min": 1,
+        "max": 1,
+        "kind": "resource"
+      }
+    ],
+    "pair": [
+      {
+        "itemId": "metal",
+        "chance": 0.2,
+        "min": 1,
+        "max": 2,
+        "kind": "resource",
+        "bonus": true
+      },
+      {
+        "itemId": "cloth",
+        "chance": 0.2,
+        "min": 1,
+        "max": 2,
+        "kind": "resource",
+        "bonus": true
+      }
+    ],
+    "solo": [
+      {
+        "itemId": "weapon",
+        "chance": 0.1,
+        "min": 1,
+        "max": 1,
+        "kind": "gear",
+        "pool": true,
+        "grades": ["common", "rare"]
+      },
+      {
+        "itemId": "armor",
+        "chance": 0.1,
+        "min": 1,
+        "max": 1,
+        "kind": "gear",
+        "pool": true,
+        "grades": ["common", "rare"]
+      }
+    ],
+    "air": [
+      {
+        "itemId": "feathers",
+        "chance": 0.35,
+        "min": 1,
+        "max": 2,
+        "kind": "resource"
+      },
+      {
+        "itemId": "cloth",
+        "chance": 0.2,
+        "min": 1,
+        "max": 2,
+        "kind": "resource",
+        "bonus": true
+      }
+    ],
+    "turret": [
+      {
+        "itemId": "mechanisms",
+        "chance": 0.4,
+        "min": 1,
+        "max": 1,
+        "kind": "resource"
+      },
+      {
+        "itemId": "energy_cell",
+        "chance": 0.25,
+        "min": 1,
+        "max": 2,
+        "kind": "resource"
+      }
+    ],
+    "anomaly": [
+      {
+        "itemId": "spores",
+        "chance": 0.25,
+        "min": 1,
+        "max": 3,
+        "kind": "resource",
+        "bonus": true
+      },
+      {
+        "itemId": "crystals",
+        "chance": 0.15,
+        "min": 1,
+        "max": 2,
+        "kind": "resource",
+        "bonus": true
+      }
+    ]
+  },
+  "byRegion": [
+    {
+      "regionId": "plains",
+      "entries": [
+        {
+          "itemId": "leather",
+          "chance": 0.15,
+          "min": 1,
+          "max": 2,
+          "kind": "resource",
+          "bonus": true
+        }
+      ]
+    },
+    {
+      "regionId": "forest",
+      "entries": [
+        {
+          "itemId": "wood",
+          "chance": 0.25,
+          "min": 1,
+          "max": 3,
+          "kind": "resource",
+          "bonus": true
+        },
+        {
+          "itemId": "spores",
+          "chance": 0.1,
+          "min": 1,
+          "max": 2,
+          "kind": "resource"
+        }
+      ]
+    },
+    {
+      "regionId": "mountains",
+      "entries": [
+        {
+          "itemId": "metal",
+          "chance": 0.25,
+          "min": 1,
+          "max": 3,
+          "kind": "resource",
+          "bonus": true
+        },
+        {
+          "itemId": "stone",
+          "chance": 0.2,
+          "min": 1,
+          "max": 2,
+          "kind": "resource",
+          "bonus": true
+        }
+      ]
+    },
+    {
+      "regionId": "caves",
+      "entries": [
+        {
+          "itemId": "crystals",
+          "chance": 0.1,
+          "min": 1,
+          "max": 1,
+          "kind": "resource",
+          "bonus": true
+        },
+        {
+          "itemId": "spores",
+          "chance": 0.15,
+          "min": 1,
+          "max": 2,
+          "kind": "resource"
+        }
+      ]
+    },
+    {
+      "regionId": "lava",
+      "entries": [
+        {
+          "itemId": "stone",
+          "chance": 0.15,
+          "min": 1,
+          "max": 2,
+          "kind": "resource",
+          "bonus": true
+        }
+      ]
+    },
+    {
+      "regionId": "wastes",
+      "entries": [
+        {
+          "itemId": "metal",
+          "chance": 0.2,
+          "min": 1,
+          "max": 2,
+          "kind": "resource",
+          "bonus": true
+        },
+        {
+          "itemId": "spores",
+          "chance": 0.1,
+          "min": 1,
+          "max": 2,
+          "kind": "resource"
+        }
+      ]
+    },
+    {
+      "regionId": "ash",
+      "entries": [
+        {
+          "itemId": "crystals",
+          "chance": 0.15,
+          "min": 1,
+          "max": 2,
+          "kind": "resource",
+          "bonus": true
+        },
+        {
+          "itemId": "cloth",
+          "chance": 0.15,
+          "min": 1,
+          "max": 2,
+          "kind": "resource",
+          "bonus": true
+        }
+      ]
+    },
+    {
+      "regionId": "dark_caves",
+      "entries": [
+        {
+          "itemId": "crystals",
+          "chance": 0.1,
+          "min": 1,
+          "max": 1,
+          "kind": "resource",
+          "bonus": true
+        },
+        {
+          "itemId": "energy_cell",
+          "chance": 0.15,
+          "min": 1,
+          "max": 1,
+          "kind": "resource"
+        }
+      ]
+    },
+    {
+      "regionId": "primordial",
+      "entries": [
+        {
+          "itemId": "relic_shard",
+          "chance": 0.15,
+          "min": 1,
+          "max": 1,
+          "kind": "resource",
+          "bonus": true
+        },
+        {
+          "itemId": "memory_crystal",
+          "chance": 0.1,
+          "min": 1,
+          "max": 1,
+          "kind": "resource"
+        },
+        {
+          "itemId": "unique_component",
+          "chance": 0.05,
+          "min": 1,
+          "max": 1,
+          "kind": "component"
+        }
+      ]
+    }
+  ],
+  "elite": [
+    {
+      "itemId": "crystals",
+      "chance": 0.2,
+      "min": 1,
+      "max": 2,
+      "kind": "resource"
+    },
+    {
+      "itemId": "spores",
+      "chance": 0.2,
+      "min": 1,
+      "max": 3,
+      "kind": "resource"
+    },
+    {
+      "itemId": "amino",
+      "chance": 0.15,
+      "min": 1,
+      "max": 2,
+      "kind": "resource"
+    },
+    {
+      "itemId": "relic_shard",
+      "chance": 0.15,
+      "min": 1,
+      "max": 1,
+      "kind": "resource"
+    },
+    {
+      "itemId": "energy_cell",
+      "chance": 0.15,
+      "min": 1,
+      "max": 1,
+      "kind": "resource"
+    },
+    {
+      "itemId": "echo_grade_1",
+      "chance": 0.1,
+      "min": 1,
+      "max": 1,
+      "kind": "echo",
+      "grade": 1,
+      "pool": true
+    },
+    {
+      "itemId": "path_grade_1",
+      "chance": 0.1,
+      "min": 1,
+      "max": 1,
+      "kind": "path",
+      "grade": 1,
+      "pool": true
+    }
+  ],
+  "bosses": {
+    "spore_matron": [
+      {
+        "itemId": "gold",
+        "chance": 1,
+        "min": 200,
+        "max": 600,
+        "kind": "gold"
+      },
+      {
+        "itemId": "matron_sporophyte",
+        "chance": 0.2,
+        "min": 1,
+        "max": 1,
+        "kind": "component"
+      },
+      {
+        "itemId": "echo_grade_1",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "echo",
+        "grade": 1,
+        "pool": true
+      },
+      {
+        "itemId": "echo_grade_2",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": 2,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_1",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "path",
+        "grade": 1,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_2",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": 2,
+        "pool": true
+      },
+      {
+        "itemId": "spores",
+        "chance": 1,
+        "min": 5,
+        "max": 10,
+        "kind": "resource"
+      },
+      {
+        "itemId": "amino",
+        "chance": 0.6,
+        "min": 3,
+        "max": 5,
+        "kind": "resource"
+      },
+      {
+        "itemId": "crystals",
+        "chance": 0.4,
+        "min": 2,
+        "max": 3,
+        "kind": "resource"
+      }
+    ],
+    "goblin_king": [
+      {
+        "itemId": "gold",
+        "chance": 1,
+        "min": 300,
+        "max": 900,
+        "kind": "gold"
+      },
+      {
+        "itemId": "royal_mechanism",
+        "chance": 0.2,
+        "min": 1,
+        "max": 1,
+        "kind": "component"
+      },
+      {
+        "itemId": "echo_grade_1",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "echo",
+        "grade": 1,
+        "pool": true
+      },
+      {
+        "itemId": "echo_grade_2",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": 2,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_1",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "path",
+        "grade": 1,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_2",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": 2,
+        "pool": true
+      },
+      {
+        "itemId": "metal",
+        "chance": 1,
+        "min": 5,
+        "max": 10,
+        "kind": "resource"
+      },
+      {
+        "itemId": "crystals",
+        "chance": 0.5,
+        "min": 3,
+        "max": 5,
+        "kind": "resource"
+      },
+      {
+        "itemId": "energy_cell",
+        "chance": 0.4,
+        "min": 2,
+        "max": 3,
+        "kind": "resource"
+      }
+    ],
+    "ancient_guardian": [
+      {
+        "itemId": "gold",
+        "chance": 1,
+        "min": 450,
+        "max": 1350,
+        "kind": "gold"
+      },
+      {
+        "itemId": "guardian_core",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "component"
+      },
+      {
+        "itemId": "echo_grade_3",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": 3,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_3",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": 3,
+        "pool": true
+      },
+      {
+        "itemId": "echo_unique",
+        "chance": 0.05,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": "unique",
+        "pool": true
+      },
+      {
+        "itemId": "path_unique",
+        "chance": 0.05,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": "unique",
+        "pool": true
+      },
+      {
+        "itemId": "relic_shard",
+        "chance": 1,
+        "min": 5,
+        "max": 10,
+        "kind": "resource"
+      },
+      {
+        "itemId": "memory_crystal",
+        "chance": 0.6,
+        "min": 2,
+        "max": 4,
+        "kind": "resource"
+      },
+      {
+        "itemId": "titanium",
+        "chance": 0.5,
+        "min": 3,
+        "max": 5,
+        "kind": "resource"
+      },
+      {
+        "itemId": "crystals",
+        "chance": 0.8,
+        "min": 5,
+        "max": 10,
+        "kind": "resource"
+      }
+    ],
+    "rust_colossus": [
+      {
+        "itemId": "gold",
+        "chance": 1,
+        "min": 200,
+        "max": 600,
+        "kind": "gold"
+      },
+      {
+        "itemId": "rust_heart",
+        "chance": 0.2,
+        "min": 1,
+        "max": 1,
+        "kind": "component"
+      },
+      {
+        "itemId": "echo_grade_1",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "echo",
+        "grade": 1,
+        "pool": true
+      },
+      {
+        "itemId": "echo_grade_2",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": 2,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_1",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "path",
+        "grade": 1,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_2",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": 2,
+        "pool": true
+      },
+      {
+        "itemId": "metal",
+        "chance": 1,
+        "min": 5,
+        "max": 10,
+        "kind": "resource"
+      },
+      {
+        "itemId": "spores",
+        "chance": 0.5,
+        "min": 2,
+        "max": 4,
+        "kind": "resource"
+      },
+      {
+        "itemId": "energy_cell",
+        "chance": 0.4,
+        "min": 2,
+        "max": 3,
+        "kind": "resource"
+      }
+    ],
+    "lava_titan": [
+      {
+        "itemId": "gold",
+        "chance": 1,
+        "min": 300,
+        "max": 900,
+        "kind": "gold"
+      },
+      {
+        "itemId": "lava_core",
+        "chance": 0.2,
+        "min": 1,
+        "max": 1,
+        "kind": "component"
+      },
+      {
+        "itemId": "echo_grade_1",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "echo",
+        "grade": 1,
+        "pool": true
+      },
+      {
+        "itemId": "echo_grade_2",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": 2,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_1",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "path",
+        "grade": 1,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_2",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": 2,
+        "pool": true
+      },
+      {
+        "itemId": "crystals",
+        "chance": 1,
+        "min": 5,
+        "max": 10,
+        "kind": "resource"
+      },
+      {
+        "itemId": "energy_cell",
+        "chance": 0.6,
+        "min": 3,
+        "max": 5,
+        "kind": "resource"
+      },
+      {
+        "itemId": "titanium",
+        "chance": 0.3,
+        "min": 2,
+        "max": 3,
+        "kind": "resource"
+      }
+    ],
+    "ash_queen": [
+      {
+        "itemId": "gold",
+        "chance": 1,
+        "min": 450,
+        "max": 1350,
+        "kind": "gold"
+      },
+      {
+        "itemId": "ash_crown",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "component"
+      },
+      {
+        "itemId": "echo_grade_3",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": 3,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_3",
+        "chance": 0.15,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": 3,
+        "pool": true
+      },
+      {
+        "itemId": "echo_unique",
+        "chance": 0.05,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": "unique",
+        "pool": true
+      },
+      {
+        "itemId": "path_unique",
+        "chance": 0.05,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": "unique",
+        "pool": true
+      },
+      {
+        "itemId": "relic_shard",
+        "chance": 1,
+        "min": 5,
+        "max": 10,
+        "kind": "resource"
+      },
+      {
+        "itemId": "memory_crystal",
+        "chance": 0.6,
+        "min": 2,
+        "max": 4,
+        "kind": "resource"
+      },
+      {
+        "itemId": "spores",
+        "chance": 0.8,
+        "min": 5,
+        "max": 10,
+        "kind": "resource"
+      },
+      {
+        "itemId": "amino",
+        "chance": 0.5,
+        "min": 3,
+        "max": 5,
+        "kind": "resource"
+      }
+    ],
+    "keeper_enhanced": [
+      {
+        "itemId": "gold",
+        "chance": 1,
+        "min": 500,
+        "max": 1500,
+        "kind": "gold"
+      },
+      {
+        "itemId": "keeper_core",
+        "chance": 0.3,
+        "min": 1,
+        "max": 2,
+        "kind": "component"
+      },
+      {
+        "itemId": "echo_grade_3",
+        "chance": 0.2,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": 3,
+        "pool": true
+      },
+      {
+        "itemId": "path_grade_3",
+        "chance": 0.2,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": 3,
+        "pool": true
+      },
+      {
+        "itemId": "echo_unique",
+        "chance": 0.1,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": "unique",
+        "pool": true
+      },
+      {
+        "itemId": "path_unique",
+        "chance": 0.1,
+        "min": 1,
+        "max": 1,
+        "kind": "path",
+        "grade": "unique",
+        "pool": true
+      },
+      {
+        "itemId": "relic_shard",
+        "chance": 1,
+        "min": 8,
+        "max": 15,
+        "kind": "resource"
+      },
+      {
+        "itemId": "memory_crystal",
+        "chance": 0.8,
+        "min": 3,
+        "max": 6,
+        "kind": "resource"
+      },
+      {
+        "itemId": "titanium",
+        "chance": 0.6,
+        "min": 5,
+        "max": 8,
+        "kind": "resource"
+      },
+      {
+        "itemId": "crystals",
+        "chance": 1,
+        "min": 8,
+        "max": 15,
+        "kind": "resource"
+      }
+    ],
+    "keeper_enhanced_prototype": [
+      {
+        "itemId": "gold",
+        "chance": 1,
+        "min": 1,
+        "max": 3,
+        "kind": "gold",
+        "goldFormula": "boss",
+        "coefficient": 10
+      },
+      {
+        "itemId": "metal",
+        "chance": 1,
+        "min": 3,
+        "max": 5,
+        "kind": "resource"
+      },
+      {
+        "itemId": "relic_shard",
+        "chance": 0.5,
+        "min": 1,
+        "max": 1,
+        "kind": "resource"
+      },
+      {
+        "itemId": "echo_grade_1",
+        "chance": 0.3,
+        "min": 1,
+        "max": 1,
+        "kind": "echo",
+        "grade": 1,
+        "pool": true
+      }
+    ]
+  },
+  "chests": {
+    "common": {
+      "gradeWeights": {
+        "common": 70,
+        "rare": 25,
+        "epic": 5,
+        "unique": 0
+      },
+      "goldMin": 10,
+      "goldMax": 50,
+      "itemsMin": 1,
+      "itemsMax": 2,
+      "keys": 0
+    },
+    "rare": {
+      "gradeWeights": {
+        "common": 0,
+        "rare": 60,
+        "epic": 35,
+        "unique": 5
+      },
+      "goldMin": 50,
+      "goldMax": 200,
+      "itemsMin": 2,
+      "itemsMax": 3,
+      "keys": 1
+    },
+    "epic": {
+      "gradeWeights": {
+        "common": 0,
+        "rare": 0,
+        "epic": 70,
+        "unique": 30
+      },
+      "goldMin": 200,
+      "goldMax": 800,
+      "itemsMin": 3,
+      "itemsMax": 4,
+      "keys": 2,
+      "uniqueComponent": 1
+    }
+  },
+  "programSources": [
+    {
+      "kind": "echo",
+      "grade": 1,
+      "source": "normal",
+      "chance": 0.05
+    },
+    {
+      "kind": "echo",
+      "grade": 1,
+      "source": "elite",
+      "chance": 0.1
+    },
+    {
+      "kind": "echo",
+      "grade": 1,
+      "source": "elite_boss",
+      "chance": 0.3
+    },
+    {
+      "kind": "echo",
+      "grade": 2,
+      "source": "elite",
+      "chance": 0.15
+    },
+    {
+      "kind": "echo",
+      "grade": 2,
+      "source": "elite_boss",
+      "chance": 0.15
+    },
+    {
+      "kind": "echo",
+      "grade": 3,
+      "source": "unique_boss",
+      "chance": 0.15
+    },
+    {
+      "kind": "echo",
+      "grade": "unique",
+      "source": "unique_boss",
+      "chance": 0.05
+    },
+    {
+      "kind": "path",
+      "grade": 1,
+      "source": "normal",
+      "chance": 0.05
+    },
+    {
+      "kind": "path",
+      "grade": 1,
+      "source": "elite",
+      "chance": 0.1
+    },
+    {
+      "kind": "path",
+      "grade": 1,
+      "source": "elite_boss",
+      "chance": 0.3
+    },
+    {
+      "kind": "path",
+      "grade": 2,
+      "source": "elite",
+      "chance": 0.15
+    },
+    {
+      "kind": "path",
+      "grade": 2,
+      "source": "elite_boss",
+      "chance": 0.15
+    },
+    {
+      "kind": "path",
+      "grade": 3,
+      "source": "unique_boss",
+      "chance": 0.15
+    },
+    {
+      "kind": "path",
+      "grade": "unique",
+      "source": "unique_boss",
+      "chance": 0.05
+    }
+  ]
+}
