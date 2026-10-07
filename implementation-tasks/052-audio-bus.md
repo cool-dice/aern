@@ -2,7 +2,7 @@
 
 - id: `052`
 - title: Аудио-шина
-- status: `pending`
+- status: `done`
 - depends_on: `001`
 
 ## Цель
