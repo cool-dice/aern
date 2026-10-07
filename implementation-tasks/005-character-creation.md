@@ -2,7 +2,7 @@
 
 - id: `005`
 - title: Расы и создание персонажа
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `004`
 
 ## Цель
