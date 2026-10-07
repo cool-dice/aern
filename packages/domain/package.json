@@ -7,7 +7,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./craft": "./src/craft.ts"
+    "./craft": "./src/craft.ts",
+    "./quests": "./src/quests.ts"
   },
   "scripts": {
     "test": "vitest run",

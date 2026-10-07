@@ -2,7 +2,7 @@
 
 - id: `039`
 - title: Сервис квестов
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `019`, `029`
 
 ## Цель

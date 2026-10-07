@@ -2,7 +2,7 @@
 
 - id: `006`
 - title: Языки и УПЯ
-- status: `pending`
+- status: `done`
 - depends_on: `002`
 
 ## Цель
