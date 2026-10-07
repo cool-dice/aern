@@ -2,7 +2,7 @@
 
 - id: `049`
 - title: Модели экранов интерфейса
-- status: `pending`
+- status: `done`
 - depends_on: `001`, `029`
 
 ## Цель
