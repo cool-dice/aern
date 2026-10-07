@@ -2,7 +2,7 @@
 
 - id: `030`
 - title: Шина событий и контракт модуля
-- status: `pending`
+- status: `done`
 - depends_on: `001`, `002`, `003`
 
 ## Цель
