@@ -2,7 +2,7 @@
 
 - id: `042`
 - title: Валидация команд
-- status: `pending`
+- status: `done`
 - depends_on: `030`, `003`, `010`, `012`
 
 ## Цель
