@@ -2,7 +2,7 @@
 
 - id: `017`
 - title: Добыча ресурсов
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `004`
 
 ## Цель
