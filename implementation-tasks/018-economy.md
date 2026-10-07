@@ -2,7 +2,7 @@
 
 - id: `018`
 - title: Экономика: цены, ремонт, аукцион, обмен
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `007`
 
 ## Цель
