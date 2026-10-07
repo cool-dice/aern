@@ -2,7 +2,7 @@
 
 - id: `031`
 - title: Модуль Auth
-- status: `pending`
+- status: `done`
 - depends_on: `030`
 
 ## Цель
