@@ -2,7 +2,7 @@
 
 - id: `012`
 - title: Движение по сетке
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `004`
 
 ## Цель
