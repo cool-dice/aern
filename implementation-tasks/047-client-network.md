@@ -2,7 +2,7 @@
 
 - id: `047`
 - title: Сеть клиента и предсказание движения
-- status: `pending`
+- status: `done`
 - depends_on: `003`, `012`, `046`
 
 ## Цель
