@@ -2,7 +2,7 @@
 
 - id: `043`
 - title: WebSocket-шлюз
-- status: `pending`
+- status: `done`
 - depends_on: `003`, `031`, `042`
 
 ## Цель
