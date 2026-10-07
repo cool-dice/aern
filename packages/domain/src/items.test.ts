@@ -78,12 +78,7 @@ test('grade constants match the table, including price coefficients', () => {
 
 test('equip and implant slots keep the full lists', () => {
   expect(EQUIP_SLOTS).toEqual(['head', 'torso', 'hands', 'legs', 'main_hand', 'off_hand', 'core']);
-  expect(IMPLANT_SLOTS).toEqual([
-    'implant_head',
-    'implant_torso',
-    'implant_hands',
-    'implant_legs',
-  ]);
+  expect(IMPLANT_SLOTS).toEqual(['implant_head', 'implant_torso', 'implant_hands', 'implant_legs']);
 });
 
 test('item stat endpoints and rare bounds', () => {
@@ -195,13 +190,14 @@ test('canEquip returns the occupied slots or a domain error', () => {
     occupied: { main_hand: true },
   });
   expect(destroyed).toEqual({ ok: false, code: 'destroyed' });
-  expect(
-    canEquip(-1, { slot: 'core', twoHanded: false, occupied: {} }),
-  ).toEqual({ ok: false, code: 'destroyed' });
+  expect(canEquip(-1, { slot: 'core', twoHanded: false, occupied: {} })).toEqual({
+    ok: false,
+    code: 'destroyed',
+  });
 
-  expect(() =>
-    canEquip(10, { slot: 'off_hand', twoHanded: true, occupied: {} }),
-  ).toThrow(RangeError);
+  expect(() => canEquip(10, { slot: 'off_hand', twoHanded: true, occupied: {} })).toThrow(
+    RangeError,
+  );
 });
 
 test('ammo weights', () => {
