@@ -2,7 +2,7 @@
 
 - id: `019`
 - title: Квесты
-- status: `pending`
+- status: `done`
 - depends_on: `002`, `006`
 
 ## Цель
