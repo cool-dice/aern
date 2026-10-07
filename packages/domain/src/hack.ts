@@ -43,10 +43,7 @@ export function silenceMs(kind: KeeperKind): number {
   return keeperRules(kind).silenceMs;
 }
 
-export function newHack(
-  kind: KeeperKind,
-  rng: Rng,
-): { password: string; attemptsLeft: 3 } {
+export function newHack(kind: KeeperKind, rng: Rng): { password: string; attemptsLeft: 3 } {
   keeperRules(kind);
 
   let password = '';
