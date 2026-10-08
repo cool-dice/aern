@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { ALLIANCE_BREAK_MS, CONTENDER_CLOSE_MS, CONTENDER_GOLD, GUILD_CREATE_GOLD, NODE_DROP_MS, NODE_PLANT_MS, NODE_TAX_OFFICER_MAX, NOVICE_LOCK_MS, PACT_MS, PATROL_QUEST_GOLD, PATROL_QUEST_MS, VASSAL_RELEASE_MS, VASSAL_TAX_MIN, WAR_HOLD_MS, WAR_MUSTER_MS } from '@rift/domain/guild';
+import { ALLIANCE_BREAK_MS, CITY_CAPTURE_COOLDOWN_MS, CONTENDER_CLOSE_MS, CONTENDER_GOLD, GUILD_CREATE_GOLD, NODE_DROP_MS, NODE_PLANT_MS, NODE_TAX_OFFICER_MAX, NOVICE_LOCK_MS, PACT_MS, PATROL_QUEST_GOLD, PATROL_QUEST_MS, VASSAL_RELEASE_MS, VASSAL_TAX_MIN, WAR_GOLD, WAR_HOLD_MS, WAR_MUSTER_MS, WAR_RESOURCES } from '@rift/domain/guild';
 import { PORTAL_BLOCK_MS, STORAGE_GOLD_PER_SLOT_DAY } from '@rift/domain/economy';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
@@ -73,6 +73,14 @@ test('auction tax, storage, diplomacy, and war routes call the domain functions'
   expect(composeSource.includes('settleNodeDrop(') || readFileSync(new URL('./sim/nodes.ts', import.meta.url), 'utf8').includes('settleNodeDrop(')).toBe(true);
   expect(composeSource.includes('declareWar(') || dispatch.includes('declareWar(')).toBe(true);
   expect(dispatch.includes('ports.guild.declareWar(')).toBe(true);
+  expect(dispatch.includes('declareNeutralCity(')).toBe(true);
+  expect(composeSource.includes('declareNeutralCapture(')).toBe(true);
+  expect(composeSource.includes('spawnNeutralGuards(')).toBe(true);
+  const tick = readFileSync(new URL('./sim/tick.ts', import.meta.url), 'utf8');
+  expect(tick.includes('entity.cityGuard === undefined')).toBe(true);
+  const tickBody = composeSource.slice(composeSource.indexOf('function tickOnce'), composeSource.indexOf('function simSnapshot'));
+  expect(tickBody.includes('spawnNeutralGuards(')).toBe(true);
+  expect(tickBody.includes('tickCaptures(')).toBe(true);
   expect(dispatch.includes('ports.guild.withdraw(')).toBe(true);
   expect(dispatch.includes("path: '/war'") || composeSource.includes("path: '/war'")).toBe(true);
   expect(composeSource.includes("path: '/storage'")).toBe(true);
@@ -362,23 +370,25 @@ test('declareWar and withdraw are live routes', async () => {
   const graph = compose({ nowMs: 0 });
   graph.enterCharacter('account-lia', 'lia');
   const guildId = await foundGuild(graph);
-  const guild = await graph.guild.repository.findGuild(guildId);
-  if (guild === null) {
+  await winCity(graph, guildId, 'fort_humans');
+  await graph.skipMs(CITY_CAPTURE_COOLDOWN_MS);
+  const owned = await graph.guild.repository.findGuild(guildId);
+  if (owned === null) {
     throw new Error('missing guild');
   }
-  await graph.guild.repository.saveGuild({ ...guild, bank: 100_000 });
+  await graph.guild.repository.saveGuild({ ...owned, bank: 100_000 });
   const declared = await graph.act('guild_war', {
     attackerGuildId: guildId,
-    cityId: 'obsidian_tower',
+    cityId: 'fort_humans',
     leaderConsent: true,
     councilConsents: 2,
-    resources: 20_000,
+    resources: WAR_RESOURCES,
   });
   expect(declared.ok).toBe(true);
-  expect((await graph.guild.repository.listWars()).length).toBe(1);
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(100_000 - WAR_GOLD);
   const withdrawn = await graph.act('guild_withdraw', { guildId, characterId: 'lia', amount: 1 });
   expect(withdrawn).toMatchObject({ ok: true, value: { amount: 1 } });
-  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(49_999);
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(100_000 - WAR_GOLD - 1);
 });
 
 test('alliance notice, vassal release, and war contenders follow the domain clocks', async () => {
@@ -473,6 +483,57 @@ test('alliance notice, vassal release, and war contenders follow the domain cloc
     code: 'rank',
   });
   const contended = await graph.act('war_contend', { guildId, warId, characterId: 'lia' });
-  expect(contended).toMatchObject({ ok: true, value: { warId, guildId, gold: 100_000 - 50_000 - CONTENDER_GOLD } });
-  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(40_000);
+  expect(contended).toMatchObject({ ok: true, value: { warId, guildId, gold: 100_000 - 25_000 - CONTENDER_GOLD } });
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(65_000);
+});
+
+test('a neutral capture charges 25000 gold and waits for the guard fight', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  const guildId = await foundGuild(graph);
+  const guild = await graph.guild.repository.findGuild(guildId);
+  if (guild === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...guild, bank: 40_000 });
+  const declared = await graph.act('guild_war', {
+    attackerGuildId: guildId,
+    cityId: 'fort_humans',
+    leaderConsent: true,
+    councilConsents: 2,
+    resources: 20_000,
+  });
+  expect(declared.ok).toBe(true);
+  expect(declared.value).toMatchObject({ costGold: 25_000, kind: 'neutral', guards: 2 });
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(15_000);
+  const warId = (declared.value as { warId: string }).warId;
+  const startsAtMs = (declared.value as { startsAtMs: number }).startsAtMs;
+  expect(startsAtMs).toBe(48 * 60 * 60 * 1000);
+  expect(await graph.act('war_contend', { guildId, warId, characterId: 'lia' })).toMatchObject({ ok: true });
+  await graph.skipMs(startsAtMs + WAR_MUSTER_MS);
+  const guards = (graph.state() as { entities: { id: string; monsterId: string | null; hp: number }[] }).entities.filter(
+    (entity) => entity.id.startsWith('guard:fort_humans'),
+  );
+  expect(guards.length).toBe(2);
+  expect(guards.every((guard) => guard.hp > 0)).toBe(true);
+  await graph.skipMs(WAR_HOLD_MS);
+  const blocked = graph.state() as { captures: { cityId: string; won: boolean }[] };
+  expect(blocked.captures.some((row) => row.cityId === 'fort_humans' && row.won)).toBe(false);
+  for (const guard of guards) {
+    graph.submit({
+      commandId: `guard-${guard.id}`,
+      seq: 1,
+      issuedAtMs: (graph.state() as { nowMs: number }).nowMs,
+      action: 'attack_ranged',
+      targetId: guard.id,
+      params: { entityId: 'lia', weaponDamage: 80, range: 8, odCost: 0, pvpOpen: true, safeZone: false },
+    });
+    graph.tickOnce();
+  }
+  const fought = graph.state() as { entities: { id: string; hp: number }[] };
+  expect(fought.entities.some((entity) => entity.id.startsWith('guard:') && entity.hp > 0)).toBe(false);
+  await graph.skipMs(WAR_HOLD_MS);
+  const won = graph.state() as { captures: { cityId: string; won: boolean; guildId: string | null }[] };
+  expect(won.captures.some((row) => row.cityId === 'fort_humans' && row.won && row.guildId === guildId)).toBe(true);
 });

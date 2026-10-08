@@ -555,10 +555,12 @@ function settleMonsters(
         bindNodeId: '',
         ...(entity.lastAttackerId !== undefined ? { killerId: entity.lastAttackerId } : {}),
       });
-      respawns.push({
-        atMs: nowMs + MONSTER_RESPAWN_MS,
-        entity: cloneEntity({ ...entity, hp: entity.maxHp, phase: 'online' }),
-      });
+      if (entity.cityGuard === undefined) {
+        respawns.push({
+          atMs: nowMs + MONSTER_RESPAWN_MS,
+          entity: cloneEntity({ ...entity, hp: entity.maxHp, phase: 'online' }),
+        });
+      }
       continue;
     }
     alive.push(entity);

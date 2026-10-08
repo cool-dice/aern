@@ -89,6 +89,7 @@ export interface LivePorts {
     lastDeclaredAtMs: number | null;
   };
   rememberDeclaration(guildId: string): void;
+  declareNeutralCity(body: Record<string, unknown>): Promise<LiveResult>;
   seatFounders(guildId: string, leaderId: string, memberIds: readonly string[]): void;
   seatMember(guildId: string, actorId: string, memberId: string, rank: string): LiveResult;
   placeQuest(characterId: string, questId: string): Promise<void>;
@@ -892,6 +893,9 @@ async function guildWar(body: Record<string, unknown>, ports: LivePorts): Promis
   const vassal = ports.vassalMayWar(attackerGuildId, body.suzerainConsent === true);
   if (!vassal.ok) {
     return vassal;
+  }
+  if (ports.cityOwner(cityId) === null) {
+    return ports.declareNeutralCity(body);
   }
   const limits = ports.warLimits(cityId, attackerGuildId);
   const declared = await ports.guild.declareWar({

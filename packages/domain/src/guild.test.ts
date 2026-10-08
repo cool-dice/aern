@@ -25,6 +25,9 @@ import {
   canVote,
   castLeaderVote,
   createGuild,
+  NEUTRAL_CAPTURE_GOLD,
+  NEUTRAL_GUARD_COUNT,
+  declareNeutralCapture,
   declareWar,
   depositBank,
   dissolveShares,
@@ -649,6 +652,58 @@ test('a contender pays 10000 gold and must register at least one hour before the
       startsAtMs,
     }),
   ).toEqual({ ok: false, code: 'cooldown' });
+});
+
+test('a neutral city costs 25000 gold and a guild city still costs the war stake', () => {
+  expect(NEUTRAL_CAPTURE_GOLD).toBe(25_000);
+  expect(NEUTRAL_GUARD_COUNT).toBe(2);
+  expect(WAR_GOLD).toBe(50_000);
+  expect(WAR_RESOURCES).toBe(20_000);
+  const neutral = declareNeutralCapture({
+    attackerGuildId: 'wolves',
+    cityId: 'fort_humans',
+    gold: 25_000,
+    nowMs: 0,
+    leaderAbsent: false,
+    leaderConsent: true,
+    councilConsents: 2,
+    owned: false,
+  });
+  expect(neutral.ok).toBe(true);
+  if (neutral.ok) {
+    expect(neutral.value.costGold).toBe(25_000);
+    expect(neutral.value.gold).toBe(0);
+    expect(neutral.value.startsAtMs).toBe(WAR_LEAD_MS);
+    expect(neutral.value.guards).toBe(NEUTRAL_GUARD_COUNT);
+    expect(neutral.value.kind).toBe('neutral');
+  }
+  expect(
+    declareNeutralCapture({
+      attackerGuildId: 'wolves',
+      cityId: 'fort_humans',
+      gold: 25_000,
+      nowMs: 0,
+      leaderAbsent: false,
+      leaderConsent: true,
+      councilConsents: 2,
+      owned: true,
+    }),
+  ).toEqual({ ok: false, code: 'owned' });
+  const guildWar = declareWar({
+    attackerGuildId: 'wolves',
+    cityId: 'fort_humans',
+    gold: 50_000,
+    resources: 20_000,
+    nowMs: 0,
+    leaderAbsent: false,
+    leaderConsent: true,
+    councilConsents: 2,
+  });
+  expect(guildWar.ok).toBe(true);
+  if (guildWar.ok) {
+    expect(guildWar.value.costGold).toBe(50_000);
+    expect(guildWar.value.costResources).toBe(20_000);
+  }
 });
 
 test('war phases run muster, assault, then a five minute finish', () => {

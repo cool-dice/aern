@@ -60,12 +60,14 @@ import {
   applyVassalTithe,
   breakAlliance,
   breachNonAggression,
+  declareNeutralCapture,
   depositBank,
   depositNodeChest,
   formPact,
   founderRanks,
   freshResourceNode,
   GUILD_CREATE_GOLD,
+  NEUTRAL_GUARD_COUNT,
   napBetween,
   noticeAllianceBreak,
   noticeVassalRelease,
@@ -259,6 +261,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   let patrols: StoredPatrol[] = [];
   let contenders: { warId: string; guildId: string }[] = [];
   const declaredAtMs = new Map<string, number>();
+  const neutralCities = new Set<string>();
   const guildVaults = new Map<string, number>();
   let diplomacySeq = 0;
   const saveWar = repos.guilds.saveWar.bind(repos.guilds);
@@ -619,6 +622,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   let lastUtility: string | null = null;
   let playedUtility = 0;
   let rejectedTotal = 0;
+  const guardsSpawned = new Set<string>();
   let runtimeError: unknown = null;
   let snapshotJob: Promise<void> = Promise.resolve();
   let snapshotError: unknown = null;
@@ -713,6 +717,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     postMercenaryContract,
     postPatrol,
     memberRank,
+    declareNeutralCity,
     rememberDeclaration(guildId) {
       declaredAtMs.set(guildId, clock.now());
     },
@@ -1727,6 +1732,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     clock.advance(ms);
     simWorld = { ...simWorld, nowMs: clock.now() };
+    spawnNeutralGuards();
     captures = tickCaptures({
       holds: captures,
       wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs, attackerGuildId: war.attackerGuildId })),
@@ -1783,6 +1789,85 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       const war = openWars.find((item) => item.id === row.warId);
       return war === undefined ? [] : [{ cityId: war.cityId, guildId: row.guildId }];
     });
+  }
+
+  function spawnNeutralGuards(): void {
+    const extras: SimEntity[] = [];
+    for (const cityId of neutralCities) {
+      if (guardsSpawned.has(cityId)) {
+        continue;
+      }
+      const war = openWars.find((row) => row.cityId === cityId);
+      if (war === undefined || war.startsAtMs > clock.now()) {
+        continue;
+      }
+      guardsSpawned.add(cityId);
+      const city = simWorld.geography?.nodes.find((node) => node.id === cityId);
+      for (let index = 0; index < NEUTRAL_GUARD_COUNT; index += 1) {
+        const guard = spawnNamed('bandit', `guard:${cityId}:${String(index)}`);
+        if (guard === null) {
+          continue;
+        }
+        extras.push({
+          ...guard,
+          cityGuard: cityId,
+          nodeId: cityId,
+          inEncounter: false,
+          ...(city !== undefined ? { cell: { x: city.x, y: city.y } } : {}),
+        });
+      }
+    }
+    if (extras.length === 0) {
+      return;
+    }
+    simWorld = { ...simWorld, entities: [...simWorld.entities, ...extras] };
+  }
+
+  async function declareNeutralCity(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const attackerGuildId = typeof body.attackerGuildId === 'string' ? body.attackerGuildId : '';
+    const cityId = typeof body.cityId === 'string' ? body.cityId : '';
+    const guild = await repos.guilds.findGuild(attackerGuildId);
+    if (guild === null) {
+      return { ok: false, code: 'member' };
+    }
+    const limits = {
+      cityCapturedAtMs: captures.find((row) => row.cityId === cityId)?.wonAtMs ?? null,
+      drawEndedAtMs: captures.find((row) => row.cityId === cityId)?.drawEndedAtMs ?? null,
+      lastDeclaredAtMs: declaredAtMs.get(attackerGuildId) ?? null,
+    };
+    const declared = declareNeutralCapture({
+      attackerGuildId,
+      cityId,
+      gold: typeof body.gold === 'number' ? body.gold : guild.bank,
+      nowMs: clock.now(),
+      leaderAbsent: body.leaderAbsent === true,
+      leaderConsent: body.leaderConsent === true,
+      councilConsents: typeof body.councilConsents === 'number' ? body.councilConsents : 0,
+      owned: cityOwner(cityId) !== null,
+      cityCapturedAtMs:
+        typeof body.cityCapturedAtMs === 'number' ? body.cityCapturedAtMs : limits.cityCapturedAtMs,
+      drawEndedAtMs: typeof body.drawEndedAtMs === 'number' ? body.drawEndedAtMs : limits.drawEndedAtMs,
+      lastDeclaredAtMs:
+        typeof body.lastDeclaredAtMs === 'number' ? body.lastDeclaredAtMs : limits.lastDeclaredAtMs,
+    });
+    if (!declared.ok) {
+      return { ok: false, code: declared.code };
+    }
+    await repos.guilds.saveGuild({ ...guild, bank: declared.value.gold });
+    const warId = nextDiplomacyId('war');
+    await repos.guilds.saveWar({
+      id: warId,
+      attackerGuildId,
+      cityId,
+      startsAtMs: declared.value.startsAtMs,
+      gold: declared.value.gold,
+      resources: 0,
+    });
+    neutralCities.add(cityId);
+    declaredAtMs.set(attackerGuildId, clock.now());
+    return { ok: true, value: { warId, ...declared.value } };
   }
 
   function guardRows(): { cityId: string; remaining: number }[] {
@@ -2030,6 +2115,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ...(simWorld.primordialOpened === true ? { primordialOpened: true } : {}),
     };
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
+    spawnNeutralGuards();
     captures = tickCaptures({
       holds: captures,
       wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs, attackerGuildId: war.attackerGuildId })),

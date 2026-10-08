@@ -16,6 +16,10 @@ export const NOVICE_LOCK_MS = 72 * 60 * 60 * 1000;
 
 export const WAR_GOLD = 50_000;
 export const WAR_RESOURCES = 20_000;
+/** Artifact 17 §6. A neutral city costs gold only. It does not pay the guild-war stake. */
+export const NEUTRAL_CAPTURE_GOLD = 25_000;
+/** NPC and monster guards that must fall before the center can be held. */
+export const NEUTRAL_GUARD_COUNT = 2;
 export const WAR_LEAD_MS = 48 * 60 * 60 * 1000;
 export const CONTENDER_GOLD = 10_000;
 /** Registration closes this long before the war starts. */
@@ -504,6 +508,79 @@ export function declareWar(input: {
     resources: input.resources - WAR_RESOURCES,
     costGold: WAR_GOLD,
     costResources: WAR_RESOURCES,
+  });
+}
+
+/**
+ * Intent to take a neutral city. 25 000 gold, then a public event in 48 hours.
+ * Guild-war gold and resources are not charged. An owned city is refused.
+ */
+export function declareNeutralCapture(input: {
+  attackerGuildId: string;
+  cityId: string;
+  gold: number;
+  nowMs: number;
+  leaderAbsent: boolean;
+  leaderConsent: boolean;
+  councilConsents: number;
+  owned: boolean;
+  cityCapturedAtMs?: number | null;
+  drawEndedAtMs?: number | null;
+  lastDeclaredAtMs?: number | null;
+}): Result<
+  {
+    attackerGuildId: string;
+    cityId: string;
+    startsAtMs: number;
+    gold: number;
+    costGold: number;
+    kind: 'neutral';
+    guards: number;
+  },
+  'confirm' | 'cooldown' | 'gold' | 'owned'
+> {
+  assertNonNegativeInteger(input.gold, 'gold');
+  assertMs(input.nowMs, 'nowMs');
+  if (!Number.isInteger(input.councilConsents) || input.councilConsents < 0) {
+    throw new RangeError(
+      `councilConsents must be an integer >= 0, got ${String(input.councilConsents)}`,
+    );
+  }
+  if (input.owned) {
+    return err('owned');
+  }
+  const consent = input.leaderAbsent
+    ? input.councilConsents >= 3
+    : input.leaderConsent && input.councilConsents >= 2;
+  if (!consent) {
+    return err('confirm');
+  }
+  if (
+    input.cityCapturedAtMs != null &&
+    input.nowMs - input.cityCapturedAtMs < CITY_CAPTURE_COOLDOWN_MS
+  ) {
+    return err('cooldown');
+  }
+  if (input.drawEndedAtMs != null && input.nowMs - input.drawEndedAtMs < DRAW_WAR_COOLDOWN_MS) {
+    return err('cooldown');
+  }
+  if (
+    input.lastDeclaredAtMs != null &&
+    input.nowMs - input.lastDeclaredAtMs < GUILD_WAR_COOLDOWN_MS
+  ) {
+    return err('cooldown');
+  }
+  if (input.gold < NEUTRAL_CAPTURE_GOLD) {
+    return err('gold');
+  }
+  return ok({
+    attackerGuildId: input.attackerGuildId,
+    cityId: input.cityId,
+    startsAtMs: input.nowMs + WAR_LEAD_MS,
+    gold: input.gold - NEUTRAL_CAPTURE_GOLD,
+    costGold: NEUTRAL_CAPTURE_GOLD,
+    kind: 'neutral',
+    guards: NEUTRAL_GUARD_COUNT,
   });
 }
 
