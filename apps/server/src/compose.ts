@@ -406,6 +406,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     id: string;
     type: ContractType;
     rewardGold: number;
+    rewardResources: number;
+    rewardRelics: number;
     posterId: string;
     guildId: string | null;
     anonymous: boolean;
@@ -2966,6 +2968,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const posted = postContract({
       type: type as ContractType,
       rewardGold: body.rewardGold,
+      ...(typeof body.rewardResources === 'number' ? { rewardResources: body.rewardResources } : {}),
+      ...(typeof body.rewardRelics === 'number' ? { rewardRelics: body.rewardRelics } : {}),
       ...(typeof body.targetLevel === 'number' ? { targetLevel: body.targetLevel } : {}),
       ...(body.targetIsMember === true ? { targetIsMember: true } : { targetIsMember: false }),
     });
@@ -2977,6 +2981,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       id,
       type: posted.value.type,
       rewardGold: posted.value.rewardGold,
+      rewardResources: posted.value.rewardResources ?? 0,
+      rewardRelics: posted.value.rewardRelics ?? 0,
       posterId: characterId,
       guildId: guildOf.get(characterId) ?? null,
       anonymous: body.anonymous === true,
@@ -3003,6 +3009,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
           id: contract.id,
           type: contract.type,
           rewardGold: contract.rewardGold,
+          rewardResources: contract.rewardResources,
+          rewardRelics: contract.rewardRelics,
           guildId: contract.guildId,
           posterId: contract.anonymous ? '' : contract.posterId,
           anonymous: contract.anonymous,

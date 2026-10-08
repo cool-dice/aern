@@ -633,6 +633,16 @@ export function App() {
                 characterId,
                 type: 'kill',
                 rewardGold: 100,
+                rewardResources: 10,
+                targetLevel: 10,
+                store: plan.store,
+              });
+              void postContractBoard({
+                server: SERVER,
+                characterId,
+                type: 'steal',
+                rewardGold: 20,
+                rewardRelics: 1,
                 targetLevel: 10,
                 store: plan.store,
               });

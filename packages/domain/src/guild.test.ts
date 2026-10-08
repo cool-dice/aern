@@ -1060,6 +1060,55 @@ test('a kill contract refuses a target below level 10 and a guild member', () =>
   });
 });
 
+test('a contract accepts the resource or relic reward its type names', () => {
+  expect(
+    postContract({
+      type: 'kill',
+      rewardGold: 100,
+      rewardResources: 10,
+      targetLevel: 10,
+      targetIsMember: false,
+    }),
+  ).toEqual({
+    ok: true,
+    value: { type: 'kill', rewardGold: 100, rewardResources: 10 },
+  });
+  expect(
+    postContract({
+      type: 'defend',
+      rewardGold: 40,
+      rewardResources: 3,
+    }),
+  ).toEqual({
+    ok: true,
+    value: { type: 'defend', rewardGold: 40, rewardResources: 3 },
+  });
+  expect(postContract({ type: 'steal', rewardGold: 20, rewardRelics: 1 })).toEqual({
+    ok: true,
+    value: { type: 'steal', rewardGold: 20, rewardRelics: 1 },
+  });
+  expect(postContract({ type: 'smuggle', rewardGold: 5, rewardResources: 1 })).toEqual({
+    ok: false,
+    code: 'gold',
+  });
+  expect(postContract({ type: 'scout', rewardGold: 5, rewardRelics: 1 })).toEqual({
+    ok: false,
+    code: 'gold',
+  });
+  expect(postContract({ type: 'kill', rewardGold: 100, rewardRelics: 1, targetLevel: 10 })).toEqual({
+    ok: false,
+    code: 'gold',
+  });
+  expect(postContract({ type: 'steal', rewardGold: 20, rewardResources: 2 })).toEqual({
+    ok: false,
+    code: 'gold',
+  });
+  expect(postContract({ type: 'kill', rewardGold: 100, rewardResources: -1, targetLevel: 10 })).toEqual({
+    ok: false,
+    code: 'gold',
+  });
+});
+
 test('dissolution splits gold by contribution and sends the remainder to void', () => {
   const even = dissolveShares(100, [
     { id: 'a', contributed: 1 },

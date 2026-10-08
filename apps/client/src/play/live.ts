@@ -395,6 +395,8 @@ export async function postContractBoard(input: {
   targetLevel: number;
   store: ClientStore;
   targetIsMember?: boolean;
+  rewardResources?: number;
+  rewardRelics?: number;
   fetchImpl?: FetchLike;
 }): Promise<LiveResponse> {
   return postService({
@@ -406,6 +408,8 @@ export async function postContractBoard(input: {
       rewardGold: input.rewardGold,
       targetLevel: input.targetLevel,
       targetIsMember: input.targetIsMember ?? false,
+      ...(input.rewardResources !== undefined ? { rewardResources: input.rewardResources } : {}),
+      ...(input.rewardRelics !== undefined ? { rewardRelics: input.rewardRelics } : {}),
     },
     store: input.store,
     log: 'contract',

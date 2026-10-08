@@ -1021,17 +1021,37 @@ export function setDoctrine(input: {
   });
 }
 
+/** Artifact 16 §8.2. Kill and defend name resources. Steal names relics. The others name gold. */
+const RESOURCE_CONTRACTS: readonly ContractType[] = ['kill', 'defend'];
+const RELIC_CONTRACTS: readonly ContractType[] = ['steal'];
+
+/**
+ * Artifact 16 §8. Gold stays required. A type also accepts the resource or relic
+ * count that section names for it. A reward kind the row does not name is `gold`.
+ * Section 8.1 says the term is real time and names no duration.
+ */
 export function postContract(input: {
   type: ContractType;
   rewardGold: number;
+  rewardResources?: number;
+  rewardRelics?: number;
   targetLevel?: number;
   targetIsMember?: boolean;
-}): Result<{ type: ContractType; rewardGold: number }, 'target' | 'gold'> {
+}): Result<
+  { type: ContractType; rewardGold: number; rewardResources?: number; rewardRelics?: number },
+  'target' | 'gold'
+> {
   if (!isContract(input.type)) {
     return err('target');
   }
   if (!Number.isInteger(input.rewardGold)) {
     throw new RangeError(`rewardGold must be an integer, got ${String(input.rewardGold)}`);
+  }
+  if (input.rewardResources !== undefined && !Number.isInteger(input.rewardResources)) {
+    throw new RangeError(`rewardResources must be an integer, got ${String(input.rewardResources)}`);
+  }
+  if (input.rewardRelics !== undefined && !Number.isInteger(input.rewardRelics)) {
+    throw new RangeError(`rewardRelics must be an integer, got ${String(input.rewardRelics)}`);
   }
   if (input.type === 'kill') {
     if (input.targetLevel === undefined || !Number.isInteger(input.targetLevel)) {
@@ -1044,7 +1064,23 @@ export function postContract(input: {
   if (input.rewardGold <= 0) {
     return err('gold');
   }
-  return ok({ type: input.type, rewardGold: input.rewardGold });
+  const resources = input.rewardResources ?? 0;
+  const relics = input.rewardRelics ?? 0;
+  if (resources < 0 || relics < 0) {
+    return err('gold');
+  }
+  if (resources > 0 && !RESOURCE_CONTRACTS.includes(input.type)) {
+    return err('gold');
+  }
+  if (relics > 0 && !RELIC_CONTRACTS.includes(input.type)) {
+    return err('gold');
+  }
+  return ok({
+    type: input.type,
+    rewardGold: input.rewardGold,
+    ...(input.rewardResources !== undefined ? { rewardResources: resources } : {}),
+    ...(input.rewardRelics !== undefined ? { rewardRelics: relics } : {}),
+  });
 }
 
 export function canDissolve(input: {
