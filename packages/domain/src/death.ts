@@ -132,6 +132,59 @@ export function respawnAtBind(
   };
 }
 
+export type WarRespawnRole = 'defender' | 'attacker' | 'civilian';
+
+/** Defenders fall back to the city. Attackers fall back to the muster hub until the city is theirs. */
+export function warRespawnRole(input: {
+  guildId: string | null;
+  attackerGuildIds: readonly string[];
+  defenderGuildIds: readonly string[];
+}): WarRespawnRole {
+  if (input.guildId !== null && input.defenderGuildIds.includes(input.guildId)) {
+    return 'defender';
+  }
+  if (input.guildId !== null && input.attackerGuildIds.includes(input.guildId)) {
+    return 'attacker';
+  }
+  return 'civilian';
+}
+
+export function warRespawnNode(input: {
+  role: WarRespawnRole;
+  cityNodeId: string;
+  musterNodeId: string;
+  captured: boolean;
+  bindNodeId: string;
+}): { nodeId: string; moveBind: boolean } {
+  if (input.role === 'defender') {
+    return { nodeId: input.cityNodeId, moveBind: false };
+  }
+  if (input.role === 'attacker' && input.captured) {
+    return { nodeId: input.cityNodeId, moveBind: true };
+  }
+  if (input.role === 'attacker') {
+    return { nodeId: input.musterNodeId, moveBind: false };
+  }
+  return { nodeId: input.bindNodeId, moveBind: false };
+}
+
+/** `applyRespawn` calls this. The node comes from `warRespawnNode`. */
+export function respawn(input: {
+  life: LifeState;
+  maxHp: number;
+  odLimit: number;
+  nodeId: string;
+  moveBind: boolean;
+}): { life: LifeState; od: number; nodeId: string } {
+  const spawned = respawnAtBind(input.life, input.maxHp, input.odLimit);
+  const bindNodeId = input.moveBind ? input.nodeId : spawned.life.bindNodeId;
+  return {
+    life: { ...spawned.life, bindNodeId },
+    od: spawned.od,
+    nodeId: input.nodeId,
+  };
+}
+
 function toCorpseStack(stack: LootStack): LootStack {
   const copy = copyStack(stack);
   if (!copy.equipped) {

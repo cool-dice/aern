@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { limbMax, type LimbId } from '@rift/domain/combat';
 import type { Dir } from '@rift/domain/movement';
 import { mulberry32 } from '@rift/domain/rng';
@@ -71,6 +72,7 @@ function entity(partial: Partial<SimEntity> & Pick<SimEntity, 'id'>): SimEntity 
     lastAttackerId: partial.lastAttackerId,
     seasonTag: partial.seasonTag,
     nodeId: partial.nodeId,
+    guildId: partial.guildId,
     inEncounter: partial.inEncounter,
     instanceId: partial.instanceId,
   };
@@ -91,6 +93,7 @@ function world(partial: Partial<SimWorld> & Pick<SimWorld, 'entities'>): SimWorl
     geography: partial.geography,
     barrierDown: partial.barrierDown,
     warCities: partial.warCities,
+    warFronts: partial.warFronts,
     invasion: partial.invasion,
   };
 }
@@ -874,6 +877,93 @@ test('a city geography ignores client pvp flags until war, a wave, or the encoun
     mulberry32(1),
   );
   expect(open.entities.find((row) => row.id === 'kai')?.hp).toBeLessThan(40);
+});
+
+test('respawn reads the war branch for defenders and attackers', () => {
+  const source = readFileSync(new URL('./tick.ts', import.meta.url), 'utf8');
+  const body = source.slice(source.indexOf('function applyRespawn'), source.indexOf('function warFrontFor'));
+  expect(body.includes('respawn(')).toBe(true);
+  expect(body.includes('warRespawnNode(')).toBe(true);
+  const geography = {
+    nodes: [
+      { id: 'fort_humans', x: 0, y: 0, kind: 'city' as const, safe: true, side: 'light' as const, regionId: 'plains' },
+      { id: 'cross_light', x: 20, y: 0, kind: 'hub' as const, safe: false, side: 'light' as const, regionId: 'plains' },
+    ],
+    edges: [],
+    barrierDown: false,
+  };
+  const front = {
+    cityId: 'fort_humans',
+    attackerGuildIds: ['oak'],
+    defenderGuildIds: ['wolves'],
+    captured: false,
+    musterNodeId: 'cross_light',
+  };
+  const risen = stepTick(
+    world({
+      geography,
+      warFronts: [front],
+      entities: [
+        entity({
+          id: 'lia',
+          phase: 'downed',
+          hp: 0,
+          guildId: 'wolves',
+          nodeId: 'fort_humans',
+          bindNodeId: 'edge_light',
+          bindCell: { x: 10, y: 0 },
+        }),
+        entity({
+          id: 'noa',
+          phase: 'downed',
+          hp: 0,
+          guildId: 'oak',
+          nodeId: 'fort_humans',
+          bindNodeId: 'edge_light',
+          bindCell: { x: 10, y: 0 },
+        }),
+      ],
+    }),
+    [
+      { type: 'respawn', entityId: 'lia', issuedAtMs: 0 },
+      { type: 'respawn', entityId: 'noa', issuedAtMs: 0 },
+    ],
+    mulberry32(1),
+  );
+  expect(risen.entities.find((row) => row.id === 'lia')).toMatchObject({
+    nodeId: 'fort_humans',
+    phase: 'online',
+    cell: { x: 0, y: 0 },
+    bindNodeId: 'edge_light',
+  });
+  expect(risen.entities.find((row) => row.id === 'noa')).toMatchObject({
+    nodeId: 'cross_light',
+    phase: 'online',
+    cell: { x: 20, y: 0 },
+    bindNodeId: 'edge_light',
+  });
+  const taken = stepTick(
+    world({
+      geography,
+      warFronts: [{ ...front, captured: true }],
+      entities: [
+        entity({
+          id: 'noa',
+          phase: 'downed',
+          hp: 0,
+          guildId: 'oak',
+          nodeId: 'fort_humans',
+          bindNodeId: 'edge_light',
+        }),
+      ],
+    }),
+    [{ type: 'respawn', entityId: 'noa', issuedAtMs: 0 }],
+    mulberry32(1),
+  );
+  expect(taken.entities.find((row) => row.id === 'noa')).toMatchObject({
+    nodeId: 'fort_humans',
+    bindNodeId: 'fort_humans',
+  });
 });
 
 function runWith(start: SimWorld, commands: AttackCommand[]): SimWorld {

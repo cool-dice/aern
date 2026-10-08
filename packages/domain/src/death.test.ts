@@ -5,7 +5,9 @@ import {
   LOGOUT_GRACE_MS,
   REVIVE_HP_RATIO,
   fallDown,
+  respawn,
   respawnAtBind,
+  warRespawnNode,
   revive,
   takeFromCorpse,
   type LifeState,
@@ -302,6 +304,29 @@ test('at CORPSE_MS the corpse can neither be looted nor revived', () => {
   expect(fallen.corpse).toEqual(snapshot);
 
   const respawned = respawnAtBind(fallen.life, 100, 12);
+  expect(warRespawnNode({
+    role: 'defender',
+    cityNodeId: 'fort_humans',
+    musterNodeId: 'cross_light',
+    captured: false,
+    bindNodeId: 'edge_light',
+  })).toEqual({ nodeId: 'fort_humans', moveBind: false });
+  expect(warRespawnNode({
+    role: 'attacker',
+    cityNodeId: 'fort_humans',
+    musterNodeId: 'cross_light',
+    captured: false,
+    bindNodeId: 'edge_light',
+  })).toEqual({ nodeId: 'cross_light', moveBind: false });
+  expect(
+    respawn({
+      life: fallen.life,
+      maxHp: 100,
+      odLimit: 12,
+      nodeId: 'fort_humans',
+      moveBind: true,
+    }).life.bindNodeId,
+  ).toBe('fort_humans');
   expect(respawned.life.phase).toBe('online');
   expect(respawned.life.hp).toBe(100);
   expect(respawned.od).toBe(12);

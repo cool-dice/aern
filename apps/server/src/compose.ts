@@ -1846,6 +1846,72 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     });
   }
 
+  function openWarFronts(): {
+    cityId: string;
+    attackerGuildIds: string[];
+    defenderGuildIds: string[];
+    captured: boolean;
+    musterNodeId: string;
+  }[] {
+    return openWars.flatMap((war) => {
+      if (war.startsAtMs > clock.now()) {
+        return [];
+      }
+      const phase = warPhase(Math.max(0, clock.now() - war.startsAtMs));
+      if (phase === 'closed') {
+        return [];
+      }
+      const owner = cityOwner(war.cityId);
+      const defenders = new Set<string>();
+      if (owner !== null) {
+        defenders.add(owner);
+      }
+      for (const duty of defenseDuties) {
+        if (duty.cityId === war.cityId) {
+          defenders.add(duty.suzerainId);
+        }
+      }
+      const attackers = new Set<string>([war.attackerGuildId]);
+      for (const row of contenders) {
+        if (row.warId === war.id && !defenders.has(row.guildId)) {
+          attackers.add(row.guildId);
+        }
+      }
+      const captured = captures.some(
+        (row) => row.cityId === war.cityId && row.won === true && row.settled === true && row.guildId !== null && row.guildId !== owner,
+      );
+      return [
+        {
+          cityId: war.cityId,
+          attackerGuildIds: [...attackers],
+          defenderGuildIds: [...defenders],
+          captured,
+          musterNodeId: nearestHub(war.cityId),
+        },
+      ];
+    });
+  }
+
+  function nearestHub(cityId: string): string {
+    const nodes = simWorld.geography?.nodes ?? [];
+    const city = nodes.find((node) => node.id === cityId);
+    const hubs = nodes.filter((node) => node.kind === 'hub');
+    const first = hubs[0];
+    if (city === undefined || first === undefined) {
+      return 'cross_light';
+    }
+    let best = first;
+    let bestDistance = Math.max(Math.abs(first.x - city.x), Math.abs(first.y - city.y));
+    for (const hub of hubs) {
+      const distance = Math.max(Math.abs(hub.x - city.x), Math.abs(hub.y - city.y));
+      if (distance < bestDistance) {
+        best = hub;
+        bestDistance = distance;
+      }
+    }
+    return best.id;
+  }
+
   function spawnNeutralGuards(): void {
     const extras: SimEntity[] = [];
     for (const cityId of neutralCities) {
@@ -2157,6 +2223,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       invasion: live.invasion,
       seasonResource: live.resourceBonus,
       warCities,
+      warFronts: openWarFronts(),
       ...(live.weatherId !== null ? { weatherId: live.weatherId } : {}),
     };
     topUpSeasonSpawns(Math.max(0, Math.round(PROTOTYPE_MONSTERS.length * seasonSpawn)), live.spawnTag);

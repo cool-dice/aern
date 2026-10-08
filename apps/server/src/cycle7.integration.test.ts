@@ -94,6 +94,7 @@ test('auction tax, storage, diplomacy, and war routes call the domain functions'
   expect(tick.includes('entity.cityGuard === undefined')).toBe(true);
   const tickBody = composeSource.slice(composeSource.indexOf('function tickOnce'), composeSource.indexOf('function simSnapshot'));
   expect(tickBody.includes('spawnNeutralGuards(')).toBe(true);
+  expect(tickBody.includes('openWarFronts(')).toBe(true);
   expect(tickBody.includes('tickCaptures(')).toBe(true);
   const nodeGate = composeSource.slice(
     composeSource.indexOf('function resourceAccess'),

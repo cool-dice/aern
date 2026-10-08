@@ -148,6 +148,9 @@ export {
   takeFromCorpse,
   revive,
   respawnAtBind,
+  respawn,
+  warRespawnNode,
+  warRespawnRole,
 } from './death';
 export type { LootStack as CorpseLootStack, Corpse, LifeState } from './death';
 

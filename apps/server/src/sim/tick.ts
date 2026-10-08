@@ -14,7 +14,9 @@ import {
 } from '@rift/domain/combat';
 import {
   fallDown,
-  respawnAtBind,
+  respawn,
+  warRespawnNode,
+  warRespawnRole,
   revive,
   takeFromCorpse,
   type LootStack as CorpseStack,
@@ -215,6 +217,16 @@ export interface SimWorld {
   geography?: Geography;
   /** Cities whose war has started. PvP in a safe city follows this list. */
   warCities?: readonly string[];
+  /** Open city wars. `respawn` reads defender and attacker branches from these. */
+  warFronts?: readonly WarFront[];
+}
+
+export interface WarFront {
+  cityId: string;
+  attackerGuildIds: readonly string[];
+  defenderGuildIds: readonly string[];
+  captured: boolean;
+  musterNodeId: string;
 }
 
 interface StatusMods {
@@ -313,7 +325,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     if (command.type === 'revive') {
       applyRevive(settled.entities, settled.corpses, command, rejections, nowMs);
     } else if (command.type === 'respawn') {
-      applyRespawn(settled.entities, command, rejections);
+      applyRespawn(settled.entities, command, rejections, world);
     } else if (command.type === 'loot') {
       applyLoot(settled.entities, settled.corpses, command, rejections, nowMs);
     }
@@ -338,6 +350,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     ...(world.primordialOpened !== undefined ? { primordialOpened: world.primordialOpened } : {}),
     ...(world.geography !== undefined ? { geography: world.geography } : {}),
     ...(world.warCities !== undefined ? { warCities: world.warCities } : {}),
+    ...(world.warFronts !== undefined ? { warFronts: world.warFronts } : {}),
     ...(world.invasion !== undefined ? { invasion: world.invasion } : {}),
   };
   const prior = world.history.map(cloneWorld);
@@ -726,31 +739,67 @@ function applyRespawn(
   entities: SimEntity[],
   command: RespawnCommand,
   rejections: SimRejection[],
+  world: SimWorld,
 ): void {
   const entity = findEntity(entities, command.entityId);
   if (entity === undefined || entity.phase !== 'downed') {
     rejections.push({ entityId: command.entityId, code: 'missing' });
     return;
   }
-  const spawned = respawnAtBind(
-    {
+  const front = warFrontFor(entity, world.warFronts ?? []);
+  const role =
+    front === undefined
+      ? 'civilian'
+      : warRespawnRole({
+          guildId: entity.guildId ?? null,
+          attackerGuildIds: front.attackerGuildIds,
+          defenderGuildIds: front.defenderGuildIds,
+        });
+  const branch = warRespawnNode({
+    role,
+    cityNodeId: front?.cityId ?? entity.bindNodeId ?? 'fort_humans',
+    musterNodeId: front?.musterNodeId ?? 'cross_light',
+    captured: front?.captured === true,
+    bindNodeId: entity.bindNodeId ?? 'fort_humans',
+  });
+  const spawned = respawn({
+    life: {
       phase: 'downed',
       hp: entity.hp,
       bindNodeId: entity.bindNodeId ?? 'fort_humans',
       inventory: entity.inventory ?? [],
     },
-    entity.maxHp,
-    Math.max(1, entity.od),
-  );
+    maxHp: entity.maxHp,
+    odLimit: Math.max(1, entity.od),
+    nodeId: branch.nodeId,
+    moveBind: branch.moveBind,
+  });
   entity.phase = 'online';
   entity.hp = spawned.life.hp;
   entity.inventory = [];
   entity.inCombat = false;
   entity.inEncounter = false;
-  entity.nodeId = entity.bindNodeId ?? entity.nodeId;
-  entity.cell = entity.bindCell ?? { x: 0, y: 0 };
+  entity.nodeId = spawned.nodeId;
+  entity.bindNodeId = spawned.life.bindNodeId;
+  const site = world.geography?.nodes.find((node) => node.id === spawned.nodeId);
+  entity.cell = site !== undefined ? { x: site.x, y: site.y } : (entity.bindCell ?? { x: 0, y: 0 });
   entity.od = spawned.od;
   entity.odFrac = spawned.od;
+}
+
+function warFrontFor(entity: SimEntity, fronts: readonly WarFront[]): WarFront | undefined {
+  const here = fronts.find((front) => front.cityId === entity.nodeId);
+  if (here !== undefined) {
+    return here;
+  }
+  if (entity.guildId === undefined) {
+    return undefined;
+  }
+  return fronts.find(
+    (front) =>
+      front.attackerGuildIds.includes(entity.guildId ?? '') ||
+      front.defenderGuildIds.includes(entity.guildId ?? ''),
+  );
 }
 
 function applyLoot(
@@ -1260,6 +1309,7 @@ function cloneWorld(world: SimWorld): SimWorld {
     ...(world.primordialOpened !== undefined ? { primordialOpened: world.primordialOpened } : {}),
     ...(world.geography !== undefined ? { geography: world.geography } : {}),
     ...(world.warCities !== undefined ? { warCities: world.warCities } : {}),
+    ...(world.warFronts !== undefined ? { warFronts: world.warFronts } : {}),
     ...(world.invasion !== undefined ? { invasion: world.invasion } : {}),
   };
 }
