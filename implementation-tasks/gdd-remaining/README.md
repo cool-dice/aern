@@ -9,7 +9,7 @@
 | 101 | [101-sim-commands.md](101-sim-commands.md) | done |
 | 102 | [102-populated-world.md](102-populated-world.md) | pending |
 | 103 | [103-death-corpse.md](103-death-corpse.md) | pending |
-| 104 | [104-bestiary-fights.md](104-bestiary-fights.md) | pending |
+| 104 | [104-bestiary-fights.md](104-bestiary-fights.md) | done |
 | 105 | [105-season-weather.md](105-season-weather.md) | pending |
 | 106 | [106-xp-quests.md](106-xp-quests.md) | pending |
 | 107 | [107-neuroshock-mutation.md](107-neuroshock-mutation.md) | done |

@@ -1,4 +1,6 @@
 import { neuroshockScale } from '@rift/domain/build';
+import type { LootEntry } from '@rift/domain/loot';
+import { resolveBossPhase, rolledLoot, type BossPhase } from './bestiary';
 import {
   limbMax,
   orderByInitiative,
@@ -52,10 +54,25 @@ export interface SimEntity {
   overloaded?: boolean;
   legsDestroyed?: 0 | 1 | 2;
   limbs?: Record<LimbId, number>;
+  monsterId?: string;
+  level?: number;
+  /** Unmodified weapon damage. Phase multipliers apply on top. */
+  baseDamage?: number;
+  damage?: number;
+  eliteId?: string | null;
+  phaseCount?: number;
+  bossPhase?: number;
+  phases?: readonly BossPhase[];
+  speedMultiplier?: number;
+  rank?: 'basic' | 'boss';
 }
 
 export interface SimCorpse {
   victimId: string;
+  createdAtMs?: number;
+  stacks?: { itemId: string; qty: number; questItem?: boolean; questOwnerId?: string }[];
+  looted?: boolean;
+  bindNodeId?: string;
 }
 
 export interface SimRejection {
@@ -100,6 +117,8 @@ export interface SimWorld {
   obstacles: Cell[];
   /** Last 6 states, oldest first. Each entry has an empty `history`. */
   history: SimWorld[];
+  /** Loot rows keyed by monster template id. Absent tables drop nothing. */
+  lootTables?: Record<string, readonly LootEntry[]>;
 }
 
 interface StatusMods {
@@ -158,14 +177,17 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     applyLogout(entity);
   }
 
+  const settled = settleMonsters(entities, world.corpses, rng, nowMs, world.lootTables);
+
   const next: SimWorld = {
     tick,
     nowMs,
-    entities,
-    corpses: world.corpses.map((corpse) => ({ ...corpse })),
+    entities: settled.entities,
+    corpses: settled.corpses,
     rejections,
     obstacles,
     history: [],
+    ...(world.lootTables !== undefined ? { lootTables: world.lootTables } : {}),
   };
   const prior = world.history.map(cloneWorld);
   return { ...next, history: [...prior, cloneWorld(next)].slice(-LAG_HISTORY) };
@@ -193,6 +215,45 @@ export function snapshotLag(history: readonly SimWorld[], delayMs: number): SimW
     }
   }
   return best ?? oldest;
+}
+
+function settleMonsters(
+  entities: SimEntity[],
+  corpses: readonly SimCorpse[],
+  rng: Rng,
+  nowMs: number,
+  lootTables: SimWorld['lootTables'],
+): { entities: SimEntity[]; corpses: SimCorpse[] } {
+  const alive: SimEntity[] = [];
+  const nextCorpses = corpses.map((corpse) => ({ ...corpse, stacks: corpse.stacks?.map((stack) => ({ ...stack })) }));
+  for (const entity of entities) {
+    if (entity.monsterId !== undefined && entity.phases !== undefined && entity.maxHp > 0) {
+      const phase = resolveBossPhase(Math.max(0, entity.hp), entity.maxHp, entity.phases);
+      entity.bossPhase = phase.phase;
+      if (entity.baseDamage !== undefined) {
+        entity.damage = entity.baseDamage * phase.damageMultiplier;
+      }
+    }
+    if (entity.monsterId !== undefined && entity.hp <= 0) {
+      const table = lootTables?.[entity.monsterId] ?? [];
+      const stacks = rolledLoot({
+        entries: table,
+        rng,
+        elite: entity.eliteId != null && entity.eliteId !== '',
+        monsterLevel: entity.level ?? 1,
+      });
+      nextCorpses.push({
+        victimId: entity.id,
+        createdAtMs: nowMs,
+        stacks: stacks.map((stack) => ({ itemId: stack.itemId, qty: stack.qty })),
+        looted: false,
+        bindNodeId: '',
+      });
+      continue;
+    }
+    alive.push(entity);
+  }
+  return { entities: alive, corpses: nextCorpses };
 }
 
 function regenOd(entity: SimEntity): void {
@@ -469,10 +530,14 @@ function cloneWorld(world: SimWorld): SimWorld {
     tick: world.tick,
     nowMs: world.nowMs,
     entities: world.entities.map(cloneEntity),
-    corpses: world.corpses.map((corpse) => ({ ...corpse })),
+    corpses: world.corpses.map((corpse) => ({
+      ...corpse,
+      stacks: corpse.stacks?.map((stack) => ({ ...stack })),
+    })),
     rejections: world.rejections.map((rejection) => ({ ...rejection })),
     obstacles: world.obstacles.map((cell) => ({ x: cell.x, y: cell.y })),
     history: [],
+    ...(world.lootTables !== undefined ? { lootTables: world.lootTables } : {}),
   };
 }
 

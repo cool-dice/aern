@@ -51,6 +51,16 @@ function entity(partial: Partial<SimEntity> & Pick<SimEntity, 'id'>): SimEntity 
     overloaded: partial.overloaded,
     legsDestroyed: partial.legsDestroyed,
     limbs: partial.limbs ?? limbsAt(maxHp),
+    monsterId: partial.monsterId,
+    level: partial.level,
+    baseDamage: partial.baseDamage,
+    damage: partial.damage,
+    eliteId: partial.eliteId,
+    phaseCount: partial.phaseCount,
+    bossPhase: partial.bossPhase,
+    phases: partial.phases,
+    speedMultiplier: partial.speedMultiplier,
+    rank: partial.rank,
   };
 }
 
@@ -63,6 +73,7 @@ function world(partial: Partial<SimWorld> & Pick<SimWorld, 'entities'>): SimWorl
     rejections: partial.rejections ?? [],
     obstacles: partial.obstacles ?? [],
     history: partial.history ?? [],
+    lootTables: partial.lootTables,
   };
 }
 
@@ -273,6 +284,48 @@ test('a blocked step rejects and leaves the entity where regen left it', () => {
   const blocked = stepTick(start, [move('a', 'n', false)], mulberry32(1));
   expect(blocked.rejections).toEqual([{ entityId: 'a', code: 'blocked' }]);
   expect(blocked.entities[0]).toEqual(quiet.entities[0]);
+});
+
+test('a keeper drops a phase and a loot stack when its HP crosses the cut', () => {
+  const start = world({
+    entities: [
+      entity({
+        id: 'keeper',
+        monsterId: 'keeper_enhanced_prototype',
+        level: 20,
+        hp: 199,
+        maxHp: 400,
+        baseDamage: 18,
+        damage: 18,
+        phaseCount: 2,
+        bossPhase: 1,
+        phases: [
+          { index: 1 },
+          { index: 2, hpBelow: 0.5, damageMultiplier: 1.5 },
+        ],
+        rank: 'boss',
+      }),
+    ],
+    lootTables: {
+      keeper_enhanced_prototype: [{ itemId: 'keeper_core', chance: 1, min: 1, max: 1, kind: 'component' }],
+    },
+  });
+  const phased = stepTick(start, [], mulberry32(1));
+  expect(phased.entities[0]?.bossPhase).toBe(2);
+  expect(phased.entities[0]?.damage).toBe(27);
+  expect(phased.corpses).toEqual([]);
+
+  const fallen = stepTick(
+    world({
+      entities: [entity({ ...start.entities[0]!, hp: 0 })],
+      lootTables: start.lootTables,
+    }),
+    [],
+    mulberry32(3),
+  );
+  expect(fallen.entities).toEqual([]);
+  expect(fallen.corpses[0]?.victimId).toBe('keeper');
+  expect(fallen.corpses[0]?.stacks).toEqual([{ itemId: 'keeper_core', qty: 1 }]);
 });
 
 test('neuroshock halves speed and weapon damage while overloaded', () => {

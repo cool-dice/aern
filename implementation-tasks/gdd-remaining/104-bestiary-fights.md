@@ -1,6 +1,6 @@
 # 104. Элиты, фазы босса, лут
 
-status: pending
+status: done
 
 ## Правило GDD
 
