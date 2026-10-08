@@ -669,3 +669,102 @@ test('stash expansion buys 50 slots for 1000 gold and stops at 1000 slots', asyn
   }
   expect(await graph.act('stash_expand', { characterId })).toMatchObject({ ok: false, code: 'cap' });
 });
+
+test('pvpXp and pvpXpAllowed run from the tick', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const tickBody = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('function simSnapshot'),
+  );
+  const award = composeSource.slice(
+    composeSource.indexOf('async function awardPvpXp'),
+    composeSource.indexOf('async function tickOnce'),
+  );
+  expect(tickBody.includes('awardPvpXp(')).toBe(true);
+  expect(award.includes('pvpXp(')).toBe(true);
+  expect(award.includes('pvpXpAllowed(')).toBe(true);
+  expect(award.includes('carrierOffline')).toBe(true);
+});
+
+test('a player kill grants 20 xp, the same victim waits 10 minutes, and a bot kill credits the carrier', async () => {
+  const graph = compose({ nowMs: 0 });
+  const points = { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 };
+  const make = async (accountId: string, name: string, controller: 'player' | 'bot') => {
+    const created = await graph.character.service.create({
+      accountId,
+      controller,
+      name,
+      clean: false,
+      points,
+      appearance,
+    });
+    if (!created.ok) {
+      throw new Error(created.code);
+    }
+    return created.value.characterId;
+  };
+  const killerId = await make('account-killer', 'Killer', 'player');
+  const victimId = await make('account-victim', 'Victim', 'player');
+  graph.enterWorld(killerId, 'light_dungeon');
+  graph.enterWorld(victimId, 'light_dungeon');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: killerId, action: 'wait' });
+  const xpOf = (id: string) => {
+    const players = (graph.state() as { players: { id: string; xp: number; phase: string }[] }).players;
+    return players.find((player) => player.id === id)?.xp ?? -1;
+  };
+  const phaseOf = (id: string) => {
+    const players = (graph.state() as { players: { id: string; xp: number; phase: string }[] }).players;
+    return players.find((player) => player.id === id)?.phase;
+  };
+  const down = async (attackerId: string, targetId: string) => {
+    for (let step = 0; step < 40; step += 1) {
+      const nowMs = (graph.state() as { nowMs: number }).nowMs;
+      graph.submit({
+        commandId: `pvp-${attackerId}-${String(step)}-${String(nowMs)}`,
+        seq: step + 1,
+        issuedAtMs: nowMs,
+        action: 'attack_ranged',
+        targetId,
+        params: { entityId: attackerId, weaponDamage: 500, range: 8, odCost: 0 },
+      });
+      await graph.tickOnce();
+      if (phaseOf(targetId) === 'downed') {
+        return;
+      }
+    }
+  };
+  await down(killerId, victimId);
+  expect(phaseOf(victimId)).toBe('downed');
+  expect(xpOf(killerId)).toBe(20);
+  graph.submit({
+    commandId: 'pvp-up',
+    seq: 50,
+    issuedAtMs: (graph.state() as { nowMs: number }).nowMs,
+    action: 'respawn',
+    params: { entityId: victimId },
+  });
+  await graph.tickOnce();
+  await down(killerId, victimId);
+  expect(xpOf(killerId)).toBe(20);
+  await graph.skipMs(600_000);
+  graph.submit({
+    commandId: 'pvp-up-2',
+    seq: 80,
+    issuedAtMs: (graph.state() as { nowMs: number }).nowMs,
+    action: 'respawn',
+    params: { entityId: victimId },
+  });
+  await graph.tickOnce();
+  await down(killerId, victimId);
+  expect(xpOf(killerId)).toBe(40);
+
+  const carrierId = await make('account-house', 'Carrier', 'player');
+  const bladeId = await make('account-house', 'Blade', 'bot');
+  const preyId = await make('account-prey', 'Prey', 'player');
+  graph.enterWorld(carrierId, 'light_dungeon');
+  graph.enterWorld(bladeId, 'light_dungeon');
+  graph.enterWorld(preyId, 'light_dungeon');
+  await down(bladeId, preyId);
+  expect(xpOf(carrierId)).toBe(20);
+  expect(xpOf(bladeId)).toBe(0);
+});

@@ -21,7 +21,8 @@ import {
 import { mulberry32 } from '@rift/domain/rng';
 import { EQUIP_SLOTS, STARTING_DURABILITY, type EquipSlot, type GradeId } from '@rift/domain/items';
 import { openChest, type ChestTier } from '@rift/domain/loot';
-import { STAT_IDS, derive, emptyPoints, type StatBlock } from '@rift/domain/stats';
+import { MAX_LEVEL, STAT_IDS, derive, emptyPoints, type StatBlock } from '@rift/domain/stats';
+import { pvpXp, pvpXpAllowed } from '@rift/domain/progression';
 import type { Appearance, RaceId } from '@rift/domain/character';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { WebSocketServer } from 'ws';
@@ -442,6 +443,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const upyMemory = new Map<string, { lastLessonMs: Partial<Record<LanguageId, number>>; onlineMs: number }>();
   let clockPhase: 'day' | 'night' = dayPhase(0);
   const pathUsed = new Map<string, Set<string>>();
+  const pvpKillAt = new Map<string, number>();
   /** Deposits and reads posted to a coalition. There is still no shared balance. */
   const coalitionLedger = new Map<
     string,
@@ -5378,6 +5380,77 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     abuse = { ...abuse, portalsLifted: reviewed.portalsLifted };
   }
 
+  /**
+   * Artifact 14 §8.2. A player kill grants `pvpXp` once per victim each 10 minutes.
+   * An offline bot grants nothing. An online bot's kill is credited to that bot's carrier.
+   */
+  async function awardPvpXp(victimId: string): Promise<void> {
+    const victim = simWorld.entities.find((entity) => entity.id === victimId);
+    if (victim === undefined || victim.monsterId !== undefined) {
+      return;
+    }
+    const killerId = victim.lastAttackerId;
+    if (killerId === undefined) {
+      return;
+    }
+    const killer = simWorld.entities.find((entity) => entity.id === killerId);
+    if (killer === undefined || killer.monsterId !== undefined) {
+      return;
+    }
+    const victimRecord = await repos.characters.findById(victimId);
+    const killerRecord = await repos.characters.findById(killerId);
+    const victimBot = victim.isBot === true || victimRecord?.controller === 'bot';
+    if (victimBot && (victim.carrierOffline === true || victim.phase === 'offline')) {
+      return;
+    }
+    const now = clock.now();
+    if (!pvpXpAllowed(pvpKillAt.get(victimId), now)) {
+      return;
+    }
+    const killerLevel = killerRecord?.level ?? killer.progress?.level ?? 1;
+    const victimLevel = victimRecord?.level ?? victim.progress?.level ?? 1;
+    if (
+      !Number.isInteger(killerLevel) ||
+      !Number.isInteger(victimLevel) ||
+      killerLevel < 1 ||
+      victimLevel < 1 ||
+      killerLevel > MAX_LEVEL ||
+      victimLevel > MAX_LEVEL
+    ) {
+      return;
+    }
+    const amount = pvpXp(killerLevel, victimLevel);
+    pvpKillAt.set(victimId, now);
+    if (amount <= 0) {
+      return;
+    }
+    let recipientId = killerId;
+    if (killer.isBot === true || killerRecord?.controller === 'bot') {
+      const household = killerRecord === null ? [] : await repos.characters.listByAccount(killerRecord.accountId);
+      const carrier = household.find((row) => row.controller === 'player');
+      if (carrier !== undefined) {
+        recipientId = carrier.id;
+      }
+    }
+    await character.service.grantXp(recipientId, amount);
+    const updated = await repos.characters.findById(recipientId);
+    if (updated === null) {
+      return;
+    }
+    const progress = {
+      level: updated.level,
+      xp: updated.experience,
+      unspent: updated.unspent,
+      points: { ...updated.points },
+    };
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) =>
+        entity.id === recipientId && entity.progress !== undefined ? { ...entity, progress } : entity,
+      ),
+    };
+  }
+
   async function tickOnce(): Promise<void> {
     if (runtimeError !== null) {
       throw runtimeError;
@@ -5444,6 +5517,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     );
     const beforeCorpses = new Set(simWorld.corpses.map((corpse) => corpse.victimId));
     const beforeHp = new Map(simWorld.entities.map((entity) => [entity.id, entity.hp]));
+    const beforePhase = new Map(simWorld.entities.map((entity) => [entity.id, entity.phase]));
     const monsterOf = new Map(
       simWorld.entities.flatMap((entity) =>
         entity.monsterId === undefined ? [] : [[entity.id, entity.monsterId] as const],
@@ -5460,6 +5534,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
     stampGuildDoctrines();
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
+    for (const entity of simWorld.entities) {
+      if (entity.monsterId !== undefined) {
+        continue;
+      }
+      if (beforePhase.get(entity.id) === 'online' && entity.phase === 'downed') {
+        await awardPvpXp(entity.id);
+      }
+    }
     spawnNeutralGuards();
     captures = tickCaptures({
       holds: captures,
@@ -5953,6 +6035,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       quests: focus === undefined ? [] : questRows(focus),
       players: players.map((entity) => ({
         id: entity.id,
+        phase: entity.phase,
         xp: entity.progress?.xp ?? 0,
         level: entity.progress?.level ?? 1,
         nn: entity.nn ?? 0,
