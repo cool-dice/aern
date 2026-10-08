@@ -178,6 +178,8 @@ export function askHostilePortal(input: {
   warActive: boolean;
   blockedForMs: number;
   granted: boolean;
+  /** Set when artifact 17 §11 has already lifted this city. */
+  lifted?: boolean;
 }): Result<'enter', 'blocked' | 'refused'> {
   assertNonNegativeInteger(input.blockedForMs, 'blockedForMs');
   if (input.stance === 'member' || input.stance === 'ally') {
@@ -189,7 +191,7 @@ export function askHostilePortal(input: {
   if (input.granted) {
     return ok('enter');
   }
-  if (!input.warActive && input.blockedForMs >= PORTAL_BLOCK_MS) {
+  if (!input.warActive && (input.lifted === true || input.blockedForMs >= PORTAL_BLOCK_MS)) {
     return ok('enter');
   }
   return err('refused');

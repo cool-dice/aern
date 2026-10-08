@@ -358,6 +358,15 @@ test('a neutral asking a hostile city is refused until the block lifts', () => {
   expect(
     askHostilePortal({ stance: 'neutral', warActive: true, blockedForMs: 0, granted: true }),
   ).toEqual({ ok: true, value: 'enter' });
+  expect(
+    askHostilePortal({ stance: 'neutral', warActive: false, blockedForMs: 0, granted: false, lifted: true }),
+  ).toEqual({ ok: true, value: 'enter' });
+  expect(
+    askHostilePortal({ stance: 'neutral', warActive: true, blockedForMs: 0, granted: false, lifted: true }),
+  ).toEqual({ ok: false, code: 'refused' });
+  expect(
+    askHostilePortal({ stance: 'enemy', warActive: false, blockedForMs: 0, granted: false, lifted: true }),
+  ).toEqual({ ok: false, code: 'blocked' });
 });
 
 test('extended storage costs 1 gold per day per slot', () => {
