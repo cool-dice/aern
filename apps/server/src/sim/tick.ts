@@ -1,4 +1,6 @@
 import { neuroshockScale } from '@rift/domain/build';
+import { applyDoctrine } from '@rift/domain/guild';
+import type { DoctrineId } from '@rift/domain/guild';
 import type { LootEntry } from '@rift/domain/loot';
 import type { QuestProgress } from '@rift/domain/quests';
 import type { MonsterKind, Progress } from '@rift/domain/progression';
@@ -113,6 +115,10 @@ export interface SimEntity {
   reputation?: Record<string, number>;
   /** Guild this character holds a flag for. */
   guildId?: string;
+  /** Active guild doctrine, stamped from the guild before the tick. */
+  doctrineId?: DoctrineId;
+  /** Unscaled max hp, so fortitude does not compound each tick. */
+  doctrineBaseMaxHp?: number;
   /** Sim time of the war death. `applyRespawn` waits `WAR_RESPAWN_DELAY_MS`. */
   downedAtMs?: number;
   /** City whose neutral-capture guard this monster is. */
@@ -562,11 +568,20 @@ function settleMonsters(
         monsterLevel: entity.level ?? 1,
         lootMultiplier: weather.loot,
       });
+      const killer = entities.find((row) => row.id === entity.lastAttackerId);
+      const paid =
+        killer?.doctrineId === 'greed'
+          ? stacks.map((stack) =>
+              stack.itemId === 'gold'
+                ? { ...stack, qty: Math.max(1, Math.floor(applyDoctrine('greed', stack.qty))) }
+                : stack,
+            )
+          : stacks;
       grantKill(entities, entity);
       nextCorpses.push({
         victimId: entity.id,
         createdAtMs: nowMs,
-        stacks: stacks.map((stack) => ({ itemId: stack.itemId, qty: stack.qty })),
+        stacks: paid.map((stack) => ({ itemId: stack.itemId, qty: stack.qty })),
         looted: false,
         bindNodeId: '',
         ...(entity.lastAttackerId !== undefined ? { killerId: entity.lastAttackerId } : {}),
@@ -879,6 +894,7 @@ function grantKill(entities: readonly SimEntity[], victim: SimEntity): void {
     victim.level ?? 1,
     victim.monsterKind ?? (victim.eliteId != null && victim.eliteId !== '' ? 'elite' : 'normal'),
     victim.monsterId,
+    hero.doctrineId,
   );
   hero.progress = next.progress;
   hero.quests = next.quests;
@@ -1157,16 +1173,17 @@ function applyAttack(
     (command.melee ? 0 : -weather.rangedAccuracy) +
     (weather.accuracy < 0 ? -weather.accuracy : 0) +
     perceptionPenalty;
+  const scaledDamage =
+    neuroshockScale(command.weaponDamage, neuralOverload(attacker)) *
+    (mods.get(attacker.id)?.damageMultiplier ?? 1) *
+    (attacker.monsterId !== undefined ? weather.monsterDamage : 1);
   const result = resolveAttack({
     attacker: toCombatant(
       attackerDraft,
       (mods.get(attacker.id)?.accuracyPenalty ?? 0) + weatherPenalty,
     ),
     target: toCombatant(targetDraft, mods.get(target.id)?.accuracyPenalty ?? 0),
-    weaponDamage:
-      neuroshockScale(command.weaponDamage, neuralOverload(attacker)) *
-      (mods.get(attacker.id)?.damageMultiplier ?? 1) *
-      (attacker.monsterId !== undefined ? weather.monsterDamage : 1),
+    weaponDamage: attacker.doctrineId === 'fury' ? applyDoctrine('fury', scaledDamage) : scaledDamage,
     odCost: command.odCost,
     range: command.range,
     distance: command.distance ?? chebyshev(attackerDraft.cell, targetDraft.cell),
@@ -1229,7 +1246,7 @@ function toCombatant(entity: SimEntity, accuracyPenalty: number): Combatant {
     accuracyStat: entity.accuracyStat,
     accuracyScore: entity.accuracyScore - accuracyPenalty,
     evasion: entity.evasion,
-    armor: entity.armor,
+    armor: entity.doctrineId === 'guard' ? applyDoctrine('guard', entity.armor) : entity.armor,
     od: entity.od,
     hp: entity.hp,
     maxHp: entity.maxHp,

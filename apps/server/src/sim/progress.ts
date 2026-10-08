@@ -1,5 +1,6 @@
 import type { QuestObjectiveKind, QuestProgress } from '@rift/domain/quests';
 import { advance } from '@rift/domain/quests';
+import { applyDoctrine } from '@rift/domain/guild';
 import { grantXp, monsterXp, type MonsterKind, type Progress } from '@rift/domain/progression';
 
 export interface ProgressState {
@@ -12,8 +13,10 @@ export function onKill(
   monsterLevel: number,
   kind: MonsterKind,
   monsterId?: string,
+  doctrineId?: string,
 ): ProgressState {
-  const xp = monsterXp(monsterLevel, kind);
+  const baseXp = monsterXp(monsterLevel, kind);
+  const xp = doctrineId === 'knowledge' ? applyDoctrine('knowledge', baseXp) : baseXp;
   return {
     progress: grantXp(state.progress, xp),
     quests: advanceMatching(state.quests, 'kill', monsterId),
