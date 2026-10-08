@@ -114,6 +114,13 @@ export function MapScreen({ model }: { model: MapModel }): ReactElement {
           <li key={node.id}>{node.kind}</li>
         ))}
       </ul>
+      <ul>
+        {model.allies.map((ally) => (
+          <li key={`${ally.guildId}:${ally.nodeId}`} data-ally={ally.guildId}>
+            {ally.nodeId}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

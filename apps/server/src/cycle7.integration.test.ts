@@ -695,3 +695,110 @@ test('a neutral capture charges 25000 gold and waits for the guard fight', async
   const won = graph.state() as { captures: { cityId: string; won: boolean; guildId: string | null }[] };
   expect(won.captures.some((row) => row.cityId === 'fort_humans' && row.won && row.guildId === guildId)).toBe(true);
 });
+
+test('a suzerain must defend, ally markers are stored, and a coalition channel posts', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const map = readFileSync(new URL('../../client/src/ui/screens.tsx', import.meta.url), 'utf8');
+  expect(composeSource.includes('suzerainDefenders(')).toBe(true);
+  expect(dispatch.includes('rememberDefense(')).toBe(true);
+  expect(composeSource.includes('coalitionChannel(')).toBe(true);
+  expect(composeSource.includes("path: '/coalition'")).toBe(true);
+  expect(app.includes('postCoalition(')).toBe(true);
+  expect(map.includes('data-ally=')).toBe(true);
+
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  const wolves = await foundGuild(graph);
+  await winCity(graph, wolves, 'fort_humans');
+  await graph.skipMs(CITY_CAPTURE_COOLDOWN_MS);
+  graph.enterCharacter('account-kai', 'kai');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'kai', action: 'wait' });
+  const ashCreated = await graph.act('guild_create', {
+    name: 'Ash Keepers',
+    tag: 'ASH',
+    initiatorId: 'kai',
+    leaderId: 'kai',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'kai', level: 5 },
+      { id: 'n1', level: 5 },
+      { id: 'n2', level: 5 },
+      { id: 'n3', level: 5 },
+    ],
+  });
+  expect(ashCreated.ok).toBe(true);
+  const ash = (ashCreated.value as { guildId: string }).guildId;
+  graph.enterCharacter('account-noa', 'noa');
+  const oakCreated = await graph.act('guild_create', {
+    name: 'Oak',
+    tag: 'OAK',
+    initiatorId: 'noa',
+    leaderId: 'noa',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'noa', level: 5 },
+      { id: 'o1', level: 5 },
+      { id: 'o2', level: 5 },
+      { id: 'o3', level: 5 },
+    ],
+  });
+  expect(oakCreated.ok).toBe(true);
+  const oak = (oakCreated.value as { guildId: string }).guildId;
+  expect(
+    await graph.act('pact', {
+      kind: 'vassal',
+      guildIds: [wolves, ash],
+      suzerainId: ash,
+      vassalId: wolves,
+      taxPercent: VASSAL_TAX_MIN,
+      characterId: 'lia',
+    }),
+  ).toMatchObject({ ok: true });
+  const attacker = await graph.guild.repository.findGuild(oak);
+  if (attacker === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...attacker, bank: 100_000 });
+  const declared = await graph.act('guild_war', {
+    attackerGuildId: oak,
+    cityId: 'fort_humans',
+    leaderConsent: true,
+    councilConsents: 2,
+    resources: WAR_RESOURCES,
+  });
+  expect(declared.ok).toBe(true);
+  const state = graph.state() as {
+    defenses: { cityId: string; suzerainId: string; vassalId: string }[];
+    allies: { guildId: string; nodeId: string; characterId: string }[];
+    diplomacy: { text: string }[];
+  };
+  expect(state.defenses).toContainEqual({
+    warId: (declared.value as { warId: string }).warId,
+    cityId: 'fort_humans',
+    suzerainId: ash,
+    vassalId: wolves,
+  });
+  expect(state.allies).toContainEqual({ guildId: ash, nodeId: 'fort_humans', characterId: 'kai' });
+  expect(
+    await graph.act('pact', {
+      kind: 'coalition',
+      guildIds: [wolves, ash],
+      targetGuildId: oak,
+      characterId: 'lia',
+    }),
+  ).toMatchObject({ ok: true });
+  expect(await graph.act('coalition_say', { characterId: 'lia', text: 'hold the gate' })).toMatchObject({
+    ok: true,
+    value: { text: 'hold the gate' },
+  });
+  expect(await graph.act('coalition_say', { characterId: 'noa', text: 'no' })).toMatchObject({
+    ok: false,
+    code: 'channel',
+  });
+  expect((graph.state() as { diplomacy: { text: string }[] }).diplomacy.map((row) => row.text)).toEqual([
+    'hold the gate',
+  ]);
+});

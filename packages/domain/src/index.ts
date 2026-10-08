@@ -410,6 +410,8 @@ export {
   noticeAllianceBreak,
   noticeVassalRelease,
   renewPact,
+  suzerainDefenders,
+  coalitionChannel,
   vassalMayDeclare,
   applyVassalTithe,
   titheDays,

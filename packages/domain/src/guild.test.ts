@@ -64,7 +64,9 @@ import {
   breakAlliance,
   noticeAllianceBreak,
   noticeVassalRelease,
+  coalitionChannel,
   pactAlly,
+  suzerainDefenders,
   renewPact,
   postMercenary,
   postPatrolQuest,
@@ -1113,6 +1115,10 @@ test('pacts make two guilds allies and a vassal cannot declare war alone', () =>
     code: 'vassal',
   });
   expect(vassalMayDeclare({ pacts: [vassal.value], guildId: 'ash', nowMs: 0, suzerainConsent: true }).ok).toBe(true);
+  expect(suzerainDefenders([vassal.value], 'ash', 0)).toEqual(['wolves']);
+  expect(suzerainDefenders([vassal.value], 'wolves', 0)).toEqual([]);
+  expect(coalition.ok && coalitionChannel([coalition.value], 'wolves', 0)?.targetGuildId).toBe('order');
+  expect(coalitionChannel([vassal.value], 'ash', 0)).toBeNull();
   expect(applyVassalTithe({ bank: 1_000, taxPercent: 10, days: 1 })).toEqual({
     ok: true,
     value: { bank: 900, tithe: 100 },

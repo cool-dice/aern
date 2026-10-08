@@ -388,12 +388,23 @@ export interface MapEdgeView {
   unknown: boolean;
 }
 
+export interface MapAlly {
+  guildId: string;
+  nodeId: string;
+  characterId?: string;
+}
+
 export interface MapModel {
   visible: MapNodeView[];
   edges: MapEdgeView[];
+  allies: MapAlly[];
 }
 
-export function mapModel(nodes: readonly MapNodeInput[], visited: readonly string[]): MapModel {
+export function mapModel(
+  nodes: readonly MapNodeInput[],
+  visited: readonly string[],
+  allies: readonly MapAlly[] = [],
+): MapModel {
   const visitedSet = new Set(visited);
   const visible = nodes
     .filter((node) => visitedSet.has(node.id))
@@ -430,6 +441,11 @@ export function mapModel(nodes: readonly MapNodeInput[], visited: readonly strin
     edges: [...edges.values()].sort((left, right) =>
       left.a === right.a ? left.b.localeCompare(right.b) : left.a.localeCompare(right.a),
     ),
+    allies: allies.map((ally) => ({
+      guildId: ally.guildId,
+      nodeId: ally.nodeId,
+      ...(ally.characterId !== undefined ? { characterId: ally.characterId } : {}),
+    })),
   };
 }
 

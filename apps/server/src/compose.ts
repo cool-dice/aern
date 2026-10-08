@@ -68,6 +68,7 @@ import {
   freshResourceNode,
   GUILD_CREATE_GOLD,
   NEUTRAL_GUARD_COUNT,
+  coalitionChannel,
   napBetween,
   noticeAllianceBreak,
   noticeVassalRelease,
@@ -83,6 +84,7 @@ import {
   nodeAccessCategory,
   setNodeAccess,
   setNodeTax,
+  suzerainDefenders,
   tickContract,
   titheDays,
   vassalMayDeclare,
@@ -259,6 +261,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   let captures: CaptureHold[] = [];
   let resourceNodes: ResourceNode[] = [];
   let pacts: StoredPact[] = [];
+  let defenseDuties: { warId: string; cityId: string; suzerainId: string; vassalId: string }[] = [];
+  let diplomacy: { pactId: string; guildId: string; characterId: string; text: string; atMs: number }[] = [];
   let mercenaries: StoredMercenary[] = [];
   let patrols: StoredPatrol[] = [];
   let contenders: { warId: string; guildId: string }[] = [];
@@ -715,6 +719,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     noticePact: noticeStoredPact,
     renewPact: renewStoredPact,
     breakPact: breakStoredPact,
+    rememberDefense,
+    postCoalition,
     registerContender: registerWarContender,
     postMercenaryContract,
     postPatrol,
@@ -1643,6 +1649,26 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return false;
   }
 
+  function allyMarkers(): { guildId: string; nodeId: string; characterId: string }[] {
+    const focus = simWorld.entities.find((entity) => entity.monsterId === undefined);
+    if (focus?.guildId === undefined) {
+      return [];
+    }
+    const now = clock.now();
+    return simWorld.entities.flatMap((entity) => {
+      if (
+        entity.monsterId !== undefined ||
+        entity.guildId === undefined ||
+        entity.nodeId === undefined ||
+        entity.id === focus.id ||
+        !pactAlly(pacts, focus.guildId ?? '', entity.guildId, now)
+      ) {
+        return [];
+      }
+      return [{ guildId: entity.guildId, nodeId: entity.nodeId, characterId: entity.id }];
+    });
+  }
+
   function standingAt(characterId: string, nodeId: string): boolean {
     const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
     return entity !== undefined && entity.phase === 'online' && entity.hp > 0 && entity.nodeId === nodeId;
@@ -1896,7 +1922,45 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     });
     neutralCities.add(cityId);
     declaredAtMs.set(attackerGuildId, clock.now());
+    rememberDefense(cityId, warId);
     return { ok: true, value: { warId, ...declared.value } };
+  }
+
+  function rememberDefense(cityId: string, warId: string): { suzerainId: string; vassalId: string }[] {
+    const owner = cityOwner(cityId);
+    if (owner === null) {
+      return [];
+    }
+    const obliged = suzerainDefenders(pacts, owner, clock.now()).map((suzerainId) => ({
+      warId,
+      cityId,
+      suzerainId,
+      vassalId: owner,
+    }));
+    defenseDuties = [
+      ...defenseDuties.filter((row) => row.warId !== warId),
+      ...obliged,
+    ];
+    return obliged.map((row) => ({ suzerainId: row.suzerainId, vassalId: row.vassalId }));
+  }
+
+  function postCoalition(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    const guildId = guildOf.get(characterId);
+    if (guildId === undefined || text.length === 0) {
+      return { ok: false, code: 'invalid' };
+    }
+    const channel = coalitionChannel(pacts, guildId, clock.now());
+    if (channel === null) {
+      return { ok: false, code: 'channel' };
+    }
+    const pactId = pacts.find((row) => row.kind === 'coalition' && row.guildIds.includes(guildId))?.id ?? '';
+    const message = { pactId, guildId, characterId, text, atMs: clock.now() };
+    diplomacy = [...diplomacy, message];
+    return { ok: true, value: message };
   }
 
   function guardRows(): { cityId: string; remaining: number }[] {
@@ -2618,6 +2682,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       resourceNodes,
       guildVaults: [...guildVaults.entries()].map(([guildId, amount]) => ({ guildId, amount })),
       pacts,
+      allies: allyMarkers(),
+      defenses: defenseDuties,
+      diplomacy,
       mercenaries,
       patrols,
       contenders,
@@ -3234,6 +3301,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/bind', action: 'bind' },
   { path: '/service/grant', action: 'service_grant' },
   { path: '/pact', action: 'pact' },
+  { path: '/coalition', action: 'coalition_say' },
   { path: '/pact/notice', action: 'pact_notice' },
   { path: '/pact/break', action: 'pact_break' },
   { path: '/pact/renew', action: 'pact_renew' },

@@ -1306,6 +1306,39 @@ export function renewPact(pact: GuildPact, nowMs: number): Result<GuildPact, 'ki
   return ok({ ...pact, untilMs: nowMs + PACT_MS, breakNoticeAtMs: null });
 }
 
+/** Suzerains of a live vassal pact. They must defend when that vassal is attacked. */
+export function suzerainDefenders(
+  pacts: readonly GuildPact[],
+  vassalGuildId: string,
+  nowMs: number,
+): string[] {
+  assertMs(nowMs, 'nowMs');
+  const ids: string[] = [];
+  for (const pact of pacts) {
+    if (pact.kind !== 'vassal' || pact.vassalId !== vassalGuildId || !pactLive(pact, nowMs)) {
+      continue;
+    }
+    if (pact.suzerainId !== null && !ids.includes(pact.suzerainId)) {
+      ids.push(pact.suzerainId);
+    }
+  }
+  return ids;
+}
+
+/** The temporary diplomatic channel of a live coalition. No coalition means no post. */
+export function coalitionChannel(
+  pacts: readonly GuildPact[],
+  guildId: string,
+  nowMs: number,
+): GuildPact | null {
+  assertMs(nowMs, 'nowMs');
+  return (
+    pacts.find(
+      (pact) => pact.kind === 'coalition' && pactLive(pact, nowMs) && pact.guildIds.includes(guildId),
+    ) ?? null
+  );
+}
+
 /** A vassal cannot open a war unless the suzerain has consented. */
 export function vassalMayDeclare(input: {
   pacts: readonly GuildPact[];

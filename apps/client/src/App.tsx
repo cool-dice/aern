@@ -19,6 +19,7 @@ import {
   enterDungeon,
   grantNode,
   noticePact,
+  postCoalition,
   postMercenary,
   postPatrol,
   registerContender,
@@ -648,6 +649,18 @@ export function App() {
                 server: SERVER,
                 pactId: 'pact',
                 characterId,
+                store: plan.store,
+              });
+            }}
+            onCoalition={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postCoalition({
+                server: SERVER,
+                characterId,
+                text: 'hold the gate',
                 store: plan.store,
               });
             }}

@@ -90,6 +90,8 @@ export interface LivePorts {
   };
   rememberDeclaration(guildId: string): void;
   declareNeutralCity(body: Record<string, unknown>): Promise<LiveResult>;
+  rememberDefense(cityId: string, warId: string): { suzerainId: string; vassalId: string }[];
+  postCoalition(body: Record<string, unknown>): LiveResult;
   seatFounders(guildId: string, leaderId: string, memberIds: readonly string[]): void;
   seatMember(guildId: string, actorId: string, memberId: string, rank: string): LiveResult;
   placeQuest(characterId: string, questId: string): Promise<void>;
@@ -156,6 +158,7 @@ const LIVE_ACTIONS = new Set([
   'guild_war',
   'guild_withdraw',
   'guild_rank',
+  'coalition_say',
 ]);
 
 export function isLiveAction(action: string): boolean {
@@ -258,6 +261,8 @@ export async function runLive(
       return guildWithdraw(body, ports);
     case 'guild_rank':
       return guildRank(body, ports);
+    case 'coalition_say':
+      return ports.postCoalition(body);
     default:
       return { ok: false, code: 'unknown' };
   }
@@ -916,7 +921,9 @@ async function guildWar(body: Record<string, unknown>, ports: LivePorts): Promis
     return { ok: false, code: declared.code };
   }
   ports.rememberDeclaration(attackerGuildId);
-  return { ok: true, value: declared.value };
+  const warId = declared.value.warId;
+  const defenders = ports.rememberDefense(cityId, warId);
+  return { ok: true, value: { ...declared.value, defenders } };
 }
 
 async function guildWithdraw(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

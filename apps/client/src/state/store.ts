@@ -93,6 +93,8 @@ export interface ClientState {
   captures: CaptureView[];
   /** Resource-node flags from the world snapshot. */
   resourceNodes: ResourceNodeView[];
+  /** Allied guilds standing on the map, from the focused character's pacts. */
+  allies: { guildId: string; nodeId: string; characterId: string }[];
   /** NPC reputation for the focused character, keyed by NPC id. */
   reputation: Record<string, number>;
   /** Local movement only. `applySnapshot` does not replace this. */
@@ -255,6 +257,7 @@ function readSessionExtras(snapshot: unknown): {
   recipes?: { id: string }[];
   captures?: CaptureView[];
   resourceNodes?: ResourceNodeView[];
+  allies?: { guildId: string; nodeId: string; characterId: string }[];
   reputation?: Record<string, number>;
 } {
   if (!isPlainObject(snapshot)) {
@@ -267,6 +270,7 @@ function readSessionExtras(snapshot: unknown): {
     recipes?: { id: string }[];
     captures?: CaptureView[];
     resourceNodes?: ResourceNodeView[];
+    allies?: { guildId: string; nodeId: string; characterId: string }[];
     reputation?: Record<string, number>;
   } = {};
   if ('hackPassword' in snapshot) {
@@ -331,6 +335,15 @@ function readSessionExtras(snapshot: unknown): {
       const heldMs = readNumber(row.heldMs) ?? 0;
       const guildId = typeof row.guildId === 'string' ? row.guildId : null;
       return [{ cityId: row.cityId, guildId, heldMs, won: row.won === true }];
+    });
+  }
+  if (Array.isArray(snapshot.allies)) {
+    extra.allies = snapshot.allies.flatMap((row) => {
+      if (!isPlainObject(row) || typeof row.guildId !== 'string' || typeof row.nodeId !== 'string') {
+        return [];
+      }
+      const characterId = typeof row.characterId === 'string' ? row.characterId : '';
+      return [{ guildId: row.guildId, nodeId: row.nodeId, characterId }];
     });
   }
   if (Array.isArray(snapshot.resourceNodes)) {
@@ -430,6 +443,7 @@ export function createClientStore(): ClientStore {
     serviceResult: null,
     captures: [],
     resourceNodes: [],
+    allies: [],
     reputation: {},
     predictedCell: null,
     predictedSteps: [],
@@ -445,6 +459,7 @@ export function createClientStore(): ClientStore {
         mapNodes: extra.mapNodes === undefined ? state.mapNodes : extra.mapNodes,
         recipes: extra.recipes === undefined ? state.recipes : extra.recipes,
         captures: extra.captures === undefined ? state.captures : extra.captures,
+        allies: extra.allies === undefined ? state.allies : extra.allies,
         resourceNodes: extra.resourceNodes === undefined ? state.resourceNodes : extra.resourceNodes,
         reputation: extra.reputation === undefined ? state.reputation : extra.reputation,
       }));

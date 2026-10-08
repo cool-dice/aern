@@ -410,6 +410,24 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/coalition`. Only a live coalition has this diplomatic channel. */
+export async function postCoalition(input: {
+  server: string;
+  characterId: string;
+  text: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/coalition',
+    body: { characterId: input.characterId, text: input.text },
+    store: input.store,
+    log: 'coalition',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/pact/renew`. Alliances and non-aggression pacts last another 7 days. */
 export async function renewPact(input: {
   server: string;

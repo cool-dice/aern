@@ -69,6 +69,7 @@ export function PlayPanels({
   onPactBreak,
   onPactRenew,
   onContend,
+  onCoalition,
 }: {
   session: PlaySession;
   onCraft?: () => void;
@@ -90,6 +91,7 @@ export function PlayPanels({
   onPactBreak?: () => void;
   onPactRenew?: () => void;
   onContend?: () => void;
+  onCoalition?: () => void;
 }): ReactElement | null {
   if (session.screen === 'inventory') {
     return <InventoryScreen model={inventoryModel(inventoryItems(session), true)} />;
@@ -124,7 +126,7 @@ export function PlayPanels({
     const hold = state.captures[0];
     return (
       <section>
-        <MapScreen model={mapModel(shown, shown.map((node) => node.id))} />
+        <MapScreen model={mapModel(shown, shown.map((node) => node.id), state.allies)} />
         <button type="button" data-portal="start" onClick={() => onPortal?.()}>
           portal
         </button>
@@ -187,6 +189,9 @@ export function PlayPanels({
         </button>
         <button type="button" data-war="contend" onClick={() => onContend?.()}>
           contend
+        </button>
+        <button type="button" data-coalition="say" onClick={() => onCoalition?.()}>
+          coalition
         </button>
         {typeof state.serviceResult?.route === 'string' ? (
           <p data-service-route={state.serviceResult.route}>{state.serviceResult.route}</p>
