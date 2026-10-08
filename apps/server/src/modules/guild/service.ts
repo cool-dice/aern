@@ -108,9 +108,6 @@ export class GuildService implements GuildServiceApi {
   }
 
   async create(input: unknown): Promise<Result<{ guildId: string }, string>> {
-    if (this.options.mode === 'stub') {
-      return { ok: false, code: 'feature_stub' };
-    }
     const parsed = parseCreate(input);
     if (!parsed) {
       return { ok: false, code: 'member' };
@@ -149,9 +146,6 @@ export class GuildService implements GuildServiceApi {
   }
 
   async declareWar(input: DeclareWarInput): Promise<Result<{ warId: string }, string>> {
-    if (this.options.mode === 'stub') {
-      return { ok: false, code: 'feature_stub' };
-    }
     const stored = await this.options.repository.findGuild(input.attackerGuildId);
     const gold = input.gold ?? stored?.bank ?? 0;
     const resources = input.resources ?? 0;
@@ -187,9 +181,6 @@ export class GuildService implements GuildServiceApi {
   }
 
   async withdraw(input: WithdrawInput): Promise<Result<{ bank: number; amount: number }, string>> {
-    if (this.options.mode === 'stub') {
-      return { ok: false, code: 'feature_stub' };
-    }
     const guild = await this.options.repository.findGuild(input.guildId);
     if (!guild) {
       return { ok: false, code: 'member' };
@@ -215,7 +206,7 @@ export class GuildService implements GuildServiceApi {
   ): Promise<Result<{ gold: number }, 'gold'>> {
     const port = this.options.gold;
     if (!port) {
-      throw new Error('GoldPort is required when guild mode is live');
+      return { ok: false, code: 'gold' };
     }
     return port.deduct(characterId, amount);
   }

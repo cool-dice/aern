@@ -74,12 +74,12 @@ test('preview of 4 valid members is ok and leaderReady', async () => {
   expect(wallet.calls).toEqual([]);
 });
 
-test('stub create, declareWar, and withdraw return feature_stub without gold or state', async () => {
+test('a module labeled stub still creates a guild and rejects a poor war', async () => {
   const wallet = trackingGold(CHARTER_FEE);
   const { guild } = started('stub', wallet);
-  const before = await guild.repository.listGuilds();
 
-  expect(await guild.service.create(validCreate)).toEqual({ ok: false, code: 'feature_stub' });
+  const created = await guild.service.create(validCreate);
+  expect(created.ok).toBe(true);
   expect(
     await guild.service.declareWar({
       attackerGuildId: 'guild-1',
@@ -89,15 +89,14 @@ test('stub create, declareWar, and withdraw return feature_stub without gold or 
       leaderConsent: true,
       councilConsents: 2,
     }),
-  ).toEqual({ ok: false, code: 'feature_stub' });
-  expect(await guild.service.withdraw({ guildId: 'guild-1', rank: 'leader', amount: 1 })).toEqual({
+  ).toEqual({ ok: false, code: 'gold' });
+  expect(await guild.service.withdraw({ guildId: 'missing', rank: 'leader', amount: 1 })).toEqual({
     ok: false,
-    code: 'feature_stub',
+    code: 'member',
   });
 
-  expect(wallet.calls).toEqual([]);
-  expect(wallet.balance()).toBe(CHARTER_FEE);
-  expect(await guild.repository.listGuilds()).toEqual(before);
+  expect(wallet.calls).toEqual([{ characterId: 'm0', amount: CHARTER_FEE }]);
+  expect(await guild.repository.listGuilds()).toHaveLength(1);
   expect(await guild.repository.listWars()).toEqual([]);
 });
 
@@ -163,7 +162,7 @@ test('createGuildModule starts on the manual clock and does not read Date.now', 
     clock.advance(50);
     const preview = await guild.service.previewCreate(members(4, 5), CHARTER_FEE);
     expect(preview.ok).toBe(true);
-    expect(await guild.service.create(validCreate)).toEqual({ ok: false, code: 'feature_stub' });
+    expect(await guild.service.create(validCreate)).toEqual({ ok: false, code: 'gold' });
   } finally {
     Date.now = realNow;
   }
