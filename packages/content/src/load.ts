@@ -257,6 +257,8 @@ export interface QuestDef {
   levelMin?: number;
   levelMax?: number;
   hub?: string;
+  /** NPC whose personal reputation this quest changes. */
+  npcId?: string;
 }
 
 export interface Features {

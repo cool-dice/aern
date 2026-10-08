@@ -152,6 +152,7 @@
     "levelMin": 1,
     "levelMax": 20,
     "hub": "fort_humans",
+    "npcId": "council",
     "objectives": [
       { "id": "survive", "kind": "survive", "target": 1, "scene": "Survive the first days in Fort Humans." },
       { "id": "council", "kind": "talk", "target": 1, "scene": "The council head of Fort Humans sets the new arrival to work." },
@@ -173,6 +174,7 @@
     "levelMin": 1,
     "levelMax": 20,
     "hub": "obsidian_tower",
+    "npcId": "council",
     "objectives": [
       { "id": "survive", "kind": "survive", "target": 1, "scene": "Survive the first days in the Obsidian Tower." },
       { "id": "council", "kind": "talk", "target": 1, "scene": "The council head of the Obsidian Tower. Survive and find work." },
@@ -194,6 +196,7 @@
     "levelMin": 20,
     "levelMax": 40,
     "hub": "fort_humans",
+    "npcId": "archivists",
     "objectives": [
       { "id": "fragments", "kind": "collect", "target": 3, "scene": "Gather the lore fragments of the First Ones." },
       { "id": "archivists", "kind": "learn", "target": 1, "scene": "The Archivists decode the first fragments." },
@@ -216,6 +219,7 @@
     "levelMin": 20,
     "levelMax": 40,
     "hub": "obsidian_tower",
+    "npcId": "ash_keepers",
     "objectives": [
       { "id": "fragments", "kind": "collect", "target": 3, "scene": "Gather the lore fragments of the First Ones." },
       { "id": "ash_keepers", "kind": "learn", "target": 1, "scene": "The Ash Keepers decode the first fragments." },
@@ -236,6 +240,7 @@
     "levelMin": 40,
     "levelMax": 50,
     "hub": "fort_humans",
+    "npcId": "archive",
     "objectives": [
       { "id": "enter_city", "kind": "visit", "target": 1, "place": "primordial_city", "scene": "Enter the Primordial City." },
       { "id": "outer_ring", "kind": "visit", "target": 1, "place": "primordial_outer", "scene": "The outer ring of the Primordial City." },
@@ -258,6 +263,7 @@
     "levelMin": 40,
     "levelMax": 50,
     "hub": "obsidian_tower",
+    "npcId": "archive",
     "objectives": [
       { "id": "enter_city", "kind": "visit", "target": 1, "place": "primordial_city", "scene": "Enter the Primordial City." },
       { "id": "outer_ring", "kind": "visit", "target": 1, "place": "primordial_outer", "scene": "The outer ring of the Primordial City." },

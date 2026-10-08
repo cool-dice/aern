@@ -126,6 +126,15 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
       }
       const failed: QuestProgressRow = { ...row, progress: expired };
       await repository.save(failed);
+      const ctx = context();
+      if (ctx) {
+        const npcId = quests.find((quest) => quest.id === row.progress.questId)?.npcId;
+        ctx.bus.emit('quest.failed', {
+          characterId,
+          questId: row.progress.questId,
+          ...(npcId !== undefined ? { npcId } : {}),
+        });
+      }
       current.push(failed);
     }
     return current;
@@ -196,7 +205,12 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
       }
       await repository.save({ ...row, progress: turned.value.progress });
       await rewards.grant(characterId, reward);
-      ctx.bus.emit('quest.completed', { characterId, questId });
+      const npcId = quests.find((quest) => quest.id === questId)?.npcId;
+      ctx.bus.emit('quest.completed', {
+        characterId,
+        questId,
+        ...(npcId !== undefined ? { npcId } : {}),
+      });
       return { ok: true, value: reward };
     },
 
@@ -210,6 +224,13 @@ export function createQuestService(deps: QuestServiceDeps): QuestService {
       const expired = failExpired(row.progress, nowMs);
       const left = abandon(expired);
       await repository.save({ ...row, progress: left.progress });
+      const ctx = requireContext();
+      const npcId = quests.find((quest) => quest.id === questId)?.npcId;
+      ctx.bus.emit('quest.failed', {
+        characterId,
+        questId,
+        ...(npcId !== undefined ? { npcId } : {}),
+      });
       return { ok: true, value: { removeItemIds: left.removeItemIds } };
     },
   };
