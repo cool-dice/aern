@@ -247,8 +247,12 @@ export {
   trade,
   materialGold,
   expandStash,
+  STORAGE_GOLD_PER_SLOT_DAY,
+  CITY_SERVICES,
+  rentStorage,
+  isCityService,
 } from './economy';
-export type { AuctionTaxSink, PortalStance } from './economy';
+export type { AuctionTaxSink, PortalStance, CityService } from './economy';
 
 export {
   ACTIVE_QUEST_LIMIT,
@@ -372,12 +376,41 @@ export {
   NODE_DROP_MS,
   NODE_CHEST_CAP,
   NODE_TAX_MAX,
+  NODE_TAX_OFFICER_MAX,
   NODE_TAX_COOLDOWN_MS,
   freshResourceNode,
   advanceResourceNode,
   depositNodeChest,
   setNodeTax,
   setNodeAccess,
+  settleNodeDrop,
+  PACT_MS,
+  ALLIANCE_BREAK_MS,
+  VASSAL_TAX_MIN,
+  VASSAL_TAX_MAX,
+  NAP_BREACH_GOLD,
+  NAP_FLAG_MS,
+  VASSAL_RELEASE_MS,
+  PACT_KINDS,
+  MERCENARY_KINDS,
+  PATROL_QUEST_MS,
+  PATROL_QUEST_GOLD,
+  coalitionBank,
+  formPact,
+  pactLive,
+  pactAlly,
+  noticeAllianceBreak,
+  noticeVassalRelease,
+  renewPact,
+  vassalMayDeclare,
+  applyVassalTithe,
+  titheDays,
+  breachNonAggression,
+  allianceFriendlyFire,
+  napBetween,
+  postMercenary,
+  postPatrolQuest,
+  tickContract,
 } from './guild';
 export type {
   GuildRank,
@@ -395,6 +428,10 @@ export type {
   LeaderElection,
   NodeAccess,
   ResourceNode,
+  PactKind,
+  GuildPact,
+  MercenaryKind,
+  ContractStatus,
 } from './guild';
 
 export { HACK_ALPHABET, LOCKOUT_MS, hackDifficulty, silenceMs, newHack, guess } from './hack';

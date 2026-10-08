@@ -47,8 +47,28 @@ import {
   advanceResourceNode,
   depositNodeChest,
   freshResourceNode,
+  NODE_TAX_OFFICER_MAX,
+  PATROL_QUEST_GOLD,
+  PATROL_QUEST_MS,
+  ALLIANCE_BREAK_MS,
+  NAP_BREACH_GOLD,
+  PACT_MS,
+  VASSAL_RELEASE_MS,
+  VASSAL_TAX_MIN,
+  applyVassalTithe,
+  breachNonAggression,
+  formPact,
+  noticeAllianceBreak,
+  noticeVassalRelease,
+  pactAlly,
+  renewPact,
+  postMercenary,
+  postPatrolQuest,
   setNodeAccess,
   setNodeTax,
+  settleNodeDrop,
+  tickContract,
+  vassalMayDeclare,
   type GuildFounder,
 } from './guild';
 import { mulberry32, type Rng } from './rng';
@@ -948,4 +968,196 @@ test('a resource node plants in 60 seconds and drops after 30 minutes', () => {
   });
   expect(setNodeAccess('closed')).toEqual({ ok: true, value: 'closed' });
   expect(setNodeAccess('guild')).toEqual({ ok: false, code: 'access' });
+  expect(NODE_TAX_OFFICER_MAX).toBe(15);
+  expect(setNodeTax({ next: 15, nowMs: 0, taxSetAtMs: null, rank: 'officer' })).toEqual({
+    ok: true,
+    value: { taxPercent: 15, taxSetAtMs: 0 },
+  });
+  expect(setNodeTax({ next: 16, nowMs: 0, taxSetAtMs: null, rank: 'officer' })).toEqual({
+    ok: false,
+    code: 'tax',
+  });
+  expect(setNodeTax({ next: 30, nowMs: 0, taxSetAtMs: null, rank: 'leader' }).ok).toBe(true);
+  expect(setNodeTax({ next: 1, nowMs: 0, taxSetAtMs: null, rank: 'novice' })).toEqual({
+    ok: false,
+    code: 'rank',
+  });
+  expect(setNodeTax({ next: 1, nowMs: 0, taxSetAtMs: null, rank: 'veteran' })).toEqual({
+    ok: false,
+    code: 'rank',
+  });
+});
+
+test('a dropped resource-node flag seizes the chest onto the capturing guild', () => {
+  let node = freshResourceNode('plains_mine');
+  node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: NODE_PLANT_MS });
+  node = { ...node, chest: 40 };
+  const held = advanceResourceNode({ node, presentGuildIds: [], deltaMs: NODE_DROP_MS - 1 });
+  expect(held.guildId).toBe('wolves');
+  expect(held.chest).toBe(40);
+  const dropped = advanceResourceNode({ node: held, presentGuildIds: [], deltaMs: 1 });
+  expect(dropped.guildId).toBeNull();
+  const seized = settleNodeDrop(held, dropped);
+  expect(seized.node.chest).toBe(0);
+  expect(seized.node.guildId).toBeNull();
+  expect(seized.seized).toEqual({ guildId: 'wolves', amount: 40 });
+});
+
+test('pacts make two guilds allies and a vassal cannot declare war alone', () => {
+  expect(PACT_MS).toBe(7 * 24 * 60 * 60 * 1000);
+  const alliance = formPact({ kind: 'alliance', guildIds: ['wolves', 'ash'], nowMs: 0 });
+  expect(alliance.ok).toBe(true);
+  if (!alliance.ok) {
+    return;
+  }
+  expect(pactAlly([alliance.value], 'ash', 'wolves', 0)).toBe(true);
+  expect(pactAlly([alliance.value], 'ash', 'wolves', PACT_MS)).toBe(false);
+  const coalition = formPact({
+    kind: 'coalition',
+    guildIds: ['wolves', 'ash'],
+    targetGuildId: 'order',
+    nowMs: 0,
+  });
+  expect(coalition.ok).toBe(true);
+  if (coalition.ok) {
+    expect(pactAlly([coalition.value], 'wolves', 'ash', 0)).toBe(true);
+  }
+  const vassal = formPact({
+    kind: 'vassal',
+    guildIds: ['ash', 'wolves'],
+    suzerainId: 'wolves',
+    vassalId: 'ash',
+    taxPercent: VASSAL_TAX_MIN,
+    nowMs: 0,
+  });
+  expect(vassal.ok).toBe(true);
+  if (!vassal.ok) {
+    return;
+  }
+  expect(pactAlly([vassal.value], 'ash', 'wolves', 0)).toBe(true);
+  expect(vassalMayDeclare({ pacts: [vassal.value], guildId: 'ash', nowMs: 0, suzerainConsent: false })).toEqual({
+    ok: false,
+    code: 'vassal',
+  });
+  expect(vassalMayDeclare({ pacts: [vassal.value], guildId: 'ash', nowMs: 0, suzerainConsent: true }).ok).toBe(true);
+  expect(applyVassalTithe({ bank: 1_000, taxPercent: 10, days: 1 })).toEqual({
+    ok: true,
+    value: { bank: 900, tithe: 100 },
+  });
+  const nap = formPact({ kind: 'non_aggression', guildIds: ['wolves', 'ash'], nowMs: 0 });
+  expect(nap.ok).toBe(true);
+  if (nap.ok) {
+    expect(pactAlly([nap.value], 'wolves', 'ash', 0)).toBe(true);
+  }
+  expect(breachNonAggression({ bank: 80_000, nowMs: 0 })).toEqual({
+    bank: 30_000,
+    fine: NAP_BREACH_GOLD,
+    flagUntilMs: 7 * 24 * 60 * 60 * 1000,
+  });
+  expect(NAP_BREACH_GOLD).toBe(50_000);
+  const noticed = noticeAllianceBreak(alliance.value, 0);
+  expect(noticed.ok).toBe(true);
+  if (noticed.ok) {
+    expect(pactAlly([noticed.value], 'ash', 'wolves', ALLIANCE_BREAK_MS - 1)).toBe(true);
+    expect(pactAlly([noticed.value], 'ash', 'wolves', ALLIANCE_BREAK_MS)).toBe(false);
+    const renewed = renewPact(noticed.value, 1_000);
+    expect(renewed.ok).toBe(true);
+    if (renewed.ok) {
+      expect(pactAlly([renewed.value], 'ash', 'wolves', ALLIANCE_BREAK_MS)).toBe(true);
+    }
+  }
+  const release = noticeVassalRelease(vassal.value, 0);
+  expect(release.ok).toBe(true);
+  if (release.ok) {
+    expect(pactAlly([release.value], 'ash', 'wolves', ALLIANCE_BREAK_MS)).toBe(true);
+    expect(pactAlly([release.value], 'ash', 'wolves', VASSAL_RELEASE_MS)).toBe(false);
+  }
+  expect(noticeVassalRelease(alliance.value, 0)).toEqual({ ok: false, code: 'kind' });
+});
+
+test('mercenary and patrol contracts pay on completion and fail when the clock runs out', () => {
+  expect(PATROL_QUEST_MS).toBe(3 * 60 * 60 * 1000);
+  expect(PATROL_QUEST_GOLD).toBe(5_000);
+  expect(
+    postMercenary({
+      rank: 'officer',
+      kind: 'patrol',
+      rewardGold: 100,
+      bank: 100,
+      mercenaryId: 'blade',
+      memberIds: ['lia'],
+      nowMs: 0,
+      durationMs: 1_000,
+      nodeId: 'plains_mine',
+    }),
+  ).toEqual({ ok: false, code: 'rank' });
+  const posted = postMercenary({
+    rank: 'leader',
+    kind: 'escort',
+    rewardGold: 100,
+    bank: 100,
+    mercenaryId: 'lia',
+    memberIds: ['lia'],
+    nowMs: 0,
+    durationMs: 1_000,
+    nodeId: 'plains_mine',
+  });
+  expect(posted).toEqual({ ok: false, code: 'member' });
+  const hired = postMercenary({
+    rank: 'council',
+    kind: 'defend',
+    rewardGold: 100,
+    bank: 500,
+    mercenaryId: 'blade',
+    memberIds: ['lia'],
+    nowMs: 0,
+    durationMs: 1_000,
+    nodeId: 'plains_mine',
+  });
+  expect(hired.ok).toBe(true);
+  expect(
+    tickContract({
+      status: 'open',
+      presentMs: 0,
+      durationMs: 1_000,
+      untilMs: 1_000,
+      deltaMs: 1_000,
+      present: true,
+      nowMs: 1_000,
+      bank: 500,
+      rewardGold: 100,
+    }),
+  ).toEqual({ status: 'complete', presentMs: 1_000, pay: 100 });
+  expect(
+    tickContract({
+      status: 'open',
+      presentMs: 0,
+      durationMs: 1_000,
+      untilMs: 1_000,
+      deltaMs: 1_000,
+      present: false,
+      nowMs: 1_000,
+      bank: 500,
+      rewardGold: 100,
+    }),
+  ).toEqual({ status: 'failed', presentMs: 0, pay: 0 });
+  const patrol = postPatrolQuest({
+    rank: 'leader',
+    rewardGold: PATROL_QUEST_GOLD,
+    bank: PATROL_QUEST_GOLD,
+    nodeId: 'plains_mine',
+    nowMs: 0,
+    durationMs: PATROL_QUEST_MS,
+  });
+  expect(patrol.ok).toBe(true);
+  expect(
+    postPatrolQuest({
+      rank: 'novice',
+      rewardGold: 1,
+      bank: 1,
+      nodeId: 'plains_mine',
+      nowMs: 0,
+      durationMs: 1,
+    }),
+  ).toEqual({ ok: false, code: 'rank' });
 });

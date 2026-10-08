@@ -359,3 +359,31 @@ export function expandStash(slots: number): Result<{ gold: number; slots: number
   }
   return ok({ gold: STASH_EXPAND_GOLD, slots: slots + STASH_EXPAND_SLOTS });
 }
+
+/** Artifact 13 §4.2. Extended storage is 1 gold per day per slot, paid into the guild bank. */
+export const STORAGE_GOLD_PER_SLOT_DAY = 1;
+export const CITY_SERVICES = ['portal', 'storage', 'library', 'bind', 'auction', 'repair'] as const;
+export type CityService = (typeof CITY_SERVICES)[number];
+
+export function rentStorage(input: {
+  wallet: number;
+  slots: number;
+  days: number;
+}): Result<{ gold: number; cost: number; slots: number; days: number }, 'gold' | 'slots' | 'days'> {
+  assertNonNegativeInteger(input.wallet, 'wallet');
+  if (!Number.isInteger(input.slots) || input.slots < 1) {
+    return err('slots');
+  }
+  if (!Number.isInteger(input.days) || input.days < 1) {
+    return err('days');
+  }
+  const cost = STORAGE_GOLD_PER_SLOT_DAY * input.slots * input.days;
+  if (input.wallet < cost) {
+    return err('gold');
+  }
+  return ok({ gold: input.wallet - cost, cost, slots: input.slots, days: input.days });
+}
+
+export function isCityService(service: string): service is CityService {
+  return (CITY_SERVICES as readonly string[]).includes(service);
+}

@@ -27,6 +27,8 @@ import {
   placeBid,
   portalFee,
   repairCost,
+  rentStorage,
+  STORAGE_GOLD_PER_SLOT_DAY,
   sellToNpc,
   sellerProceeds,
   serviceCut,
@@ -356,4 +358,19 @@ test('a neutral asking a hostile city is refused until the block lifts', () => {
   expect(
     askHostilePortal({ stance: 'neutral', warActive: true, blockedForMs: 0, granted: true }),
   ).toEqual({ ok: true, value: 'enter' });
+});
+
+test('extended storage costs 1 gold per day per slot', () => {
+  expect(STORAGE_GOLD_PER_SLOT_DAY).toBe(1);
+  expect(rentStorage({ wallet: 10, slots: 1, days: 1 })).toEqual({
+    ok: true,
+    value: { gold: 9, cost: 1, slots: 1, days: 1 },
+  });
+  expect(rentStorage({ wallet: 12, slots: 3, days: 4 })).toEqual({
+    ok: true,
+    value: { gold: 0, cost: 12, slots: 3, days: 4 },
+  });
+  expect(rentStorage({ wallet: 2, slots: 3, days: 1 })).toEqual({ ok: false, code: 'gold' });
+  expect(rentStorage({ wallet: 10, slots: 0, days: 1 })).toEqual({ ok: false, code: 'slots' });
+  expect(rentStorage({ wallet: 10, slots: 1, days: 0 })).toEqual({ ok: false, code: 'days' });
 });

@@ -798,6 +798,8 @@ export const NODE_PLANT_MS = 60_000;
 export const NODE_DROP_MS = 30 * 60 * 1000;
 export const NODE_CHEST_CAP = 10_000;
 export const NODE_TAX_MAX = 30;
+/** Artifact 17 rank table: an officer sets the node tax only inside 0–15%. */
+export const NODE_TAX_OFFICER_MAX = 15;
 export const NODE_TAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export type NodeAccess = 'open' | 'request' | 'closed';
@@ -832,7 +834,7 @@ export function freshResourceNode(nodeId: string): ResourceNode {
  * Plant while exactly one guild stands on a neutral node.
  * Two guilds, or none, reset the plant timer.
  * An owned node drops only after the owning guild has been absent for 30 minutes.
- * The chest stays on the node when the flag drops.
+ * This step leaves the chest on the node. `settleNodeDrop` seizes it.
  */
 export function advanceResourceNode(input: {
   node: ResourceNode;
@@ -883,12 +885,26 @@ export function depositNodeChest(chest: number, amount: number): number {
   return Math.min(NODE_CHEST_CAP, chest + amount);
 }
 
+/**
+ * Owner range is 0–30. An officer is capped at 0–15.
+ * A veteran or novice cannot set the tax. Omitting `rank` keeps the 0–30 owner check.
+ */
 export function setNodeTax(input: {
   next: number;
   nowMs: number;
   taxSetAtMs: number | null;
-}): Result<{ taxPercent: number; taxSetAtMs: number }, 'tax' | 'cooldown'> {
-  if (!Number.isInteger(input.next) || input.next < 0 || input.next > NODE_TAX_MAX) {
+  rank?: GuildRank;
+}): Result<{ taxPercent: number; taxSetAtMs: number }, 'tax' | 'cooldown' | 'rank'> {
+  if (input.rank !== undefined) {
+    if (!isRank(input.rank)) {
+      throw new RangeError(`unknown rank: ${String(input.rank)}`);
+    }
+    if (input.rank === 'veteran' || input.rank === 'novice') {
+      return err('rank');
+    }
+  }
+  const cap = input.rank === 'officer' ? NODE_TAX_OFFICER_MAX : NODE_TAX_MAX;
+  if (!Number.isInteger(input.next) || input.next < 0 || input.next > cap) {
     return err('tax');
   }
   assertNonNegativeInteger(input.nowMs, 'nowMs');
@@ -903,4 +919,442 @@ export function setNodeAccess(access: string): Result<NodeAccess, 'access'> {
     return err('access');
   }
   return ok(access);
+}
+
+/**
+ * When the flag drops, the guild that held the node seizes the chest.
+ * The chest is not left on the node. A later planter who finds a chest
+ * still on a neutral node (the drop did not run) takes that chest instead.
+ */
+export function settleNodeDrop(
+  before: ResourceNode,
+  after: ResourceNode,
+): { node: ResourceNode; seized: { guildId: string; amount: number } | null } {
+  const dropped = before.guildId !== null && after.guildId === null;
+  if (dropped && before.guildId !== null && before.chest > 0) {
+    return {
+      node: { ...after, chest: 0 },
+      seized: { guildId: before.guildId, amount: before.chest },
+    };
+  }
+  const planted = before.guildId === null && after.guildId !== null && after.chest > 0;
+  if (planted && after.guildId !== null) {
+    return {
+      node: { ...after, chest: 0 },
+      seized: { guildId: after.guildId, amount: after.chest },
+    };
+  }
+  return { node: after, seized: null };
+}
+
+/** Artifact 17 §9. Alliances and non-aggression pacts last 7 real days. */
+export const PACT_MS = 7 * DAY_MS;
+/** An alliance ends 24 real hours after the break notice. */
+export const ALLIANCE_BREAK_MS = DAY_MS;
+/** A vassal pays this share of the guild bank to the suzerain. */
+export const VASSAL_TAX_MIN = 10;
+export const VASSAL_TAX_MAX = 30;
+/** Breaking a non-aggression pact. */
+export const NAP_BREACH_GOLD = 50_000;
+export const NAP_FLAG_MS = 7 * DAY_MS;
+export const VASSAL_RELEASE_MS = 7 * DAY_MS;
+
+export const PACT_KINDS = ['alliance', 'coalition', 'vassal', 'non_aggression'] as const;
+export type PactKind = (typeof PACT_KINDS)[number];
+
+export interface GuildPact {
+  kind: PactKind;
+  guildIds: string[];
+  startedAtMs: number;
+  untilMs: number;
+  taxPercent: number | null;
+  targetGuildId: string | null;
+  suzerainId: string | null;
+  vassalId: string | null;
+  breakNoticeAtMs: number | null;
+  lastTitheAtMs: number | null;
+}
+
+export const MERCENARY_KINDS = ['patrol', 'defend', 'attack', 'escort'] as const;
+export type MercenaryKind = (typeof MERCENARY_KINDS)[number];
+/** Artifact 17 §8.7 example: patrol the node for 3 real hours. */
+export const PATROL_QUEST_MS = 3 * 60 * 60 * 1000;
+/** Artifact 17 §8.7 example reward, paid from the guild bank on completion. */
+export const PATROL_QUEST_GOLD = 5_000;
+
+function isPactKind(kind: string): kind is PactKind {
+  return (PACT_KINDS as readonly string[]).includes(kind);
+}
+
+function isMercenaryKind(kind: string): kind is MercenaryKind {
+  return (MERCENARY_KINDS as readonly string[]).includes(kind);
+}
+
+function distinctGuilds(guildIds: readonly string[]): string[] | null {
+  const ids = guildIds.filter((id) => id.length > 0);
+  if (new Set(ids).size !== ids.length) {
+    return null;
+  }
+  return ids;
+}
+
+/** A coalition has no shared bank. Callers must not deposit into one. */
+export function coalitionBank(): Result<never, 'bank'> {
+  return err('bank');
+}
+
+export function formPact(input: {
+  kind: string;
+  guildIds: readonly string[];
+  nowMs: number;
+  taxPercent?: number;
+  targetGuildId?: string;
+  suzerainId?: string;
+  vassalId?: string;
+}): Result<GuildPact, 'guild' | 'tax' | 'kind'> {
+  if (!isPactKind(input.kind)) {
+    return err('kind');
+  }
+  assertMs(input.nowMs, 'nowMs');
+  const guildIds = distinctGuilds(input.guildIds);
+  if (guildIds === null || guildIds.length < 2) {
+    return err('guild');
+  }
+  const base: GuildPact = {
+    kind: input.kind,
+    guildIds,
+    startedAtMs: input.nowMs,
+    untilMs: input.nowMs + PACT_MS,
+    taxPercent: null,
+    targetGuildId: null,
+    suzerainId: null,
+    vassalId: null,
+    breakNoticeAtMs: null,
+    lastTitheAtMs: null,
+  };
+  if (input.kind === 'coalition') {
+    const target = input.targetGuildId ?? '';
+    if (target.length === 0 || guildIds.includes(target)) {
+      return err('guild');
+    }
+    if (coalitionBank().ok) {
+      return err('guild');
+    }
+    return ok({ ...base, targetGuildId: target });
+  }
+  if (input.kind === 'vassal') {
+    const suzerainId = input.suzerainId ?? '';
+    const vassalId = input.vassalId ?? '';
+    if (
+      suzerainId.length === 0 ||
+      vassalId.length === 0 ||
+      suzerainId === vassalId ||
+      !guildIds.includes(suzerainId) ||
+      !guildIds.includes(vassalId)
+    ) {
+      return err('guild');
+    }
+    const tax = input.taxPercent ?? 0;
+    if (!Number.isInteger(tax) || tax < VASSAL_TAX_MIN || tax > VASSAL_TAX_MAX) {
+      return err('tax');
+    }
+    return ok({ ...base, taxPercent: tax, suzerainId, vassalId });
+  }
+  if (guildIds.length !== 2) {
+    return err('guild');
+  }
+  return ok(base);
+}
+
+export function pactLive(pact: GuildPact, nowMs: number): boolean {
+  assertMs(nowMs, 'nowMs');
+  if (pact.breakNoticeAtMs !== null && (pact.kind === 'alliance' || pact.kind === 'vassal')) {
+    const wait = pact.kind === 'vassal' ? VASSAL_RELEASE_MS : ALLIANCE_BREAK_MS;
+    return nowMs < pact.breakNoticeAtMs + wait;
+  }
+  return nowMs < pact.untilMs;
+}
+
+/** Any stored live pact (alliance, coalition, vassal, non-aggression) is an ally. */
+export function pactAlly(
+  pacts: readonly GuildPact[],
+  guildId: string,
+  ownerGuildId: string,
+  nowMs: number,
+): boolean {
+  if (guildId.length === 0 || ownerGuildId.length === 0 || guildId === ownerGuildId) {
+    return false;
+  }
+  assertMs(nowMs, 'nowMs');
+  return pacts.some((pact) => {
+    if (!pactLive(pact, nowMs)) {
+      return false;
+    }
+    if (pact.kind === 'vassal') {
+      return (
+        (pact.vassalId === guildId && pact.suzerainId === ownerGuildId) ||
+        (pact.suzerainId === guildId && pact.vassalId === ownerGuildId)
+      );
+    }
+    return pact.guildIds.includes(guildId) && pact.guildIds.includes(ownerGuildId);
+  });
+}
+
+export function noticeAllianceBreak(
+  pact: GuildPact,
+  nowMs: number,
+): Result<GuildPact, 'kind' | 'closed'> {
+  assertMs(nowMs, 'nowMs');
+  if (pact.kind !== 'alliance') {
+    return err('kind');
+  }
+  if (!pactLive(pact, nowMs)) {
+    return err('closed');
+  }
+  return ok({ ...pact, breakNoticeAtMs: nowMs });
+}
+
+/** A vassal is released 7 real days after this notice, not on the alliance's 24-hour fuse. */
+export function noticeVassalRelease(
+  pact: GuildPact,
+  nowMs: number,
+): Result<GuildPact, 'kind' | 'closed'> {
+  assertMs(nowMs, 'nowMs');
+  if (pact.kind !== 'vassal') {
+    return err('kind');
+  }
+  if (!pactLive(pact, nowMs)) {
+    return err('closed');
+  }
+  return ok({ ...pact, breakNoticeAtMs: nowMs });
+}
+
+export function renewPact(pact: GuildPact, nowMs: number): Result<GuildPact, 'kind' | 'closed'> {
+  assertMs(nowMs, 'nowMs');
+  if (pact.kind !== 'alliance' && pact.kind !== 'non_aggression') {
+    return err('kind');
+  }
+  if (!pactLive(pact, nowMs)) {
+    return err('closed');
+  }
+  return ok({ ...pact, untilMs: nowMs + PACT_MS, breakNoticeAtMs: null });
+}
+
+/** A vassal cannot open a war unless the suzerain has consented. */
+export function vassalMayDeclare(input: {
+  pacts: readonly GuildPact[];
+  guildId: string;
+  nowMs: number;
+  suzerainConsent: boolean;
+}): Result<true, 'vassal'> {
+  assertMs(input.nowMs, 'nowMs');
+  const bound = input.pacts.find(
+    (pact) => pact.kind === 'vassal' && pact.vassalId === input.guildId && pactLive(pact, input.nowMs),
+  );
+  if (bound === undefined) {
+    return ok(true);
+  }
+  if (!input.suzerainConsent) {
+    return err('vassal');
+  }
+  return ok(true);
+}
+
+/** One day of the vassal tax, floored. `days` applies that cut once per day. */
+export function applyVassalTithe(input: {
+  bank: number;
+  taxPercent: number;
+  days: number;
+}): Result<{ bank: number; tithe: number }, 'tax'> {
+  assertNonNegativeInteger(input.bank, 'bank');
+  if (!Number.isInteger(input.taxPercent) || input.taxPercent < VASSAL_TAX_MIN || input.taxPercent > VASSAL_TAX_MAX) {
+    return err('tax');
+  }
+  if (!Number.isInteger(input.days) || input.days < 0) {
+    throw new RangeError(`days must be an integer >= 0, got ${String(input.days)}`);
+  }
+  let bank = input.bank;
+  let tithe = 0;
+  for (let day = 0; day < input.days; day += 1) {
+    const cut = Math.floor((bank * input.taxPercent) / 100);
+    tithe += cut;
+    bank -= cut;
+  }
+  return ok({ bank, tithe });
+}
+
+export function titheDays(input: { lastTitheAtMs: number | null; startedAtMs: number; nowMs: number }): number {
+  assertMs(input.nowMs, 'nowMs');
+  assertMs(input.startedAtMs, 'startedAtMs');
+  if (input.lastTitheAtMs !== null) {
+    assertMs(input.lastTitheAtMs, 'lastTitheAtMs');
+  }
+  const from = input.lastTitheAtMs ?? input.startedAtMs;
+  if (input.nowMs <= from) {
+    return 0;
+  }
+  return Math.floor((input.nowMs - from) / DAY_MS);
+}
+
+export function breachNonAggression(input: { bank: number; nowMs: number }): {
+  bank: number;
+  fine: number;
+  flagUntilMs: number;
+} {
+  assertNonNegativeInteger(input.bank, 'bank');
+  assertMs(input.nowMs, 'nowMs');
+  const fine = Math.min(input.bank, NAP_BREACH_GOLD);
+  return { bank: input.bank - fine, fine: NAP_BREACH_GOLD, flagUntilMs: input.nowMs + NAP_FLAG_MS };
+}
+
+export function allianceFriendlyFire(
+  pacts: readonly GuildPact[],
+  guildId: string,
+  otherGuildId: string,
+  nowMs: number,
+): boolean {
+  return pacts.some(
+    (pact) =>
+      pact.kind === 'alliance' &&
+      pactLive(pact, nowMs) &&
+      pact.guildIds.includes(guildId) &&
+      pact.guildIds.includes(otherGuildId),
+  );
+}
+
+export function napBetween(
+  pacts: readonly GuildPact[],
+  guildId: string,
+  otherGuildId: string,
+  nowMs: number,
+): GuildPact | undefined {
+  return pacts.find(
+    (pact) =>
+      pact.kind === 'non_aggression' &&
+      pactLive(pact, nowMs) &&
+      pact.guildIds.includes(guildId) &&
+      pact.guildIds.includes(otherGuildId),
+  );
+}
+
+export function postMercenary(input: {
+  rank: GuildRank;
+  kind: string;
+  rewardGold: number;
+  bank: number;
+  mercenaryId: string;
+  memberIds: readonly string[];
+  nowMs: number;
+  durationMs: number;
+  nodeId: string;
+}): Result<
+  { kind: MercenaryKind; rewardGold: number; mercenaryId: string; untilMs: number; nodeId: string; durationMs: number },
+  'rank' | 'gold' | 'member' | 'kind'
+> {
+  if (!isRank(input.rank)) {
+    throw new RangeError(`unknown rank: ${String(input.rank)}`);
+  }
+  if (input.rank !== 'leader' && input.rank !== 'council') {
+    return err('rank');
+  }
+  if (!isMercenaryKind(input.kind)) {
+    return err('kind');
+  }
+  if (input.mercenaryId.length === 0 || input.nodeId.length === 0) {
+    return err('member');
+  }
+  if (input.memberIds.includes(input.mercenaryId)) {
+    return err('member');
+  }
+  assertNonNegativeInteger(input.bank, 'bank');
+  assertMs(input.nowMs, 'nowMs');
+  assertNonNegativeInteger(input.durationMs, 'durationMs');
+  if (!Number.isInteger(input.rewardGold) || input.rewardGold <= 0 || input.bank < input.rewardGold) {
+    return err('gold');
+  }
+  if (input.durationMs <= 0) {
+    return err('kind');
+  }
+  return ok({
+    kind: input.kind,
+    rewardGold: input.rewardGold,
+    mercenaryId: input.mercenaryId,
+    untilMs: input.nowMs + input.durationMs,
+    nodeId: input.nodeId,
+    durationMs: input.durationMs,
+  });
+}
+
+export function postPatrolQuest(input: {
+  rank: GuildRank;
+  rewardGold: number;
+  bank: number;
+  nodeId: string;
+  nowMs: number;
+  durationMs: number;
+}): Result<{ rewardGold: number; nodeId: string; untilMs: number; durationMs: number }, 'rank' | 'gold' | 'node'> {
+  if (!isRank(input.rank)) {
+    throw new RangeError(`unknown rank: ${String(input.rank)}`);
+  }
+  if (input.rank !== 'leader' && input.rank !== 'council') {
+    return err('rank');
+  }
+  if (input.nodeId.length === 0) {
+    return err('node');
+  }
+  assertNonNegativeInteger(input.bank, 'bank');
+  assertMs(input.nowMs, 'nowMs');
+  assertNonNegativeInteger(input.durationMs, 'durationMs');
+  if (input.durationMs <= 0) {
+    return err('node');
+  }
+  if (!Number.isInteger(input.rewardGold) || input.rewardGold <= 0 || input.bank < input.rewardGold) {
+    return err('gold');
+  }
+  return ok({
+    rewardGold: input.rewardGold,
+    nodeId: input.nodeId,
+    untilMs: input.nowMs + input.durationMs,
+    durationMs: input.durationMs,
+  });
+}
+
+export type ContractStatus = 'open' | 'complete' | 'failed';
+
+/**
+ * Presence for `durationMs` completes the contract and pays `rewardGold`.
+ * The deadline without that presence fails it and pays nothing.
+ * A bank that can no longer cover the reward fails the contract.
+ */
+export function tickContract(input: {
+  status: ContractStatus;
+  presentMs: number;
+  durationMs: number;
+  untilMs: number;
+  deltaMs: number;
+  present: boolean;
+  nowMs: number;
+  bank: number;
+  rewardGold: number;
+}): { status: ContractStatus; presentMs: number; pay: number } {
+  assertNonNegativeInteger(input.presentMs, 'presentMs');
+  assertNonNegativeInteger(input.durationMs, 'durationMs');
+  assertNonNegativeInteger(input.deltaMs, 'deltaMs');
+  assertNonNegativeInteger(input.bank, 'bank');
+  assertMs(input.nowMs, 'nowMs');
+  assertMs(input.untilMs, 'untilMs');
+  if (input.status !== 'open') {
+    return { status: input.status, presentMs: input.presentMs, pay: 0 };
+  }
+  const presentMs = input.present ? input.presentMs + input.deltaMs : input.presentMs;
+  if (presentMs >= input.durationMs) {
+    if (input.bank < input.rewardGold) {
+      return { status: 'failed', presentMs, pay: 0 };
+    }
+    return { status: 'complete', presentMs, pay: input.rewardGold };
+  }
+  if (input.nowMs >= input.untilMs) {
+    return { status: 'failed', presentMs, pay: 0 };
+  }
+  return { status: 'open', presentMs, pay: 0 };
 }
