@@ -576,6 +576,27 @@ test('ten stepTick calls are deterministic', () => {
   expect(left.tick).toBe(10);
 });
 
+test('an adjacent monster steps in and spends a melee attack on the player', () => {
+  const start = world({
+    entities: [
+      entity({ id: 'lia', hp: 40, maxHp: 40, armor: 0, evasion: 0, cell: { x: 0, y: 0 } }),
+      entity({
+        id: 'rat',
+        monsterId: 'spore_rat',
+        damage: 8,
+        hp: 12,
+        maxHp: 12,
+        cell: { x: 1, y: 0 },
+        accuracyStat: 20,
+        accuracyScore: 20,
+      }),
+    ],
+  });
+  const fought = stepTick(start, [], mulberry32(1));
+  const player = fought.entities.find((entity) => entity.id === 'lia');
+  expect(player?.hp).toBeLessThan(40);
+});
+
 function runWith(start: SimWorld, commands: AttackCommand[]): SimWorld {
   let current = start;
   for (let i = 0; i < 10; i += 1) {

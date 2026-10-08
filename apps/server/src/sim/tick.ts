@@ -220,6 +220,8 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     applyLogout(entity);
   }
 
+  pursuePlayers(entities, rejections, mods, obstacles, nowMs, weather);
+
   const settled = settleMonsters(entities, world.corpses, rng, nowMs, world.lootTables, weather);
   settlePlayers(settled.entities, settled.corpses, nowMs);
   for (const command of ordered) {
@@ -270,6 +272,101 @@ export function snapshotLag(history: readonly SimWorld[], delayMs: number): SimW
     }
   }
   return best ?? oldest;
+}
+
+function dirToward(from: Cell, to: Cell): Dir {
+  const dx = Math.sign(to.x - from.x);
+  const dy = Math.sign(to.y - from.y);
+  if (dx === 0 && dy <= 0) {
+    return 'n';
+  }
+  if (dx > 0 && dy < 0) {
+    return 'ne';
+  }
+  if (dx > 0 && dy === 0) {
+    return 'e';
+  }
+  if (dx > 0 && dy > 0) {
+    return 'se';
+  }
+  if (dx === 0 && dy > 0) {
+    return 's';
+  }
+  if (dx < 0 && dy > 0) {
+    return 'sw';
+  }
+  if (dx < 0 && dy === 0) {
+    return 'w';
+  }
+  return 'nw';
+}
+
+function pursuePlayers(
+  entities: SimEntity[],
+  rejections: SimRejection[],
+  mods: ReadonlyMap<string, StatusMods>,
+  obstacles: readonly Cell[],
+  nowMs: number,
+  weather: WeatherMods,
+): void {
+  const players = entities.filter(
+    (entity) => entity.monsterId === undefined && entity.phase === 'online' && entity.hp > 0,
+  );
+  if (players.length === 0) {
+    return;
+  }
+  for (const monster of entities) {
+    if (monster.monsterId === undefined || monster.hp <= 0 || monster.phase !== 'online') {
+      continue;
+    }
+    let nearest = players[0];
+    if (nearest === undefined) {
+      return;
+    }
+    let best = chebyshev(monster.cell, nearest.cell);
+    for (const player of players) {
+      const distance = chebyshev(monster.cell, player.cell);
+      if (distance < best) {
+        nearest = player;
+        best = distance;
+      }
+    }
+    if (best <= 1) {
+      applyAttack(
+        entities,
+        {
+          type: 'attack',
+          attackerId: monster.id,
+          targetId: nearest.id,
+          weaponDamage: monster.damage ?? monster.baseDamage ?? 2,
+          odCost: 1,
+          range: 1,
+          los: true,
+          aim: null,
+          melee: true,
+          friendlyFire: false,
+          sameGroup: false,
+          pvpOpen: true,
+          safeZone: false,
+          issuedAtMs: nowMs,
+        },
+        rejections,
+        mods,
+        nowMs,
+        weather,
+      );
+      continue;
+    }
+    const dir = dirToward(monster.cell, nearest.cell);
+    const next = step(monster.cell, dir);
+    const occupied = entities.some(
+      (entity) => entity.id !== monster.id && entity.cell.x === next.x && entity.cell.y === next.y,
+    );
+    const blocked = obstacles.some((obstacle) => obstacle.x === next.x && obstacle.y === next.y);
+    if (!occupied && !blocked) {
+      monster.cell = next;
+    }
+  }
 }
 
 function settleMonsters(
