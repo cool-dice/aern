@@ -442,6 +442,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const purifyingIds = new Set<string>();
   const lfgRoles = new Map<string, PartyRole>();
   const upyMemory = new Map<string, { lastLessonMs: Partial<Record<LanguageId, number>>; onlineMs: number }>();
+  /** Linguistic ruins are one-time per character, site, and language. The domain gain has no attempt counter. */
+  const ruinsCleared = new Set<string>();
   let clockPhase: 'day' | 'night' = dayPhase(0);
   const pathUsed = new Map<string, Set<string>>();
   const pvpKillAt = new Map<string, number>();
@@ -961,6 +963,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     removeWornRelic,
     matchParty,
     teachLanguage,
+    studyBook,
+    studyRuins,
+    studyInteraction,
     markPathUsed,
     recoverPath,
     breakPurity,
@@ -3701,6 +3706,145 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return {
       ok: true,
       value: { language, upy: gained.value.state.values[language], gold: gained.value.gold },
+    };
+  }
+
+  /**
+   * Artifact 3 §5.2. A book is `book_<language>`, so the language is the item.
+   * `gainUpy` adds 3 and reports `consumedBook`. It does not wait 10 minutes, and this route does not invent that wait.
+   */
+  async function studyBook(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const language = typeof body.language === 'string' ? body.language : '';
+    if (characterId.length === 0 || !isLanguage(language)) {
+      return { ok: false, code: 'language' };
+    }
+    const itemId = `book_${language}`;
+    const wallet = repos.economy.getCharacter(characterId);
+    const stack = wallet?.items[itemId];
+    if (wallet === undefined || stack === undefined || stack.qty < 1) {
+      return { ok: false, code: 'book' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const memory = upyMemory.get(characterId) ?? { lastLessonMs: {}, onlineMs: 0 };
+    const gained = gainUpy({
+      state: { values: { ...record.languages }, lastLessonMs: { ...memory.lastLessonMs } },
+      language,
+      gain: 'book',
+      nowMs: clock.now(),
+      onlineMsSinceLastPassive: memory.onlineMs,
+      gold: wallet.gold,
+    });
+    if (!gained.ok) {
+      return { ok: false, code: gained.code };
+    }
+    memory.lastLessonMs = gained.value.state.lastLessonMs;
+    upyMemory.set(characterId, memory);
+    await repos.characters.update({ ...record, languages: { ...gained.value.state.values } });
+    const items = { ...wallet.items };
+    if (!gained.value.consumedBook) {
+      return { ok: false, code: 'book' };
+    }
+    if (stack.qty === 1) {
+      delete items[itemId];
+    } else {
+      items[itemId] = { ...stack, qty: stack.qty - 1 };
+    }
+    repos.economy.saveCharacter({ ...wallet, gold: gained.value.gold, items });
+    return {
+      ok: true,
+      value: { language, upy: gained.value.state.values[language], itemId, qty: items[itemId]?.qty ?? 0 },
+    };
+  }
+
+  /**
+   * Artifact 3 §5.3. Success is +10 and failure is +1, once per ruins id.
+   * `gainUpy` does not count the 3 symbol-matching attempts, so this route does not invent that counter or a lockout.
+   */
+  async function studyRuins(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const language = typeof body.language === 'string' ? body.language : '';
+    const ruinsId = typeof body.ruinsId === 'string' ? body.ruinsId : '';
+    if (characterId.length === 0 || !isLanguage(language) || ruinsId.length === 0) {
+      return { ok: false, code: 'language' };
+    }
+    const key = `${characterId}\0${ruinsId}\0${language}`;
+    if (ruinsCleared.has(key)) {
+      return { ok: false, code: 'once' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const memory = upyMemory.get(characterId) ?? { lastLessonMs: {}, onlineMs: 0 };
+    const gold = repos.economy.getCharacter(characterId)?.gold ?? 0;
+    const gained = gainUpy({
+      state: { values: { ...record.languages }, lastLessonMs: { ...memory.lastLessonMs } },
+      language,
+      gain: body.success === true ? 'ruins_success' : 'ruins_fail',
+      nowMs: clock.now(),
+      onlineMsSinceLastPassive: memory.onlineMs,
+      gold,
+    });
+    if (!gained.ok) {
+      return { ok: false, code: gained.code };
+    }
+    ruinsCleared.add(key);
+    memory.lastLessonMs = gained.value.state.lastLessonMs;
+    upyMemory.set(characterId, memory);
+    await repos.characters.update({ ...record, languages: { ...gained.value.state.values } });
+    return {
+      ok: true,
+      value: {
+        language,
+        ruinsId,
+        upy: gained.value.state.values[language],
+        gain: body.success === true ? 'ruins_success' : 'ruins_fail',
+      },
+    };
+  }
+
+  /**
+   * Artifact 3 §4. A successful deal or quest is +2. The session posts the language of that exchange.
+   */
+  async function studyInteraction(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const language = typeof body.language === 'string' ? body.language : '';
+    if (characterId.length === 0 || !isLanguage(language)) {
+      return { ok: false, code: 'language' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const memory = upyMemory.get(characterId) ?? { lastLessonMs: {}, onlineMs: 0 };
+    const gold = repos.economy.getCharacter(characterId)?.gold ?? 0;
+    const gained = gainUpy({
+      state: { values: { ...record.languages }, lastLessonMs: { ...memory.lastLessonMs } },
+      language,
+      gain: 'interaction',
+      nowMs: clock.now(),
+      onlineMsSinceLastPassive: memory.onlineMs,
+      gold,
+    });
+    if (!gained.ok) {
+      return { ok: false, code: gained.code };
+    }
+    memory.lastLessonMs = gained.value.state.lastLessonMs;
+    upyMemory.set(characterId, memory);
+    await repos.characters.update({ ...record, languages: { ...gained.value.state.values } });
+    return {
+      ok: true,
+      value: { language, upy: gained.value.state.values[language], gain: 'interaction' },
     };
   }
 
@@ -6821,6 +6965,9 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/relic/remove', action: 'relic_remove' },
   { path: '/party/match', action: 'party_match' },
   { path: '/language/teach', action: 'language_teach' },
+  { path: '/language/book', action: 'language_book' },
+  { path: '/language/ruins', action: 'language_ruins' },
+  { path: '/language/interact', action: 'language_interact' },
   { path: '/path/use', action: 'path_use' },
   { path: '/path/recover', action: 'path_recover' },
   { path: '/core/unequip', action: 'core_unequip' },

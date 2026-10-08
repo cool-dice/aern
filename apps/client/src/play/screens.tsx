@@ -82,6 +82,9 @@ export function PlayPanels({
   onRemoveRelic,
   onMatchmake,
   onTeach,
+  onStudyBook,
+  onStudyRuins,
+  onStudyInteraction,
   onPathUse,
   onRecoverPath,
   onUnequipCore,
@@ -129,6 +132,9 @@ export function PlayPanels({
   onRemoveRelic?: () => void;
   onMatchmake?: () => void;
   onTeach?: () => void;
+  onStudyBook?: () => void;
+  onStudyRuins?: () => void;
+  onStudyInteraction?: () => void;
   onPathUse?: () => void;
   onRecoverPath?: () => void;
   onUnequipCore?: () => void;
@@ -293,6 +299,15 @@ export function PlayPanels({
         </button>
         <button type="button" data-language="teach" onClick={() => onTeach?.()}>
           lesson
+        </button>
+        <button type="button" data-language="book" onClick={() => onStudyBook?.()}>
+          book
+        </button>
+        <button type="button" data-language="ruins" onClick={() => onStudyRuins?.()}>
+          ruins
+        </button>
+        <button type="button" data-language="interact" onClick={() => onStudyInteraction?.()}>
+          talk
         </button>
         <button type="button" data-party="match" onClick={() => onMatchmake?.()}>
           group

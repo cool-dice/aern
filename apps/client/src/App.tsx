@@ -36,6 +36,9 @@ import {
   postRemoveRelic,
   postMatchmake,
   postTeach,
+  postStudyBook,
+  postStudyRuins,
+  postStudyInteraction,
   postPathUse,
   postRecoverPath,
   postUnequipCore,
@@ -879,6 +882,44 @@ export function App() {
                 return;
               }
               void postTeach({
+                server: SERVER,
+                characterId,
+                language: 'common_dark',
+                store: plan.store,
+              });
+            }}
+            onStudyBook={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postStudyBook({
+                server: SERVER,
+                characterId,
+                language: 'common_dark',
+                store: plan.store,
+              });
+            }}
+            onStudyRuins={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postStudyRuins({
+                server: SERVER,
+                characterId,
+                language: 'ancient',
+                ruinsId: 'ruins_lexicon',
+                success: true,
+                store: plan.store,
+              });
+            }}
+            onStudyInteraction={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postStudyInteraction({
                 server: SERVER,
                 characterId,
                 language: 'common_dark',

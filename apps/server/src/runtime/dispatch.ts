@@ -178,6 +178,9 @@ export interface LivePorts {
   removeWornRelic(body: Record<string, unknown>): Promise<LiveResult>;
   matchParty(body: Record<string, unknown>): Promise<LiveResult>;
   teachLanguage(body: Record<string, unknown>): Promise<LiveResult>;
+  studyBook(body: Record<string, unknown>): Promise<LiveResult>;
+  studyRuins(body: Record<string, unknown>): Promise<LiveResult>;
+  studyInteraction(body: Record<string, unknown>): Promise<LiveResult>;
   markPathUsed(body: Record<string, unknown>): LiveResult;
   recoverPath(body: Record<string, unknown>): Promise<LiveResult>;
   breakPurity(body: Record<string, unknown>): Promise<LiveResult>;
@@ -268,6 +271,9 @@ const LIVE_ACTIONS = new Set([
   'relic_remove',
   'party_match',
   'language_teach',
+  'language_book',
+  'language_ruins',
+  'language_interact',
   'path_use',
   'path_recover',
   'purity_break',
@@ -425,6 +431,12 @@ export async function runLive(
       return ports.matchParty(body);
     case 'language_teach':
       return ports.teachLanguage(body);
+    case 'language_book':
+      return ports.studyBook(body);
+    case 'language_ruins':
+      return ports.studyRuins(body);
+    case 'language_interact':
+      return ports.studyInteraction(body);
     case 'path_use':
       return ports.markPathUsed(body);
     case 'path_recover':

@@ -717,6 +717,67 @@ export async function postRecoverPath(input: {
   });
 }
 
+/** Posts `/language/book`. The stack id is `book_<language>`. Reading consumes it and adds 3 UPY. */
+export async function postStudyBook(input: {
+  server: string;
+  characterId: string;
+  language: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/language/book',
+    body: { characterId: input.characterId, language: input.language },
+    store: input.store,
+    log: 'language-book',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/language/ruins`. Success is +10 and a miss is +1, once per ruins id. */
+export async function postStudyRuins(input: {
+  server: string;
+  characterId: string;
+  language: string;
+  ruinsId: string;
+  success: boolean;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/language/ruins',
+    body: {
+      characterId: input.characterId,
+      language: input.language,
+      ruinsId: input.ruinsId,
+      success: input.success,
+    },
+    store: input.store,
+    log: 'language-ruins',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/language/interact`. A successful deal or quest adds 2 UPY. */
+export async function postStudyInteraction(input: {
+  server: string;
+  characterId: string;
+  language: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/language/interact',
+    body: { characterId: input.characterId, language: input.language },
+    store: input.store,
+    log: 'language-interact',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/language/teach`. A lesson is 100 gold, caps at 80, and waits 24 hours. */
 export async function postTeach(input: {
   server: string;
