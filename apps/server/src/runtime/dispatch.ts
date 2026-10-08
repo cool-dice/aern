@@ -1,6 +1,7 @@
 import { nnUsed, type Program, type BuildState } from '@rift/domain/build';
 import { sellerProceeds } from '@rift/domain/economy';
-import { WAR_GOLD } from '@rift/domain/guild';
+import { doctrineMultiplier, WAR_GOLD } from '@rift/domain/guild';
+import type { DoctrineId } from '@rift/domain/guild';
 import { NODE_IDS, type NodeId, type ToolId, type ToolKind } from '@rift/domain/gathering';
 import type { GuildRank } from '@rift/domain/guild';
 import type { KeeperKind } from '@rift/domain/hack';
@@ -101,6 +102,10 @@ export interface LivePorts {
   noteTurnover(amount: number): void;
   sampleBalance(): Promise<void>;
   logWithdrawal(guildId: string, characterId: string, amount: number): void;
+  readBankLog(body: Record<string, unknown>): LiveResult;
+  changeDoctrine(body: Record<string, unknown>): Promise<LiveResult>;
+  postBoardContract(body: Record<string, unknown>): Promise<LiveResult>;
+  memberDoctrine(characterId: string): DoctrineId | null;
   holdWithdrawal(input: {
     guildId: string;
     characterId: string;
@@ -223,6 +228,9 @@ const LIVE_ACTIONS = new Set([
   'guild_deposit',
   'guild_review',
   'guild_ban',
+  'guild_doctrine',
+  'guild_bank',
+  'contract_post',
   'node_strike',
   'coalition_say',
 ]);
@@ -343,6 +351,12 @@ export async function runLive(
       return ports.reviewRewardFreeze(body);
     case 'guild_ban':
       return ports.banFounder(body);
+    case 'guild_doctrine':
+      return ports.changeDoctrine(body);
+    case 'guild_bank':
+      return ports.readBankLog(body);
+    case 'contract_post':
+      return ports.postBoardContract(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':
@@ -379,7 +393,10 @@ async function gather(body: Record<string, unknown>, ports: LivePorts): Promise<
     return { ok: false, code: rolled.code };
   }
   const chest = ports.addNodeChest(characterId, rolled.value.tax);
-  const seconds = weatheredGatherSeconds(rolled.value.seconds, numberOf(body.technique, 5), tool, true, ports.weatherSpeed());
+  let seconds = weatheredGatherSeconds(rolled.value.seconds, numberOf(body.technique, 5), tool, true, ports.weatherSpeed());
+  if (ports.memberDoctrine(characterId) === 'labor') {
+    seconds = Math.max(1, Math.floor(seconds / doctrineMultiplier('labor')));
+  }
   return { ok: true, value: { ...rolled.value, seconds, chest } };
 }
 

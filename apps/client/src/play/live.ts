@@ -301,21 +301,114 @@ export async function declareWar(input: {
   });
 }
 
-/** Posts `/guild/withdraw`. `GuildService.withdraw` is the live route. */
+/**
+ * Posts `/guild/withdraw`. Above 10% of `bank` the body includes `leaderConfirm`
+ * and `councilConfirms`. Above 25% it also includes `councilVote`. A large
+ * withdrawal is not sent as `amount` alone.
+ */
 export async function withdrawBank(input: {
   server: string;
   guildId: string;
   characterId: string;
   amount: number;
+  bank?: number;
+  leaderConfirm?: boolean;
+  councilConfirms?: number;
+  councilVote?: boolean;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  const over10 = input.bank !== undefined && input.amount > Math.floor((input.bank * 10) / 100);
+  const over25 = input.bank !== undefined && input.amount > Math.floor((input.bank * 25) / 100);
+  return postService({
+    server: input.server,
+    path: '/guild/withdraw',
+    body: {
+      guildId: input.guildId,
+      characterId: input.characterId,
+      amount: input.amount,
+      ...(over10
+        ? {
+            leaderConfirm: input.leaderConfirm ?? true,
+            councilConfirms: input.councilConfirms ?? 2,
+          }
+        : {}),
+      ...(over25 ? { councilVote: input.councilVote ?? true } : {}),
+    },
+    store: input.store,
+    log: 'withdraw',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/guild/doctrine`. Changing doctrine needs the leader and the council. */
+export async function postDoctrine(input: {
+  server: string;
+  guildId: string;
+  characterId: string;
+  doctrine: string;
+  store: ClientStore;
+  leaderConfirm?: boolean;
+  councilConfirms?: number;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/guild/doctrine',
+    body: {
+      guildId: input.guildId,
+      characterId: input.characterId,
+      doctrine: input.doctrine,
+      leaderConfirm: input.leaderConfirm ?? true,
+      councilConfirms: input.councilConfirms ?? 1,
+    },
+    store: input.store,
+    log: 'doctrine',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/guild/bank` and stores the operation rows for a guild member. */
+export async function readBankLog(input: {
+  server: string;
+  guildId: string;
+  characterId: string;
   store: ClientStore;
   fetchImpl?: FetchLike;
 }): Promise<LiveResponse> {
   return postService({
     server: input.server,
-    path: '/guild/withdraw',
-    body: { guildId: input.guildId, characterId: input.characterId, amount: input.amount },
+    path: '/guild/bank',
+    body: { guildId: input.guildId, characterId: input.characterId },
     store: input.store,
-    log: 'withdraw',
+    log: 'bank-log',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/contract`. The board is a hub or a city. A kill below level 10 is refused. */
+export async function postContractBoard(input: {
+  server: string;
+  characterId: string;
+  type: string;
+  rewardGold: number;
+  targetLevel: number;
+  store: ClientStore;
+  targetIsMember?: boolean;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/contract',
+    body: {
+      characterId: input.characterId,
+      type: input.type,
+      rewardGold: input.rewardGold,
+      targetLevel: input.targetLevel,
+      targetIsMember: input.targetIsMember ?? false,
+    },
+    store: input.store,
+    log: 'contract',
     ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
   });
 }

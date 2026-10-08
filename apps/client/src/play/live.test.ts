@@ -10,10 +10,13 @@ import {
   declareWar,
   enterDungeon,
   grantNode,
+  postContractBoard,
+  postDoctrine,
   postGuildEmblem,
   postGuildQuest,
   postMercenary,
   postPatrol,
+  readBankLog,
   rentStorage,
   setCityFee,
   setNodeAccess,
@@ -40,6 +43,16 @@ test('the play screen posts craft and trade through App', () => {
   expect(app).toContain('rentStorage(');
   expect(app).toContain('declareWar(');
   expect(app).toContain('withdrawBank(');
+  expect(app).toContain('amount: 26');
+  expect(app).toContain('bank: 100');
+  expect(app).toContain('postDoctrine(');
+  expect(app).toContain('leaderConfirm: true');
+  expect(app).toContain('councilConfirms: 1');
+  expect(app).toContain('readBankLog(');
+  expect(app).toContain('postContractBoard(');
+  expect(app).toContain('onDoctrine=');
+  expect(app).toContain('onBankLog=');
+  expect(app).toContain('onContract=');
   expect(app).toContain('postMercenary(');
   expect(app).toContain("kind: 'escort'");
   expect(app).toContain('destinationId:');
@@ -66,6 +79,9 @@ test('the play screen posts craft and trade through App', () => {
   expect(panels).toContain('data-vote="choice"');
   expect(panels).toContain('data-emblem="set"');
   expect(panels).toContain('data-guild-quest="post"');
+  expect(panels).toContain('data-doctrine="set"');
+  expect(panels).toContain('data-bank="log"');
+  expect(panels).toContain('data-contract="post"');
   expect(app).toContain('onChoice=');
   expect(app).toContain('onEmblem=');
 });
@@ -418,4 +434,106 @@ test('an escort posts the destination the live route already accepts', async () 
       },
     },
   ]);
+});
+
+test('a large withdrawal posts the 10% and 25% confirmations', async () => {
+  const store = createClientStore();
+  const calls: { url: string; body: Record<string, unknown> }[] = [];
+  const fetchImpl = async (url: string, init: { method: string; headers: Record<string, string>; body: string }) => {
+    calls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
+    return { ok: true, json: async () => ({ bank: 0 }) };
+  };
+  await withdrawBank({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    amount: 1,
+    store,
+    fetchImpl,
+  });
+  await withdrawBank({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    amount: 11,
+    bank: 100,
+    store,
+    fetchImpl,
+  });
+  await withdrawBank({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    amount: 26,
+    bank: 100,
+    store,
+    fetchImpl,
+  });
+  expect(calls[0]?.body).toEqual({ guildId: 'wolves', characterId: 'lia', amount: 1 });
+  expect(calls[1]?.body).toEqual({
+    guildId: 'wolves',
+    characterId: 'lia',
+    amount: 11,
+    leaderConfirm: true,
+    councilConfirms: 2,
+  });
+  expect(calls[1]?.body.councilVote).toBeUndefined();
+  expect(calls[2]?.body).toEqual({
+    guildId: 'wolves',
+    characterId: 'lia',
+    amount: 26,
+    leaderConfirm: true,
+    councilConfirms: 2,
+    councilVote: true,
+  });
+});
+
+test('the play session posts a doctrine, the bank log, and a contract', async () => {
+  const store = createClientStore();
+  const calls: { url: string; body: Record<string, unknown> }[] = [];
+  const fetchImpl = async (url: string, init: { method: string; headers: Record<string, string>; body: string }) => {
+    calls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
+    return { ok: true, json: async () => ({ ok: true }) };
+  };
+  await postDoctrine({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    doctrine: 'fury',
+    store,
+    fetchImpl,
+  });
+  await readBankLog({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    store,
+    fetchImpl,
+  });
+  await postContractBoard({
+    server: 'http://game.example',
+    characterId: 'lia',
+    type: 'kill',
+    rewardGold: 100,
+    targetLevel: 10,
+    store,
+    fetchImpl,
+  });
+  expect(calls.map((call) => call.url)).toEqual([
+    'http://game.example/guild/doctrine',
+    'http://game.example/guild/bank',
+    'http://game.example/contract',
+  ]);
+  expect(calls[0]?.body).toMatchObject({
+    doctrine: 'fury',
+    leaderConfirm: true,
+    councilConfirms: 1,
+  });
+  expect(calls[1]?.body).toEqual({ guildId: 'wolves', characterId: 'lia' });
+  expect(calls[2]?.body).toMatchObject({
+    type: 'kill',
+    rewardGold: 100,
+    targetLevel: 10,
+    targetIsMember: false,
+  });
 });

@@ -101,6 +101,11 @@ import {
   REVOTE_MS,
   acceptRewardReview,
   applyCreationBan,
+  applyDoctrine,
+  doctrineMultiplier,
+  DOCTRINE_RESOURCES,
+  postContract,
+  setDoctrine,
   COLLUSION_BAN_MS,
   reviewSection11,
   foundersConfirmed,
@@ -123,6 +128,10 @@ import {
   vassalMayDeclare,
   warPhase,
   type ContractStatus,
+  type ContractType,
+  type DoctrineAffect,
+  type DoctrineId,
+  type DoctrineResource,
   type GuildPact,
   type GuildRank,
   type MercenaryKind,
@@ -378,7 +387,30 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const BALANCE_DAY_MS = 24 * 60 * 60 * 1000;
   const settledReviewed = new Set<string>();
   const officeHeldAt = new Map<string, { atMs: number; guildId: string }>();
-  const bankLog: { guildId: string; characterId: string; amount: number; atMs: number }[] = [];
+  const bankLog: {
+    guildId: string;
+    characterId: string;
+    amount: number;
+    atMs: number;
+    op: string;
+    resourceId?: string;
+    resourceAmount?: number;
+    itemId?: string;
+    itemAmount?: number;
+  }[] = [];
+  const guildDoctrines = new Map<
+    string,
+    { doctrine: DoctrineId; changedAtMs: number; affects: DoctrineAffect; multiplier: number }
+  >();
+  let boardContracts: {
+    id: string;
+    type: ContractType;
+    rewardGold: number;
+    posterId: string;
+    guildId: string | null;
+    anonymous: boolean;
+    atMs: number;
+  }[] = [];
   let abuse: {
     reasons: string[];
     frozen: string[];
@@ -856,6 +888,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     noteTurnover,
     sampleBalance,
     logWithdrawal,
+    readBankLog,
+    changeDoctrine,
+    postBoardContract,
+    memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
     screenGuildCreate,
@@ -1201,6 +1237,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const deposited = depositBank(guild.bank, amount);
     await repos.guilds.saveGuild({ ...guild, bank: deposited.bank });
     noteTurnover(amount);
+    logBank(guildId, '', deposited.bank - guild.bank, 'credit');
   }
 
   function applyOwnedCityFees(): void {
@@ -1894,6 +1931,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       return { ok: false, code: registered.code };
     }
     await repos.guilds.saveGuild({ ...guild, bank: registered.value.gold });
+    logBank(guildId, characterId, guild.bank - registered.value.gold, 'contend');
     contenders = [
       ...contenders.filter((row) => row.warId !== warId || row.guildId !== guildId),
       { warId, guildId },
@@ -2061,6 +2099,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         const guild = await repos.guilds.findGuild(quest.guildId);
         if (guild !== null && guild.bank >= ticked.pay) {
           await repos.guilds.saveGuild({ ...guild, bank: guild.bank - ticked.pay });
+          logBank(quest.guildId, quest.assigneeId, ticked.pay, 'quest');
           const wallet = repos.economy.getCharacter(quest.assigneeId);
           if (wallet !== null) {
             repos.economy.saveCharacter({ ...wallet, gold: wallet.gold + ticked.pay });
@@ -2150,6 +2189,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         const guild = await repos.guilds.findGuild(contract.guildId);
         if (guild !== null) {
           await repos.guilds.saveGuild({ ...guild, bank: guild.bank - ticked.pay });
+          logBank(contract.guildId, contract.mercenaryId, ticked.pay, 'mercenary');
         }
         const wallet = repos.economy.getCharacter(contract.mercenaryId);
         if (wallet !== null) {
@@ -2178,6 +2218,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         const guild = await repos.guilds.findGuild(quest.guildId);
         if (guild !== null) {
           await repos.guilds.saveGuild({ ...guild, bank: guild.bank - ticked.pay });
+          logBank(quest.guildId, quest.assigneeId ?? '', ticked.pay, 'patrol');
         }
         const wallet = repos.economy.getCharacter(quest.assigneeId);
         if (wallet !== null) {
@@ -2235,6 +2276,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         continue;
       }
       await repos.guilds.saveGuild({ ...vassal, bank: tithe.value.bank });
+      logBank(pact.vassalId, '', vassal.bank - tithe.value.bank, 'tithe');
       await creditGuildBank(pact.suzerainId, tithe.value.tithe);
       next.push({ ...pact, lastTitheAtMs: now });
     }
@@ -2324,6 +2366,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     const breached = breachNonAggression({ bank: guild.bank, nowMs: clock.now() });
     await repos.guilds.saveGuild({ ...guild, bank: breached.bank });
+    logBank(guildId, '', guild.bank - breached.bank, 'breach');
   }
 
   function contenderRows(): { cityId: string; guildId: string; warId: string }[] {
@@ -2575,6 +2618,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       return { ok: false, code: declared.code };
     }
     await repos.guilds.saveGuild({ ...guild, bank: declared.value.gold });
+    logBank(attackerGuildId, '', guild.bank - declared.value.gold, 'war');
     const warId = nextDiplomacyId('war');
     await repos.guilds.saveWar({
       id: warId,
@@ -2668,6 +2712,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
       const fined = failSuzerainDefense({ bank: guild.bank, nowMs: now });
       await repos.guilds.saveGuild({ ...guild, bank: fined.bank });
+      logBank(duty.suzerainId, '', guild.bank - fined.bank, 'fine');
       suzerainFlags = [...suzerainFlags, { guildId: duty.suzerainId, untilMs: fined.flagUntilMs, fine: fined.fine }];
       next.push({ ...duty, penalized: true });
     }
@@ -2718,8 +2763,253 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return officeHeldAt.get(characterId)?.atMs ?? null;
   }
 
+  function logBank(
+    guildId: string,
+    characterId: string,
+    amount: number,
+    op: string,
+    extra?: { resourceId?: string; resourceAmount?: number; itemId?: string; itemAmount?: number },
+  ): void {
+    bankLog.push({
+      guildId,
+      characterId,
+      amount,
+      atMs: clock.now(),
+      op,
+      ...(extra?.resourceId !== undefined
+        ? { resourceId: extra.resourceId, resourceAmount: extra.resourceAmount ?? 0 }
+        : {}),
+      ...(extra?.itemId !== undefined ? { itemId: extra.itemId, itemAmount: extra.itemAmount ?? 0 } : {}),
+    });
+  }
+
   function logWithdrawal(guildId: string, characterId: string, amount: number): void {
-    bankLog.push({ guildId, characterId, amount, atMs: clock.now() });
+    logBank(guildId, characterId, amount, 'withdraw');
+  }
+
+  function bankOperations(guildId: string) {
+    return bankLog.filter((row) => row.guildId === guildId);
+  }
+
+  function readBankLog(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    if (guildId.length === 0 || characterId.length === 0) {
+      return { ok: false, code: 'member' };
+    }
+    if (memberRank(guildId, characterId) === null) {
+      return { ok: false, code: 'member' };
+    }
+    return { ok: true, value: { operations: bankOperations(guildId) } };
+  }
+
+  function doctrineStocks(guildId: string): Record<DoctrineResource, number> {
+    const stocks = resourceKindStock.get(guildId);
+    const resources: Record<DoctrineResource, number> = {
+      metal: 0,
+      leather: 0,
+      wood: 0,
+      crystals: 0,
+      titanium: 0,
+    };
+    for (const key of DOCTRINE_RESOURCES) {
+      resources[key] = stocks?.get(key) ?? 0;
+    }
+    return resources;
+  }
+
+  function memberDoctrine(characterId: string): DoctrineId | null {
+    const guildId = guildOf.get(characterId);
+    if (guildId === undefined) {
+      return null;
+    }
+    return guildDoctrines.get(guildId)?.doctrine ?? null;
+  }
+
+  function stampGuildDoctrines(): void {
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) => stampDoctrine(entity)),
+    };
+  }
+
+  function stampDoctrine(entity: SimEntity): SimEntity {
+    if (entity.monsterId !== undefined) {
+      return entity;
+    }
+    const doctrine =
+      entity.guildId === undefined ? undefined : guildDoctrines.get(entity.guildId)?.doctrine;
+    let next = entity;
+    if (entity.doctrineBaseMaxHp !== undefined && doctrine !== 'fortitude') {
+      next = {
+        ...entity,
+        maxHp: entity.doctrineBaseMaxHp,
+        hp: Math.min(entity.hp, entity.doctrineBaseMaxHp),
+      };
+      delete next.doctrineBaseMaxHp;
+      delete next.doctrineId;
+    }
+    if (doctrine === undefined) {
+      if (next.doctrineId === undefined) {
+        return next;
+      }
+      const cleared = { ...next };
+      delete cleared.doctrineId;
+      return cleared;
+    }
+    if (doctrine === 'fortitude') {
+      const base = next.doctrineBaseMaxHp ?? next.maxHp;
+      const scaled = applyDoctrine('fortitude', base);
+      const ratio = next.maxHp > 0 ? next.hp / next.maxHp : 1;
+      return {
+        ...next,
+        doctrineId: doctrine,
+        doctrineBaseMaxHp: base,
+        maxHp: scaled,
+        hp: Math.max(0, Math.floor(scaled * ratio)),
+      };
+    }
+    return { ...next, doctrineId: doctrine };
+  }
+
+  async function changeDoctrine(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const next = typeof body.doctrine === 'string' ? body.doctrine : '';
+    const guild = await repos.guilds.findGuild(guildId);
+    const rank = memberRank(guildId, characterId);
+    if (guild === null || rank === null || !guild.memberIds.includes(characterId)) {
+      return { ok: false, code: 'member' };
+    }
+    if (rank !== 'leader' && rank !== 'council' && rank !== 'veteran') {
+      return { ok: false, code: 'rank' };
+    }
+    const leaderConfirm = body.leaderConfirm === true;
+    const posted = body.councilConfirms;
+    const seated = councilSize(guildId);
+    if (
+      !leaderConfirm ||
+      typeof posted !== 'number' ||
+      !Number.isInteger(posted) ||
+      posted < 1 ||
+      posted > seated
+    ) {
+      return { ok: false, code: 'confirm' };
+    }
+    const current = guildDoctrines.get(guildId) ?? null;
+    const changed = setDoctrine({
+      current: current?.doctrine ?? null,
+      next: next as DoctrineId,
+      changedAtMs: current?.changedAtMs ?? null,
+      nowMs: clock.now(),
+      gold: guild.bank,
+      resources: doctrineStocks(guildId),
+    });
+    if (!changed.ok) {
+      return { ok: false, code: changed.code };
+    }
+    const stocks = new Map(resourceKindStock.get(guildId) ?? []);
+    for (const key of DOCTRINE_RESOURCES) {
+      stocks.set(key, changed.value.resources[key]);
+    }
+    resourceKindStock.set(guildId, stocks);
+    let total = 0;
+    for (const qty of stocks.values()) {
+      total += qty;
+    }
+    guildResources.set(guildId, total);
+    const spentGold = guild.bank - changed.value.gold;
+    await repos.guilds.saveGuild({ ...guild, bank: changed.value.gold });
+    if (spentGold > 0) {
+      logBank(guildId, characterId, spentGold, 'doctrine');
+      noteTurnover(spentGold);
+    }
+    guildDoctrines.set(guildId, {
+      doctrine: changed.value.doctrine,
+      changedAtMs: changed.value.changedAtMs,
+      affects: changed.value.affects,
+      multiplier: changed.value.multiplier,
+    });
+    stampGuildDoctrines();
+    return {
+      ok: true,
+      value: {
+        doctrine: changed.value.doctrine,
+        affects: changed.value.affects,
+        multiplier: changed.value.multiplier,
+        changedAtMs: changed.value.changedAtMs,
+        bank: changed.value.gold,
+      },
+    };
+  }
+
+  async function postBoardContract(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const type = typeof body.type === 'string' ? body.type : '';
+    if (characterId.length === 0 || typeof body.rewardGold !== 'number') {
+      return { ok: false, code: 'gold' };
+    }
+    const nodeId = characterNode(characterId);
+    const kind =
+      nodeId === undefined
+        ? ''
+        : (simWorld.geography?.nodes.find((node) => node.id === nodeId)?.kind ?? '');
+    if (kind !== 'city' && kind !== 'hub') {
+      return { ok: false, code: 'place' };
+    }
+    const posted = postContract({
+      type: type as ContractType,
+      rewardGold: body.rewardGold,
+      ...(typeof body.targetLevel === 'number' ? { targetLevel: body.targetLevel } : {}),
+      ...(body.targetIsMember === true ? { targetIsMember: true } : { targetIsMember: false }),
+    });
+    if (!posted.ok) {
+      return { ok: false, code: posted.code };
+    }
+    const id = nextDiplomacyId('contract');
+    const row = {
+      id,
+      type: posted.value.type,
+      rewardGold: posted.value.rewardGold,
+      posterId: characterId,
+      guildId: guildOf.get(characterId) ?? null,
+      anonymous: body.anonymous === true,
+      atMs: clock.now(),
+    };
+    boardContracts = [...boardContracts, row];
+    return { ok: true, value: { ...row, countedInQuests: false } };
+  }
+
+  function visibleContracts(focus: SimEntity | undefined) {
+    return boardContracts.flatMap((contract) => {
+      if (contract.type === 'kill') {
+        if (focus === undefined) {
+          return [];
+        }
+        const sameGuild = contract.guildId !== null && focus.guildId === contract.guildId;
+        const soloPoster = contract.guildId === null && focus.id === contract.posterId;
+        if (!sameGuild && !soloPoster) {
+          return [];
+        }
+      }
+      return [
+        {
+          id: contract.id,
+          type: contract.type,
+          rewardGold: contract.rewardGold,
+          guildId: contract.guildId,
+          posterId: contract.anonymous ? '' : contract.posterId,
+          anonymous: contract.anonymous,
+          atMs: contract.atMs,
+        },
+      ];
+    });
   }
 
   function noteWarRoster(): void {
@@ -2866,13 +3156,21 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return { ok: true };
   }
 
-  function registerAtHall(initiatorId: string, place: string | undefined): { ok: boolean; code?: string } {
+  function registerAtHall(initiatorId: string, claimed: string | undefined): { ok: boolean; code?: string } {
     const nodeId = characterNode(initiatorId);
-    const kind =
-      nodeId === undefined
-        ? ''
-        : (simWorld.geography?.nodes.find((node) => node.id === nodeId)?.kind ?? '');
-    const registered = registrationPlace(place === undefined ? { nodeKind: kind } : { nodeKind: kind, place });
+    const node =
+      nodeId === undefined ? undefined : simWorld.geography?.nodes.find((row) => row.id === nodeId);
+    const kind = node?.kind ?? '';
+    const graphPlace = node?.place;
+    if (claimed !== undefined && graphPlace !== claimed) {
+      return { ok: false, code: 'place' };
+    }
+    const place =
+      graphPlace === 'hall' || graphPlace === 'registrar' ? graphPlace : kind === 'city' ? 'city' : '';
+    if (place !== 'hall' && place !== 'registrar' && place !== 'city') {
+      return { ok: false, code: 'place' };
+    }
+    const registered = registrationPlace({ nodeKind: 'city', place });
     if (!registered.ok) {
       return { ok: false, code: registered.code };
     }
@@ -3748,6 +4046,15 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       noteKind(itemKindLedgers, guildId, itemId, characterId, itemQtyIn);
       itemContributed = itemQtyIn;
     }
+    logBank(guildId, characterId, entered, 'deposit', {
+      ...(resourceContributed > 0
+        ? {
+            resourceId: typeof body.resourceId === 'string' ? body.resourceId : 'metal',
+            resourceAmount: resourceContributed,
+          }
+        : {}),
+      ...(itemContributed > 0 && itemId.length > 0 ? { itemId, itemAmount: itemContributed } : {}),
+    });
     return {
       ok: true,
       value: { bank: deposited.bank, contributed: entered, resources: resourceContributed, items: itemContributed },
@@ -3889,6 +4196,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     dissolutionVoid += shares.void;
     noteTurnover(guild.bank);
+    logBank(guildId, '', guild.bank, 'dissolve');
     await repos.guilds.saveGuild({ ...guild, bank: 0, memberIds: [] });
     for (const memberId of guild.memberIds) {
       guildOf.delete(memberId);
@@ -4191,6 +4499,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ...(simWorld.barrierDown === true ? { barrierDown: true } : {}),
       ...(simWorld.primordialOpened === true ? { primordialOpened: true } : {}),
     };
+    stampGuildDoctrines();
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
     spawnNeutralGuards();
     captures = tickCaptures({
@@ -4718,6 +5027,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       mercenaries,
       patrols,
       guildQuests: guildQuests.filter((quest) => focus?.guildId === quest.guildId),
+      bankOperations: focus?.guildId === undefined ? [] : bankOperations(focus.guildId),
+      contracts: visibleContracts(focus),
       contenders,
       reputation: focus?.reputation ?? {},
     };
@@ -5381,6 +5692,9 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/guild/deposit', action: 'guild_deposit' },
   { path: '/guild/review', action: 'guild_review' },
   { path: '/guild/ban', action: 'guild_ban' },
+  { path: '/guild/doctrine', action: 'guild_doctrine' },
+  { path: '/guild/bank', action: 'guild_bank' },
+  { path: '/contract', action: 'contract_post' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 
@@ -5491,6 +5805,7 @@ function geographyFrom(catalog: Catalog): Geography {
       safe: node.safe,
       side: node.side,
       regionId: node.regionId,
+      ...(node.place === 'hall' || node.place === 'registrar' ? { place: node.place } : {}),
     })),
     edges: [...catalog.world.edges, ...(catalog.world.siteEdges ?? [])],
   };

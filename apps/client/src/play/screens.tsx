@@ -63,6 +63,9 @@ export function PlayPanels({
   onStorage,
   onWar,
   onWithdraw,
+  onDoctrine,
+  onBankLog,
+  onContract,
   onMercenary,
   onPatrol,
   onGuildQuest,
@@ -91,6 +94,9 @@ export function PlayPanels({
   onStorage?: () => void;
   onWar?: () => void;
   onWithdraw?: () => void;
+  onDoctrine?: () => void;
+  onBankLog?: () => void;
+  onContract?: () => void;
   onMercenary?: () => void;
   onPatrol?: () => void;
   onGuildQuest?: () => void;
@@ -183,6 +189,15 @@ export function PlayPanels({
         </button>
         <button type="button" data-withdraw="bank" onClick={() => onWithdraw?.()}>
           withdraw
+        </button>
+        <button type="button" data-doctrine="set" onClick={() => onDoctrine?.()}>
+          doctrine
+        </button>
+        <button type="button" data-bank="log" onClick={() => onBankLog?.()}>
+          bank
+        </button>
+        <button type="button" data-contract="post" onClick={() => onContract?.()}>
+          contract
         </button>
         <button type="button" data-mercenary="post" onClick={() => onMercenary?.()}>
           mercenary

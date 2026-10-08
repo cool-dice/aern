@@ -23,10 +23,13 @@ import {
   grantNode,
   noticePact,
   postCoalition,
+  postContractBoard,
+  postDoctrine,
   postGuildEmblem,
   postGuildQuest,
   postMercenary,
   postPatrol,
+  readBankLog,
   registerContender,
   renewPact,
   rentStorage,
@@ -588,7 +591,49 @@ export function App() {
                 server: SERVER,
                 guildId: 'guild',
                 characterId,
-                amount: 1,
+                amount: 26,
+                bank: 100,
+                store: plan.store,
+              });
+            }}
+            onDoctrine={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postDoctrine({
+                server: SERVER,
+                guildId: 'guild',
+                characterId,
+                doctrine: 'fury',
+                leaderConfirm: true,
+                councilConfirms: 1,
+                store: plan.store,
+              });
+            }}
+            onBankLog={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void readBankLog({
+                server: SERVER,
+                guildId: 'guild',
+                characterId,
+                store: plan.store,
+              });
+            }}
+            onContract={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postContractBoard({
+                server: SERVER,
+                characterId,
+                type: 'kill',
+                rewardGold: 100,
+                targetLevel: 10,
                 store: plan.store,
               });
             }}
