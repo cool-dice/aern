@@ -10,7 +10,7 @@
 | 102 | [102-populated-world.md](102-populated-world.md) | done |
 | 103 | [103-death-corpse.md](103-death-corpse.md) | done |
 | 104 | [104-bestiary-fights.md](104-bestiary-fights.md) | done |
-| 105 | [105-season-weather.md](105-season-weather.md) | pending |
+| 105 | [105-season-weather.md](105-season-weather.md) | done |
 | 106 | [106-xp-quests.md](106-xp-quests.md) | pending |
 | 107 | [107-neuroshock-mutation.md](107-neuroshock-mutation.md) | done |
 | 108 | [108-gathering-module.md](108-gathering-module.md) | pending |

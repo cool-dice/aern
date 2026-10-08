@@ -1,6 +1,10 @@
 import { neuroshockScale } from '@rift/domain/build';
 import type { LootEntry } from '@rift/domain/loot';
+import type { QuestProgress } from '@rift/domain/quests';
+import type { MonsterKind, Progress } from '@rift/domain/progression';
 import { resolveBossPhase, rolledLoot, type BossPhase } from './bestiary';
+import { onKill } from './progress';
+import { combatWeather, type WeatherMods } from './weather';
 import {
   limbMax,
   orderByInitiative,
@@ -75,6 +79,9 @@ export interface SimEntity {
   bindNodeId?: string;
   bindCell?: Cell;
   inventory?: CorpseStack[];
+  progress?: Progress;
+  quests?: QuestProgress[];
+  monsterKind?: MonsterKind;
 }
 
 export interface SimCorpse {
@@ -150,6 +157,8 @@ export interface SimWorld {
   history: SimWorld[];
   /** Loot rows keyed by monster template id. Absent tables drop nothing. */
   lootTables?: Record<string, readonly LootEntry[]>;
+  weatherId?: string | null;
+  safeZone?: boolean;
 }
 
 interface StatusMods {
@@ -175,6 +184,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     .map(cloneEntity);
   const rejections: SimRejection[] = [];
   const mods = new Map<string, StatusMods>();
+  const weather = combatWeather(world.weatherId, world.safeZone === true);
 
   for (const entity of entities) {
     if (entity.phase === 'offline' || entity.frozen === true) {
@@ -187,6 +197,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     entity.stunned = status.stunned;
     if (seconds === 1) {
       entity.hp -= status.hpLoss;
+      entity.hp -= weather.hpPerSecond;
     }
     mods.set(entity.id, {
       accuracyPenalty: status.accuracyPenalty,
@@ -199,9 +210,9 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
   const ordered = orderCommands(entities, commands, rng);
   for (const command of ordered) {
     if (command.type === 'move') {
-      applyMove(entities, command, rejections, mods, obstacles);
+      applyMove(entities, command, rejections, mods, obstacles, weather);
     } else if (command.type === 'attack') {
-      applyAttack(entities, command, rejections, mods, nowMs);
+      applyAttack(entities, command, rejections, mods, nowMs, weather);
     }
   }
 
@@ -209,7 +220,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     applyLogout(entity);
   }
 
-  const settled = settleMonsters(entities, world.corpses, rng, nowMs, world.lootTables);
+  const settled = settleMonsters(entities, world.corpses, rng, nowMs, world.lootTables, weather);
   settlePlayers(settled.entities, settled.corpses, nowMs);
   for (const command of ordered) {
     if (command.type === 'revive') {
@@ -230,6 +241,8 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     obstacles,
     history: [],
     ...(world.lootTables !== undefined ? { lootTables: world.lootTables } : {}),
+    ...(world.weatherId !== undefined ? { weatherId: world.weatherId } : {}),
+    ...(world.safeZone !== undefined ? { safeZone: world.safeZone } : {}),
   };
   const prior = world.history.map(cloneWorld);
   return { ...next, history: [...prior, cloneWorld(next)].slice(-LAG_HISTORY) };
@@ -265,6 +278,7 @@ function settleMonsters(
   rng: Rng,
   nowMs: number,
   lootTables: SimWorld['lootTables'],
+  weather: WeatherMods,
 ): { entities: SimEntity[]; corpses: SimCorpse[] } {
   const alive: SimEntity[] = [];
   const nextCorpses = corpses.map((corpse) => ({ ...corpse, stacks: corpse.stacks?.map((stack) => ({ ...stack })) }));
@@ -283,7 +297,9 @@ function settleMonsters(
         rng,
         elite: entity.eliteId != null && entity.eliteId !== '',
         monsterLevel: entity.level ?? 1,
+        lootMultiplier: weather.loot,
       });
+      grantKill(entities, entity);
       nextCorpses.push({
         victimId: entity.id,
         createdAtMs: nowMs,
@@ -493,12 +509,29 @@ function toDomainCorpse(corpse: SimCorpse) {
   };
 }
 
+function grantKill(entities: readonly SimEntity[], victim: SimEntity): void {
+  const hero = entities.find(
+    (entity) => entity.monsterId === undefined && entity.progress !== undefined && entity.quests !== undefined,
+  );
+  if (hero === undefined || hero.progress === undefined || hero.quests === undefined) {
+    return;
+  }
+  const next = onKill(
+    { progress: hero.progress, quests: hero.quests },
+    victim.level ?? 1,
+    victim.monsterKind ?? 'normal',
+  );
+  hero.progress = next.progress;
+  hero.quests = next.quests;
+}
+
 function applyMove(
   entities: SimEntity[],
   command: MoveCommand,
   rejections: SimRejection[],
   mods: ReadonlyMap<string, StatusMods>,
   obstacles: readonly Cell[],
+  weather: WeatherMods,
 ): void {
   const entity = findEntity(entities, command.entityId);
   if (entity === undefined) {
@@ -516,7 +549,9 @@ function applyMove(
 
   const speed =
     (mods.get(entity.id)?.speedMultiplier ?? 1) *
-    (entity.overloaded === true ? neuroshockScale(1, true) : 1);
+    (entity.overloaded === true ? neuroshockScale(1, true) : 1) *
+    weather.speed *
+    (entity.speedMultiplier ?? 1);
   const downed = entity.phase === 'downed';
   const pace = cellsFor({
     reaction: entity.reaction,
@@ -570,6 +605,7 @@ function applyAttack(
   rejections: SimRejection[],
   mods: ReadonlyMap<string, StatusMods>,
   nowMs: number,
+  weather: WeatherMods,
 ): void {
   const attacker = findEntity(entities, command.attackerId);
   if (attacker === undefined) {
@@ -591,12 +627,18 @@ function applyAttack(
   enterCombat(attackerDraft);
   enterCombat(targetDraft);
 
+  const weatherPenalty =
+    (command.melee ? 0 : -weather.rangedAccuracy) + (weather.accuracy < 0 ? -weather.accuracy : 0);
   const result = resolveAttack({
-    attacker: toCombatant(attackerDraft, mods.get(attacker.id)?.accuracyPenalty ?? 0),
+    attacker: toCombatant(
+      attackerDraft,
+      (mods.get(attacker.id)?.accuracyPenalty ?? 0) + weatherPenalty,
+    ),
     target: toCombatant(targetDraft, mods.get(target.id)?.accuracyPenalty ?? 0),
     weaponDamage:
       neuroshockScale(command.weaponDamage, attacker.overloaded === true) *
-      (mods.get(attacker.id)?.damageMultiplier ?? 1),
+      (mods.get(attacker.id)?.damageMultiplier ?? 1) *
+      (attacker.monsterId !== undefined ? weather.monsterDamage : 1),
     odCost: command.odCost,
     range: command.range,
     distance: command.distance ?? chebyshev(attackerDraft.cell, targetDraft.cell),
@@ -724,6 +766,8 @@ function cloneWorld(world: SimWorld): SimWorld {
     obstacles: world.obstacles.map((cell) => ({ x: cell.x, y: cell.y })),
     history: [],
     ...(world.lootTables !== undefined ? { lootTables: world.lootTables } : {}),
+    ...(world.weatherId !== undefined ? { weatherId: world.weatherId } : {}),
+    ...(world.safeZone !== undefined ? { safeZone: world.safeZone } : {}),
   };
 }
 
