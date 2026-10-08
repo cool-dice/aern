@@ -750,20 +750,30 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
 
   async function hydrate(): Promise<void> {
     const loaded = await repos.world.loadSnapshot?.();
-    if (!isRiftSim(loaded)) {
-      return;
+    const stored = (await repos.economy.readStored?.()) ?? { wallets: [], lots: [] };
+    const storedIds = new Set(stored.wallets.map((wallet) => wallet.characterId));
+    if (isRiftSim(loaded)) {
+      simWorld = {
+        ...loaded.world,
+        history: [],
+        rejections: [],
+        corpses: loaded.world.corpses ?? [],
+        obstacles: loaded.world.obstacles ?? [],
+        entities: loaded.world.entities ?? [],
+      };
+      for (const wallet of loaded.wallets) {
+        if (!storedIds.has(wallet.characterId)) {
+          repos.economy.saveCharacter(wallet);
+        }
+      }
     }
-    simWorld = {
-      ...loaded.world,
-      history: [],
-      rejections: [],
-      corpses: loaded.world.corpses ?? [],
-      obstacles: loaded.world.obstacles ?? [],
-      entities: loaded.world.entities ?? [],
-    };
-    for (const wallet of loaded.wallets) {
+    for (const wallet of stored.wallets) {
       repos.economy.saveCharacter(wallet);
     }
+    for (const lot of stored.lots) {
+      repos.economy.saveLot(lot);
+    }
+    await repos.social.loadPersisted?.();
   }
 
   function topUpSeasonSpawns(budget: number, tag: string): void {

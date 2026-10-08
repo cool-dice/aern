@@ -27,6 +27,8 @@ export interface EconomyRepository {
   getLot(id: string): AuctionLot | null;
   saveLot(lot: AuctionLot): void;
   deleteLot(id: string): void;
+  /** Database rows. Memory mode omits this and keeps the in-process maps. */
+  readStored?(): Promise<{ wallets: EconomyCharacter[]; lots: AuctionLot[] }>;
 }
 
 export function newEconomyCharacter(input: {

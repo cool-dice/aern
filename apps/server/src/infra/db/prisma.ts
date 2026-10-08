@@ -12,6 +12,7 @@ import { memoryInstanceRepository } from '../../modules/dungeon/repository';
 import type { InstanceRepository } from '../../modules/dungeon/types';
 import { memoryEconomyRepository } from '../../modules/economy/repository';
 import type { EconomyRepository } from '../../modules/economy/repository';
+import type { AuctionLot, EconomyCharacter } from '../../modules/economy/types';
 import { createEventRepository } from '../../modules/event/repository';
 import type { EventRepository } from '../../modules/event/repository';
 import type { GuildRepository, StoredGuild, StoredWar } from '../../modules/guild/types';
@@ -685,16 +686,53 @@ function bindEconomy(db: RiftDb): EconomyRepository {
             bidderId: lot.bidderId,
             cityNodeId: lot.guildCity ? 'guild-city' : 'wild',
             expiresAt: stamp(0),
-            status: 'open',
+            status: JSON.stringify({ open: true, qty: lot.qty }),
             createdAt: stamp(0),
           },
           update: {
             currentBid: lot.currentBid,
             bidderId: lot.bidderId,
-            status: 'open',
+            status: JSON.stringify({ open: true, qty: lot.qty }),
           },
         }),
       );
+    },
+    async readStored() {
+      const rows = await db.storage.findMany();
+      const wallets: EconomyCharacter[] = [];
+      for (const row of rows) {
+        if (typeof row.id !== 'string' || !row.id.startsWith('wallet:')) {
+          continue;
+        }
+        const character = row.items as EconomyCharacter;
+        if (character === null || typeof character !== 'object' || typeof character.characterId !== 'string') {
+          continue;
+        }
+        wallets.push(character);
+      }
+      const listed = await db.auction.findMany();
+      const lots: AuctionLot[] = [];
+      for (const row of listed) {
+        let qty = 1;
+        if (typeof row.status === 'string' && row.status.startsWith('{')) {
+          const parsed = JSON.parse(row.status) as { qty?: unknown };
+          if (typeof parsed.qty === 'number' && Number.isInteger(parsed.qty) && parsed.qty > 0) {
+            qty = parsed.qty;
+          }
+        }
+        lots.push({
+          id: String(row.id),
+          sellerId: String(row.sellerId),
+          itemId: String(row.itemId),
+          qty,
+          startPrice: Number(row.startPrice),
+          currentBid: Number(row.currentBid ?? row.startPrice),
+          bidderId: row.bidderId === null || row.bidderId === undefined ? null : String(row.bidderId),
+          buyout: Number(row.buyoutPrice),
+          guildCity: String(row.cityNodeId) === 'guild-city',
+        });
+      }
+      return { wallets, lots };
     },
     deleteLot(id) {
       memory.deleteLot(id);
@@ -706,7 +744,45 @@ function bindEconomy(db: RiftDb): EconomyRepository {
 function bindSocial(db: RiftDb): SocialRepository {
   const inner = createSocialRepository();
   return {
-    register: (input) => inner.register(input),
+    register(input) {
+      inner.register(input);
+      write(
+        db,
+        db.storage.upsert({
+          where: { id: `presence:${input.id}` },
+          create: {
+            id: `presence:${input.id}`,
+            ownerId: input.id,
+            items: {
+              id: input.id,
+              nodeId: input.nodeId,
+              language: input.language,
+              upy: input.upy ?? 0,
+            },
+            gold: 0,
+            slots: 0,
+          },
+          update: {
+            items: {
+              id: input.id,
+              nodeId: input.nodeId,
+              language: input.language,
+              upy: input.upy ?? 0,
+            },
+          },
+        }),
+      );
+    },
+    forget(id) {
+      inner.forget(id);
+      write(
+        db,
+        db.storage.delete({ where: { id: `presence:${id}` } }).then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
+    },
     character: (id) => inner.character(id),
     charactersAt: (nodeId) => inner.charactersAt(nodeId),
     applySanction: (id, sanction, untilMs, nowMs) => inner.applySanction(id, sanction, untilMs, nowMs),
@@ -764,6 +840,34 @@ function bindSocial(db: RiftDb): SocialRepository {
         );
       }
       return granted;
+    },
+    async loadPersisted() {
+      const rows = await db.storage.findMany();
+      for (const row of rows) {
+        if (typeof row.id !== 'string' || !row.id.startsWith('presence:')) {
+          continue;
+        }
+        const items = asRecord(row.items);
+        if (typeof items.id !== 'string' || typeof items.nodeId !== 'string' || typeof items.language !== 'string') {
+          continue;
+        }
+        inner.register({
+          id: items.id,
+          nodeId: items.nodeId,
+          language: items.language as 'common_light',
+          upy: typeof items.upy === 'number' ? items.upy : 0,
+        });
+      }
+      const letters = await db.mail.findMany();
+      for (const row of letters) {
+        inner.saveMail({
+          id: String(row.id),
+          fromId: String(row.senderId),
+          toId: String(row.receiverId),
+          subject: String(row.subject),
+          body: String(row.body),
+        });
+      }
     },
   };
 }

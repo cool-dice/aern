@@ -632,8 +632,43 @@ test('a database boot restores the sim snapshot and wallets', async () => {
   expect((first.state() as { self: unknown }).self).toBeNull();
   first.enterWorld('lia');
   first.creditGold('lia', 250);
+  first.social.service.register({ id: 'lia', nodeId: 'edge_light', language: 'common_light' });
+  first.social.service.register({ id: 'kai', nodeId: 'edge_light', language: 'common_light' });
+  expect(
+    await first.social.service.say({
+      senderId: 'lia',
+      channel: 'mail',
+      text: 'the note',
+      subject: 'field report',
+      recipientId: 'kai',
+      nowMs: 1_000,
+    }),
+  ).toMatchObject({ ok: true });
+  first.seedTrader({ characterId: 'seller', gold: 10, itemId: 'rusty_sword', qty: 1 });
+  expect(
+    first.economy.service.offerAuction({
+      sellerId: 'seller',
+      itemId: 'rusty_sword',
+      qty: 1,
+      startPrice: 5,
+      buyout: 9,
+      guildCity: false,
+    }).ok,
+  ).toBe(true);
   first.tickOnce();
   await first.flush();
+
+  const snap = await db.storage.findUnique({ where: { id: 'world:sim' } });
+  const blob = snap?.items as { wallets?: { characterId: string; gold: number }[] };
+  const blobWallet = blob.wallets?.find((wallet) => wallet.characterId === 'lia');
+  if (blobWallet !== undefined) {
+    blobWallet.gold = 1;
+  }
+  await db.storage.upsert({
+    where: { id: 'world:sim' },
+    create: { id: 'world:sim', ownerId: 'world', items: blob, gold: 0, slots: 0 },
+    update: { items: blob },
+  });
 
   const second = compose({ nowMs: 5, jwtSecret: 'test-secret', databaseUrl: url, db });
   await second.hydrate();
@@ -641,6 +676,14 @@ test('a database boot restores the sim snapshot and wallets', async () => {
   expect(restored.nowMs).toBe(1_100);
   expect(restored.self?.id).toBe('lia');
   expect(second.economy.service.balance('lia')).toBe(250);
+  expect(second.economy.service.listAuction()).toMatchObject({
+    ok: true,
+    value: [expect.objectContaining({ sellerId: 'seller', itemId: 'rusty_sword', qty: 1, buyout: 9 })],
+  });
+  expect(second.social.repository.mailbox('kai')).toEqual([
+    expect.objectContaining({ fromId: 'lia', toId: 'kai', subject: 'field report', body: 'the note' }),
+  ]);
+  expect(second.social.repository.character('lia')?.nodeId).toBe('edge_light');
 
   await db.storage.upsert({
     where: { id: 'world:sim' },

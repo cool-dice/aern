@@ -19,6 +19,8 @@ export interface CharacterState {
 
 export interface SocialRepository {
   register(input: SocialCharacterInput): void;
+  /** Drops a character from the node presence map. */
+  forget(id: string): void;
   character(id: string): CharacterState | null;
   charactersAt(nodeId: string): CharacterState[];
   applySanction(id: string, sanction: Sanction, untilMs: number | null, nowMs: number): void;
@@ -32,6 +34,8 @@ export interface SocialRepository {
   grantTitle(characterId: string, titleId: string): { ok: true; value: { titleId: string } } | { ok: false; code: 'missing' | 'duplicate' };
   titlesOf(characterId: string): readonly string[];
   mailbox(toId: string): readonly { id: string; fromId: string; toId: string; subject: string; body: string }[];
+  /** Reloads presence and mail written by a previous process. Memory mode omits it. */
+  loadPersisted?(): Promise<void>;
 }
 
 function copyParty(party: Party): Party {
@@ -92,6 +96,10 @@ export function createSocialRepository(): SocialRepository {
       if (input.guildId !== undefined) {
         existing.guildId = input.guildId;
       }
+    },
+
+    forget(id) {
+      characters.delete(id);
     },
 
     character(id) {
