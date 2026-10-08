@@ -29,6 +29,12 @@ test('entering the world places the player, the prototype set, elites, and the l
   expect(entities[0]?.progress?.level).toBe(1);
   expect(entities[0]?.quests).toEqual([]);
 
+  const player = entities[0];
+  expect(player?.id).toBe('lia');
+  if (player !== undefined) {
+    player.od = 1;
+    player.odFrac = 1;
+  }
   const command = toSimCommand(step('lia'));
   expect(command).not.toBeNull();
   const world: SimWorld = {
@@ -41,7 +47,10 @@ test('entering the world places the player, the prototype set, elites, and the l
     history: [],
   };
   const next = stepTick(world, command === null ? [] : [command], mulberry32(1));
-  expect(next.entities.find((entity) => entity.id === 'lia')?.cell).toEqual({ x: 1, y: 0 });
+  const moved = next.entities.find((entity) => entity.id === 'lia');
+  expect(moved?.cell).toEqual({ x: 1, y: 0 });
+  expect(moved?.od).toBe(0);
+  expect(moved?.odFrac).toBe(0.3);
   expect(next.entities.filter((entity) => entity.monsterId !== undefined).length).toBeGreaterThanOrEqual(6);
 });
 

@@ -39,6 +39,6 @@ test('a dialogue choice stores reputation and a later scene reads it', async () 
   const scene = viewed.players[0]?.quests
     .find((quest) => quest.id === 'act1_light')
     ?.objectives.find((objective) => objective.id === 'koval')?.scene;
-  expect(scene).toContain('questioned the council');
-  expect(scene).toContain('refuses further quests');
+  expect(scene).toContain('Refused: reputation is too low for this quest.');
+  expect(scene).not.toContain('questioned the council');
 });
