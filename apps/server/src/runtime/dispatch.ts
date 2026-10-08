@@ -111,11 +111,13 @@ export interface LivePorts {
     goldWithdrawnToday?: number;
     resourceStock?: number;
     resourceAmount?: number;
+    resourceId?: string;
     resourcesWithdrawnToday?: number;
     itemSlots?: number;
     itemAmount?: number;
     itemsWithdrawnToday?: number;
   }): Promise<LiveResult>;
+  reviewRewardFreeze(body: Record<string, unknown>): Promise<LiveResult>;
   openLeaderPoll(guildId: string): void;
   seatCharter(guildId: string, leaderId: string, memberIds: readonly string[]): void;
   carriersBlocked(memberIds: readonly string[]): Promise<boolean>;
@@ -135,7 +137,8 @@ export interface LivePorts {
     amount: number;
     resourceAmount: number;
     itemAmount: number;
-  }): void;
+    resourceId?: string;
+  }): Promise<void>;
   dissolveGuild(body: Record<string, unknown>): Promise<LiveResult>;
   depositGuild(body: Record<string, unknown>): Promise<LiveResult>;
   strikeNode(body: Record<string, unknown>): LiveResult;
@@ -210,6 +213,7 @@ const LIVE_ACTIONS = new Set([
   'guild_join',
   'guild_dissolve',
   'guild_deposit',
+  'guild_review',
   'node_strike',
   'coalition_say',
 ]);
@@ -322,6 +326,8 @@ export async function runLive(
       return ports.dissolveGuild(body);
     case 'guild_deposit':
       return ports.depositGuild(body);
+    case 'guild_review':
+      return ports.reviewRewardFreeze(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':
@@ -1037,6 +1043,7 @@ async function guildWithdraw(body: Record<string, unknown>, ports: LivePorts): P
   };
   const limits = ports.bankLimits(guildId, characterId ?? '');
   const resourceAmount = typeof body.resourceAmount === 'number' ? body.resourceAmount : 0;
+  const resourceId = typeof body.resourceId === 'string' ? body.resourceId : 'metal';
   const itemAmount = typeof body.itemAmount === 'number' ? body.itemAmount : 0;
   const withdrawal = {
     rank,
@@ -1045,6 +1052,7 @@ async function guildWithdraw(body: Record<string, unknown>, ports: LivePorts): P
     goldWithdrawnToday: limits.goldWithdrawnToday,
     resourceStock: limits.resourceStock,
     resourceAmount,
+    resourceId,
     resourcesWithdrawnToday: limits.resourcesWithdrawnToday,
     itemSlots: limits.itemSlots,
     itemAmount,
@@ -1067,11 +1075,12 @@ async function guildWithdraw(body: Record<string, unknown>, ports: LivePorts): P
   ports.noteTurnover(body.amount);
   if (characterId !== undefined) {
     ports.logWithdrawal(guildId, characterId, body.amount);
-    ports.creditWithdrawal({
+    await ports.creditWithdrawal({
       guildId,
       characterId,
       amount: taken.value.amount,
       resourceAmount,
+      resourceId,
       itemAmount,
     });
   }

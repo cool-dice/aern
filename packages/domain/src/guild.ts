@@ -17,6 +17,11 @@ export const INTERNAL_VOTE_MS = DAY_MS;
 export const DECIDING_ABSENCE_MS = DAY_MS;
 /** Artifact 17 §2.5. A leader absent this long loses the seat. */
 export const LEADER_ABSENCE_MS = 14 * DAY_MS;
+/**
+ * Artifact 32 §10. Collusion is a 30-day ban. Section 11 does not use this
+ * number as a reward-freeze length.
+ */
+export const COLLUSION_BAN_MS = 30 * DAY_MS;
 /** A novice cannot be promoted before this probation ends. */
 export const NOVICE_LOCK_MS = 72 * 60 * 60 * 1000;
 /** Artifact 17 §3.1. An officer invites at most this many characters in a day. */
@@ -2148,14 +2153,40 @@ export function reviewSection11(input: {
   };
 }
 
+/** Artifact 32 §2. A moderator or an administrator performs the section 11 review. */
+export const REVIEWER_ROLES = ['moderator', 'admin'] as const;
+
 /**
- * Artifact 17 §11. Rewards stay frozen until a review later than the one that
- * opened the case. The opening timestamp itself is not the end of the freeze.
+ * Artifact 17 §11. Rewards stay frozen until a review. The section names no
+ * duration, so a later clock reading does not end the freeze by itself.
+ * `reviewedAtMs` is the reviewer action. Null means the case is still open.
  */
-export function rewardFreezeEnds(frozenAtMs: number, nowMs: number): boolean {
+export function rewardFreezeEnds(
+  frozenAtMs: number,
+  nowMs: number,
+  reviewedAtMs: number | null = null,
+): boolean {
   assertMs(frozenAtMs, 'frozenAtMs');
   assertMs(nowMs, 'nowMs');
-  return nowMs > frozenAtMs;
+  if (reviewedAtMs === null) {
+    return false;
+  }
+  assertMs(reviewedAtMs, 'reviewedAtMs');
+  return reviewedAtMs >= frozenAtMs && nowMs >= reviewedAtMs;
+}
+
+/** The review is a person with a reviewer role. Time since the freeze is not a role. */
+export function acceptRewardReview(input: {
+  role: string;
+  frozenAtMs: number;
+  nowMs: number;
+}): Result<{ reviewedAtMs: number }, 'rank'> {
+  assertMs(input.frozenAtMs, 'frozenAtMs');
+  assertMs(input.nowMs, 'nowMs');
+  if (!(REVIEWER_ROLES as readonly string[]).includes(input.role)) {
+    return err('rank');
+  }
+  return ok({ reviewedAtMs: input.nowMs });
 }
 
 /** Artifact 17 §12 target bands. These score observations. They do not refuse an action. */

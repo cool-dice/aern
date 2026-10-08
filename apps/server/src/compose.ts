@@ -95,6 +95,7 @@ import {
   registerContender,
   renewPact,
   REVOTE_MS,
+  acceptRewardReview,
   reviewSection11,
   rewardFreezeEnds,
   type Section12Report,
@@ -188,6 +189,7 @@ export interface ServerComposition {
   act: (action: string, body: Record<string, unknown>) => Promise<{ ok: boolean; code?: string; value?: unknown }>;
   state: () => Record<string, unknown>;
   creditGold: (characterId: string, amount: number) => void;
+  appointStaff: (characterId: string, role: 'moderator' | 'admin') => void;
   seedTrader: (input: {
     characterId: string;
     gold: number;
@@ -299,12 +301,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const warBlows = new Map<string, number>();
   const warRosters = new Map<string, Set<string>>();
   const frozenGuilds = new Set<string>();
-  let rewardFreezes: { guildId: string; atMs: number }[] = [];
+  let rewardFreezes: { guildId: string; atMs: number; reviewedAtMs: number | null }[] = [];
+  const staffRoles = new Map<string, 'moderator' | 'admin'>();
   let heldWithdrawals: {
     guildId: string;
     characterId: string;
     amount: number;
     resourceAmount: number;
+    resourceId: string;
     itemAmount: number;
     rank: GuildRank;
     leaderConfirm: boolean;
@@ -832,6 +836,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     sampleBalance,
     logWithdrawal,
     holdWithdrawal,
+    reviewRewardFreeze,
     openLeaderPoll,
     seatCharter,
     carriersBlocked: carriersBlockedIds,
@@ -1496,23 +1501,28 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return (guildItems.get(guildId) ?? []).reduce((total, stack) => total + stack.qty, 0);
   }
 
-  function creditWithdrawal(input: {
+  async function creditWithdrawal(input: {
     guildId: string;
     characterId: string;
     amount: number;
     resourceAmount: number;
     itemAmount: number;
-  }): void {
+    resourceId?: string;
+  }): Promise<void> {
     if (input.amount > 0) {
       creditGold(input.characterId, input.amount);
     }
     if (input.resourceAmount > 0) {
+      const kind = input.resourceId ?? 'metal';
       const stock = guildResources.get(input.guildId) ?? 0;
-      guildResources.set(input.guildId, Math.max(0, stock - input.resourceAmount));
+      const moved = Math.min(stock, input.resourceAmount);
+      guildResources.set(input.guildId, Math.max(0, stock - moved));
       const stacks = resourceLedgers.get(input.guildId);
-      void creditMaterial(input.characterId, 'metal', input.resourceAmount);
+      if (moved > 0) {
+        await creditMaterial(input.characterId, kind, moved);
+      }
       if (stacks !== undefined) {
-        stacks.set(input.characterId, Math.max(0, (stacks.get(input.characterId) ?? 0) - input.resourceAmount));
+        stacks.set(input.characterId, Math.max(0, (stacks.get(input.characterId) ?? 0) - moved));
       }
     }
     if (input.itemAmount > 0) {
@@ -2675,7 +2685,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       frozenGuilds.add(next.attackerGuildId);
       const existing = rewardFreezes.find((row) => row.guildId === next.attackerGuildId);
       if (existing === undefined) {
-        rewardFreezes.push({ guildId: next.attackerGuildId, atMs: now });
+        rewardFreezes.push({ guildId: next.attackerGuildId, atMs: now, reviewedAtMs: null });
       } else {
         existing.atMs = now;
       }
@@ -3612,6 +3622,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     goldWithdrawnToday?: number;
     resourceStock?: number;
     resourceAmount?: number;
+    resourceId?: string;
     resourcesWithdrawnToday?: number;
     itemSlots?: number;
     itemAmount?: number;
@@ -3648,6 +3659,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         characterId: input.characterId,
         amount: checked.value.amount,
         resourceAmount: input.resourceAmount ?? 0,
+        resourceId: input.resourceId ?? 'metal',
         itemAmount: input.itemAmount ?? 0,
         rank: input.rank,
         leaderConfirm: input.leaderConfirm,
@@ -3677,11 +3689,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       });
       if (taken.ok) {
         noteTurnover(taken.value.amount);
-        creditWithdrawal({
+        await creditWithdrawal({
           guildId,
           characterId: row.characterId,
           amount: taken.value.amount,
           resourceAmount: row.resourceAmount,
+          resourceId: row.resourceId,
           itemAmount: row.itemAmount,
         });
       }
@@ -3692,7 +3705,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const now = clock.now();
     const still = [];
     for (const freeze of rewardFreezes) {
-      if (!rewardFreezeEnds(freeze.atMs, now)) {
+      if (!rewardFreezeEnds(freeze.atMs, now, freeze.reviewedAtMs)) {
         still.push(freeze);
         continue;
       }
@@ -3701,6 +3714,38 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     rewardFreezes = still;
     abuse = { ...abuse, frozen: [...frozenGuilds] };
+  }
+
+  /**
+   * Artifact 17 §11. A moderator or administrator reviews the freeze.
+   * The clock does not release it. A released hold is paid into the wallet.
+   */
+  async function reviewRewardFreeze(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const reviewerId = typeof body.reviewerId === 'string' ? body.reviewerId : '';
+    if (guildId.length === 0 || reviewerId.length === 0) {
+      return { ok: false, code: 'rank' };
+    }
+    const freeze = rewardFreezes.find((row) => row.guildId === guildId);
+    if (freeze === undefined || !frozenGuilds.has(guildId)) {
+      return { ok: false, code: 'target' };
+    }
+    const role = staffRoles.get(reviewerId);
+    if (role === undefined) {
+      return { ok: false, code: 'rank' };
+    }
+    const accepted = acceptRewardReview({ role, frozenAtMs: freeze.atMs, nowMs: clock.now() });
+    if (!accepted.ok) {
+      return { ok: false, code: accepted.code };
+    }
+    freeze.reviewedAtMs = accepted.value.reviewedAtMs;
+    frozenGuilds.delete(guildId);
+    await releaseHeldWithdrawals(guildId);
+    rewardFreezes = rewardFreezes.filter((row) => row.guildId !== guildId);
+    abuse = { ...abuse, frozen: [...frozenGuilds] };
+    return { ok: true, value: { guildId, reviewedAtMs: accepted.value.reviewedAtMs, released: true } };
   }
 
   function refreshPortalLifts(): void {
@@ -4546,6 +4591,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     act: (action, body) => runLive(action, body, livePorts),
     state: statePayload,
     creditGold,
+    appointStaff(characterId: string, role: 'moderator' | 'admin') {
+      staffRoles.set(characterId, role);
+    },
     seedTrader,
     async flush() {
       await snapshotJob;
@@ -4958,6 +5006,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/guild/join', action: 'guild_join' },
   { path: '/guild/dissolve', action: 'guild_dissolve' },
   { path: '/guild/deposit', action: 'guild_deposit' },
+  { path: '/guild/review', action: 'guild_review' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

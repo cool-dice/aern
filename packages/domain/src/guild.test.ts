@@ -80,6 +80,7 @@ import {
   strikeNodeFlag,
   tickContract,
   reviewSection11,
+  acceptRewardReview,
   rewardFreezeEnds,
   SECTION12,
   measureSection12,
@@ -1433,9 +1434,21 @@ test('taking the flag down pockets the chest and an absence drop does not', () =
   expect(settleNodeDrop(owned, { ...owned, guildId: null }).node.chest).toBe(40);
 });
 
-test('a reward freeze ends only after the review that opened it', () => {
+test('a reward freeze stays until a reviewer acts, and the clock does not clear it', () => {
   expect(rewardFreezeEnds(1_000, 1_000)).toBe(false);
-  expect(rewardFreezeEnds(1_000, 1_001)).toBe(true);
+  expect(rewardFreezeEnds(1_000, 1_001)).toBe(false);
+  expect(rewardFreezeEnds(1_000, 5_000, null)).toBe(false);
+  expect(rewardFreezeEnds(1_000, 5_000, 5_000)).toBe(true);
+  expect(rewardFreezeEnds(1_000, 4_999, 5_000)).toBe(false);
+  expect(acceptRewardReview({ role: 'player', frozenAtMs: 1_000, nowMs: 2_000 })).toEqual({
+    ok: false,
+    code: 'rank',
+  });
+  expect(acceptRewardReview({ role: 'moderator', frozenAtMs: 1_000, nowMs: 2_000 })).toEqual({
+    ok: true,
+    value: { reviewedAtMs: 2_000 },
+  });
+  expect(acceptRewardReview({ role: 'admin', frozenAtMs: 1_000, nowMs: 2_000 }).ok).toBe(true);
 });
 
 test('section 12 scores the named targets and does not invent a gate', () => {

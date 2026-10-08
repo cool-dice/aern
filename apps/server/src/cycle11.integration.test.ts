@@ -103,6 +103,21 @@ test('cycle 11 hooks are called from tickOnce, skipMs, or the live route', () =>
     composeSource.indexOf('async function inspectRewardFreezes'),
   );
   expect(release.includes('creditWithdrawal(')).toBe(true);
+  const inspect = composeSource.slice(
+    composeSource.indexOf('async function inspectRewardFreezes'),
+    composeSource.indexOf('async function reviewRewardFreeze'),
+  );
+  expect(inspect.includes('rewardFreezeEnds(')).toBe(true);
+  expect(inspect.includes('freeze.reviewedAtMs')).toBe(true);
+  expect(inspect.includes('now > freeze.atMs')).toBe(false);
+  const review = composeSource.slice(
+    composeSource.indexOf('async function reviewRewardFreeze'),
+    composeSource.indexOf('function refreshPortalLifts'),
+  );
+  expect(review.includes('acceptRewardReview(')).toBe(true);
+  expect(review.includes('releaseHeldWithdrawals(')).toBe(true);
+  expect(dispatch.includes("case 'guild_review'")).toBe(true);
+  expect(dispatch.includes('reviewRewardFreeze(')).toBe(true);
   const create = dispatch.slice(
     dispatch.indexOf('async function guildCreate'),
     dispatch.indexOf('async function auctionBid'),

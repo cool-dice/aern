@@ -371,7 +371,7 @@ test('a multibox carrier is refused before the war is saved or charged', async (
   expect(NEUTRAL_CAPTURE_GOLD).toBe(25_000);
 });
 
-test('a withdrawal during review is held and the next tick pays it', async () => {
+test('a withdrawal during review stays held until a reviewer releases it into the wallet', async () => {
   const graph = compose({ nowMs: 0 });
   graph.enterCharacter('account-lia', 'lia');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
@@ -416,6 +416,16 @@ test('a withdrawal during review is held and the next tick pays it', async () =>
   expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(bank);
   const wallet = graph.economy.service.balance('lia') ?? 0;
   await graph.tickOnce();
+  await graph.skipMs(7 * 24 * 60 * 60 * 1000);
+  expect((graph.state() as { abuse: { frozen: string[] } }).abuse.frozen).toContain(guildId);
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(bank);
+  expect(graph.economy.service.balance('lia')).toBe(wallet);
+  const player = await graph.act('guild_review', { guildId, reviewerId: 'lia' });
+  expect(player).toMatchObject({ ok: false, code: 'rank' });
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(bank);
+  graph.appointStaff('mod', 'moderator');
+  const released = await graph.act('guild_review', { guildId, reviewerId: 'mod' });
+  expect(released).toMatchObject({ ok: true, value: { released: true, guildId } });
   expect((graph.state() as { abuse: { frozen: string[] } }).abuse.frozen).not.toContain(guildId);
   expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(bank - 1);
   expect(graph.economy.service.balance('lia')).toBe(wallet + 1);
