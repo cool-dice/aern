@@ -580,8 +580,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         const record = await repos.characters.findById(characterId);
         return record === null ? 1 : record.level;
       },
-      async upyOf() {
-        return 100;
+      async upyOf(characterId: string) {
+        return languageUpy(characterId);
       },
     },
   });
@@ -964,6 +964,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     removeWornRelic,
     matchParty,
     teachLanguage,
+    languageUpy,
     studyBook,
     studyRuins,
     studyInteraction,
@@ -3649,6 +3650,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
     }
     return { ok: true, value: { picked, joined, seats } };
+  }
+
+  async function languageUpy(characterId: string): Promise<number> {
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return 0;
+    }
+    return record.languages[nativeLanguage(record.raceId)] ?? 0;
   }
 
   function isLanguage(value: string): value is LanguageId {

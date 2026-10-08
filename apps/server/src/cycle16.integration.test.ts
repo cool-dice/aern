@@ -114,3 +114,40 @@ test('textHitsBlacklist runs on chat send and a listed token is not delivered', 
   const clean = await graph.act('chat_say', { characterId: 'lia', text: 'hello' });
   expect(clean.ok).toBe(false);
 });
+
+test('questLanguageAccess denies a quest when side-language UPY is 30 or less', async () => {
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const accept = dispatch.slice(dispatch.indexOf('async function questAccept'), dispatch.indexOf('async function questTurnIn'));
+  expect(accept.includes('questLanguageAccess(')).toBe(true);
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-quest',
+    controller: 'player',
+    name: 'Ques',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  const record = await graph.character.repository.findById(characterId);
+  expect(record).not.toBeNull();
+  if (record === null) {
+    return;
+  }
+  await graph.character.repository.update({
+    ...record,
+    languages: { ...record.languages, common_light: 30 },
+  });
+  const denied = await graph.act('quest_accept', { characterId, questId: 'tutorial' });
+  expect(denied).toMatchObject({ ok: false, code: 'language' });
+  await graph.character.repository.update({
+    ...record,
+    languages: { ...record.languages, common_light: 40 },
+  });
+  const garbled = await graph.act('quest_accept', { characterId, questId: 'tutorial' });
+  expect(garbled.ok).toBe(true);
+});

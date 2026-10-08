@@ -7,6 +7,7 @@ import type { GuildRank } from '@rift/domain/guild';
 import type { KeeperKind } from '@rift/domain/hack';
 import type { GradeId } from '@rift/domain/items';
 import type { RelicState, RelicSubtype } from '@rift/domain/relics';
+import { questLanguageAccess } from '@rift/domain/language';
 import { socketCount } from '@rift/domain/relics';
 import type { QuestObjectiveKind } from '@rift/domain/quests';
 import { derive, emptyPoints } from '@rift/domain/stats';
@@ -178,6 +179,7 @@ export interface LivePorts {
   removeWornRelic(body: Record<string, unknown>): Promise<LiveResult>;
   matchParty(body: Record<string, unknown>): Promise<LiveResult>;
   teachLanguage(body: Record<string, unknown>): Promise<LiveResult>;
+  languageUpy(characterId: string): Promise<number>;
   studyBook(body: Record<string, unknown>): Promise<LiveResult>;
   studyRuins(body: Record<string, unknown>): Promise<LiveResult>;
   studyInteraction(body: Record<string, unknown>): Promise<LiveResult>;
@@ -869,6 +871,10 @@ async function questAccept(body: Record<string, unknown>, ports: LivePorts): Pro
   const questId = text(body, 'questId');
   if (characterId === undefined || questId === undefined) {
     return { ok: false, code: 'invalid' };
+  }
+  const access = questLanguageAccess(await ports.languageUpy(characterId));
+  if (access === 'deny') {
+    return { ok: false, code: 'language' };
   }
   const accepted = await ports.quest.accept(characterId, questId, ports.now());
   if (!accepted.ok) {
