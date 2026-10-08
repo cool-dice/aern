@@ -213,6 +213,7 @@ export async function setNodeAccess(input: {
   server: string;
   guildId: string;
   nodeId: string;
+  category: 'allies' | 'guilds' | 'neutrals';
   access: string;
   store: ClientStore;
   fetchImpl?: FetchLike;
@@ -220,7 +221,12 @@ export async function setNodeAccess(input: {
   return postService({
     server: input.server,
     path: '/node/access',
-    body: { guildId: input.guildId, nodeId: input.nodeId, access: input.access },
+    body: {
+      guildId: input.guildId,
+      nodeId: input.nodeId,
+      category: input.category,
+      access: input.access,
+    },
     store: input.store,
     log: 'node-access',
     ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),

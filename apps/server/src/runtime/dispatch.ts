@@ -63,7 +63,7 @@ export interface LivePorts {
   resourceAccess(characterId: string): { ok: true } | { ok: false; code: string };
   addNodeChest(characterId: string, amount: number): number;
   setResourceTax(guildId: string, nodeId: string, taxPercent: number, characterId: string): LiveResult;
-  setResourceAccess(guildId: string, nodeId: string, access: string): LiveResult;
+  setResourceAccess(guildId: string, nodeId: string, category: string, access: string): LiveResult;
   grantResource(guildId: string, nodeId: string, characterId: string): LiveResult;
   creditGuildBank(guildId: string, amount: number): Promise<void>;
   auctionLot(lotId: string): { cityId?: string | null } | null;
@@ -311,10 +311,11 @@ async function nodeAccess(body: Record<string, unknown>, ports: LivePorts): Prom
   const guildId = text(body, 'guildId');
   const nodeId = text(body, 'nodeId');
   const access = text(body, 'access');
-  if (guildId === undefined || nodeId === undefined || access === undefined) {
+  const category = text(body, 'category');
+  if (guildId === undefined || nodeId === undefined || access === undefined || category === undefined) {
     return { ok: false, code: 'invalid' };
   }
-  return ports.setResourceAccess(guildId, nodeId, access);
+  return ports.setResourceAccess(guildId, nodeId, category, access);
 }
 
 async function nodeGrant(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

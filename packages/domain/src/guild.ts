@@ -896,6 +896,15 @@ export const NODE_TAX_OFFICER_MAX = 15;
 export const NODE_TAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export type NodeAccess = 'open' | 'request' | 'closed';
+/** Artifact 17 §8.5. Allies, other guilds, and neutrals each have their own mode. */
+export const NODE_ACCESS_CATEGORIES = ['allies', 'guilds', 'neutrals'] as const;
+export type NodeAccessCategory = (typeof NODE_ACCESS_CATEGORIES)[number];
+
+export interface NodeAccessPolicy {
+  allies: NodeAccess;
+  guilds: NodeAccess;
+  neutrals: NodeAccess;
+}
 
 export interface ResourceNode {
   nodeId: string;
@@ -906,7 +915,7 @@ export interface ResourceNode {
   taxPercent: number;
   taxSetAtMs: number | null;
   chest: number;
-  access: NodeAccess;
+  access: NodeAccessPolicy;
 }
 
 export function freshResourceNode(nodeId: string): ResourceNode {
@@ -919,8 +928,35 @@ export function freshResourceNode(nodeId: string): ResourceNode {
     taxPercent: 0,
     taxSetAtMs: null,
     chest: 0,
-    access: 'open',
+    access: { allies: 'open', guilds: 'open', neutrals: 'open' },
   };
+}
+
+export function nodeAccessCategory(
+  stance: 'member' | 'ally' | 'enemy' | 'neutral',
+): NodeAccessCategory | null {
+  if (stance === 'member') {
+    return null;
+  }
+  if (stance === 'ally') {
+    return 'allies';
+  }
+  if (stance === 'enemy') {
+    return 'guilds';
+  }
+  return 'neutrals';
+}
+
+export function nodeAccessAllows(input: {
+  policy: NodeAccessPolicy;
+  category: NodeAccessCategory;
+  granted: boolean;
+}): { ok: true } | { ok: false; code: 'closed' | 'refused' } {
+  const rule = input.policy[input.category];
+  if (rule === 'open' || (rule === 'request' && input.granted)) {
+    return { ok: true };
+  }
+  return { ok: false, code: rule === 'closed' ? 'closed' : 'refused' };
 }
 
 /**
@@ -1007,11 +1043,19 @@ export function setNodeTax(input: {
   return ok({ taxPercent: input.next, taxSetAtMs: input.nowMs });
 }
 
-export function setNodeAccess(access: string): Result<NodeAccess, 'access'> {
-  if (access !== 'open' && access !== 'request' && access !== 'closed') {
+export function setNodeAccess(input: {
+  policy: NodeAccessPolicy;
+  category: string;
+  access: string;
+}): Result<NodeAccessPolicy, 'access' | 'category'> {
+  if (!(NODE_ACCESS_CATEGORIES as readonly string[]).includes(input.category)) {
+    return err('category');
+  }
+  if (input.access !== 'open' && input.access !== 'request' && input.access !== 'closed') {
     return err('access');
   }
-  return ok(access);
+  const category = input.category as NodeAccessCategory;
+  return ok({ ...input.policy, [category]: input.access });
 }
 
 /**

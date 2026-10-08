@@ -191,7 +191,15 @@ test('a world snapshot keeps captures and reputation the map can read', () => {
   });
   expect(store.getState().captures).toEqual([{ cityId: 'fort_humans', guildId: 'wolves', heldMs: 100, won: false }]);
   expect(store.getState().resourceNodes).toEqual([
-    { nodeId: 'plains_mine', guildId: null, plantMs: 100, absentMs: 0, chest: 0, taxPercent: 0, access: 'open' },
+    {
+      nodeId: 'plains_mine',
+      guildId: null,
+      plantMs: 100,
+      absentMs: 0,
+      chest: 0,
+      taxPercent: 0,
+      access: { allies: 'open', guilds: 'open', neutrals: 'open' },
+    },
   ]);
   expect(store.getState().reputation).toEqual({ koval: 3 });
   expect(store.getState().quests[0]?.objectives[0]?.scene).toContain('questioned the council');
@@ -222,6 +230,7 @@ test('the play session posts city fees, node commands, storage, war, and contrac
     server: 'http://game.example',
     guildId: 'wolves',
     nodeId: 'plains_mine',
+    category: 'guilds',
     access: 'request',
     store,
     fetchImpl,

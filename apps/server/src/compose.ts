@@ -79,6 +79,8 @@ import {
   registerContender,
   renewPact,
   seatRank,
+  nodeAccessAllows,
+  nodeAccessCategory,
   setNodeAccess,
   setNodeTax,
   tickContract,
@@ -1112,13 +1114,18 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (node === undefined || node.guildId === null) {
       return { ok: true };
     }
-    if (node.access === 'open' || entity?.guildId === node.guildId) {
+    if (entity === undefined) {
+      return { ok: false, code: 'missing' };
+    }
+    const category = nodeAccessCategory(portalStance(entity, node.guildId));
+    if (category === null) {
       return { ok: true };
     }
-    if (node.access === 'request' && nodeGrants.get(node.nodeId)?.has(characterId) === true) {
-      return { ok: true };
-    }
-    return { ok: false, code: node.access === 'closed' ? 'closed' : 'refused' };
+    return nodeAccessAllows({
+      policy: node.access,
+      category,
+      granted: nodeGrants.get(node.nodeId)?.has(characterId) === true,
+    });
   }
 
   function addNodeChest(characterId: string, amount: number): number {
@@ -1160,13 +1167,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   function setResourceAccess(
     guildId: string,
     nodeId: string,
+    category: string,
     access: string,
   ): { ok: boolean; code?: string; value?: unknown } {
     const node = resourceAt(nodeId);
     if (node === undefined || node.guildId !== guildId) {
       return { ok: false, code: 'owner' };
     }
-    const chosen = setNodeAccess(access);
+    const chosen = setNodeAccess({ policy: node.access, category, access });
     if (!chosen.ok) {
       return { ok: false, code: chosen.code };
     }

@@ -68,6 +68,7 @@ import {
   renewPact,
   postMercenary,
   postPatrolQuest,
+  nodeAccessCategory,
   setNodeAccess,
   setNodeTax,
   settleNodeDrop,
@@ -1022,8 +1023,23 @@ test('a resource node plants in 60 seconds and drops after 30 minutes', () => {
     ok: false,
     code: 'tax',
   });
-  expect(setNodeAccess('closed')).toEqual({ ok: true, value: 'closed' });
-  expect(setNodeAccess('guild')).toEqual({ ok: false, code: 'access' });
+  const openPolicy = { allies: 'open' as const, guilds: 'open' as const, neutrals: 'open' as const };
+  expect(setNodeAccess({ policy: openPolicy, category: 'guilds', access: 'closed' })).toEqual({
+    ok: true,
+    value: { allies: 'open', guilds: 'closed', neutrals: 'open' },
+  });
+  expect(setNodeAccess({ policy: openPolicy, category: 'guilds', access: 'guild' })).toEqual({
+    ok: false,
+    code: 'access',
+  });
+  expect(setNodeAccess({ policy: openPolicy, category: 'open', access: 'closed' })).toEqual({
+    ok: false,
+    code: 'category',
+  });
+  expect(nodeAccessCategory('ally')).toBe('allies');
+  expect(nodeAccessCategory('enemy')).toBe('guilds');
+  expect(nodeAccessCategory('neutral')).toBe('neutrals');
+  expect(nodeAccessCategory('member')).toBeNull();
   expect(NODE_TAX_OFFICER_MAX).toBe(15);
   expect(setNodeTax({ next: 15, nowMs: 0, taxSetAtMs: null, rank: 'officer' })).toEqual({
     ok: true,

@@ -528,6 +528,7 @@ export function App() {
                 server: SERVER,
                 guildId: 'guild',
                 nodeId: 'plains_mine',
+                category: 'guilds',
                 access: 'request',
                 store: plan.store,
               });

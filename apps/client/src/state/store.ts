@@ -58,7 +58,7 @@ export interface ResourceNodeView {
   absentMs: number;
   chest: number;
   taxPercent: number;
-  access: string;
+  access: { allies: 'open' | 'request' | 'closed'; guilds: 'open' | 'request' | 'closed'; neutrals: 'open' | 'request' | 'closed' };
 }
 
 export interface SessionNode {
@@ -346,7 +346,7 @@ function readSessionExtras(snapshot: unknown): {
           absentMs: readNumber(row.absentMs) ?? 0,
           chest: readNumber(row.chest) ?? 0,
           taxPercent: readNumber(row.taxPercent) ?? 0,
-          access: typeof row.access === 'string' ? row.access : 'open',
+          access: readNodeAccess(row.access),
         },
       ];
     });
@@ -362,6 +362,29 @@ function readSessionExtras(snapshot: unknown): {
     extra.reputation = reputation;
   }
   return extra;
+}
+
+function readNodeMode(value: unknown): 'open' | 'request' | 'closed' {
+  return value === 'request' || value === 'closed' ? value : 'open';
+}
+
+function readNodeAccess(value: unknown): {
+  allies: 'open' | 'request' | 'closed';
+  guilds: 'open' | 'request' | 'closed';
+  neutrals: 'open' | 'request' | 'closed';
+} {
+  if (typeof value === 'string') {
+    const mode = readNodeMode(value);
+    return { allies: mode, guilds: mode, neutrals: mode };
+  }
+  if (!isPlainObject(value)) {
+    return { allies: 'open', guilds: 'open', neutrals: 'open' };
+  }
+  return {
+    allies: readNodeMode(value.allies),
+    guilds: readNodeMode(value.guilds),
+    neutrals: readNodeMode(value.neutrals),
+  };
 }
 
 function readPredicted(input: { cell: CellPoint | null; steps: PredictedStep[] }): {

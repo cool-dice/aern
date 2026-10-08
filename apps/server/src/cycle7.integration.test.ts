@@ -81,6 +81,13 @@ test('auction tax, storage, diplomacy, and war routes call the domain functions'
   const tickBody = composeSource.slice(composeSource.indexOf('function tickOnce'), composeSource.indexOf('function simSnapshot'));
   expect(tickBody.includes('spawnNeutralGuards(')).toBe(true);
   expect(tickBody.includes('tickCaptures(')).toBe(true);
+  const nodeGate = composeSource.slice(
+    composeSource.indexOf('function resourceAccess'),
+    composeSource.indexOf('function addNodeChest'),
+  );
+  expect(nodeGate.includes('portalStance(')).toBe(true);
+  expect(nodeGate.includes('nodeAccessCategory(')).toBe(true);
+  expect(nodeGate.includes("node.access === 'open'")).toBe(false);
   expect(dispatch.includes('ports.guild.withdraw(')).toBe(true);
   expect(dispatch.includes("path: '/war'") || composeSource.includes("path: '/war'")).toBe(true);
   expect(composeSource.includes("path: '/storage'")).toBe(true);
@@ -288,6 +295,62 @@ test('a node flag drop seizes the chest and the officer tax cap is 15', async ()
   expect(node?.guildId).toBeNull();
   expect(node?.chest).toBe(0);
   expect(dropped.guildVaults.find((row) => row.guildId === guildId)?.amount).toBe(chest);
+});
+
+test('node access is separate for allies, other guilds, and neutrals', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterWorld('lia', 'plains_mine');
+  graph.enterCharacter('account-lia', 'lia');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  const guildId = await foundGuild(graph);
+  await graph.skipMs(NODE_PLANT_MS);
+  expect(
+    await graph.act('node_access', { guildId, nodeId: 'plains_mine', category: 'allies', access: 'open' }),
+  ).toMatchObject({ ok: true });
+  expect(
+    await graph.act('node_access', { guildId, nodeId: 'plains_mine', category: 'guilds', access: 'closed' }),
+  ).toMatchObject({ ok: true, value: { access: { allies: 'open', guilds: 'closed', neutrals: 'open' } } });
+  expect(
+    await graph.act('node_access', { guildId, nodeId: 'plains_mine', category: 'neutrals', access: 'request' }),
+  ).toMatchObject({ ok: true });
+  expect(
+    await graph.act('node_access', { guildId, nodeId: 'plains_mine', category: 'open', access: 'closed' }),
+  ).toMatchObject({ ok: false, code: 'category' });
+
+  graph.enterWorld('kai', 'plains_mine');
+  graph.enterCharacter('account-kai', 'kai');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'kai', action: 'wait' });
+  const rival = await graph.act('guild_create', {
+    name: 'Ash Keepers',
+    tag: 'ASH',
+    initiatorId: 'kai',
+    leaderId: 'kai',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'kai', level: 5 },
+      { id: 'n1', level: 5 },
+      { id: 'n2', level: 5 },
+      { id: 'n3', level: 5 },
+    ],
+  });
+  expect(rival.ok).toBe(true);
+  const ash = (rival.value as { guildId: string }).guildId;
+  const gather = { nodeId: 'spring', tool: 'basic', toolKind: 'flask' };
+  expect(await graph.act('gather', { characterId: 'kai', ...gather })).toMatchObject({ ok: false, code: 'closed' });
+  expect(await graph.act('pact', { kind: 'alliance', guildIds: [guildId, ash], characterId: 'lia' })).toMatchObject({
+    ok: true,
+  });
+  const allied = await graph.act('gather', { characterId: 'kai', ...gather });
+  expect(allied.code).not.toBe('closed');
+
+  graph.enterWorld('noa', 'plains_mine');
+  graph.enterCharacter('account-noa', 'noa');
+  expect(await graph.act('gather', { characterId: 'noa', ...gather })).toMatchObject({ ok: false, code: 'refused' });
+  expect(await graph.act('node_grant', { guildId, nodeId: 'plains_mine', characterId: 'noa' })).toMatchObject({
+    ok: true,
+  });
+  const granted = await graph.act('gather', { characterId: 'noa', ...gather });
+  expect(granted.code).not.toBe('refused');
 });
 
 test('the 24 hour portal lift uses the domain clock skip', async () => {
