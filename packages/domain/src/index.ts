@@ -399,6 +399,7 @@ export {
   formPact,
   pactLive,
   pactAlly,
+  breakAlliance,
   noticeAllianceBreak,
   noticeVassalRelease,
   renewPact,

@@ -973,6 +973,8 @@ export interface GuildPact {
   vassalId: string | null;
   breakNoticeAtMs: number | null;
   lastTitheAtMs: number | null;
+  /** Set by `breakAlliance` after the notice has aged. The notice itself does not end the pact. */
+  brokenAtMs: number | null;
 }
 
 export const MERCENARY_KINDS = ['patrol', 'defend', 'attack', 'escort'] as const;
@@ -1031,6 +1033,7 @@ export function formPact(input: {
     vassalId: null,
     breakNoticeAtMs: null,
     lastTitheAtMs: null,
+    brokenAtMs: null,
   };
   if (input.kind === 'coalition') {
     const target = input.targetGuildId ?? '';
@@ -1068,11 +1071,37 @@ export function formPact(input: {
 
 export function pactLive(pact: GuildPact, nowMs: number): boolean {
   assertMs(nowMs, 'nowMs');
-  if (pact.breakNoticeAtMs !== null && (pact.kind === 'alliance' || pact.kind === 'vassal')) {
-    const wait = pact.kind === 'vassal' ? VASSAL_RELEASE_MS : ALLIANCE_BREAK_MS;
-    return nowMs < pact.breakNoticeAtMs + wait;
+  if (pact.brokenAtMs != null) {
+    return false;
+  }
+  if (pact.breakNoticeAtMs !== null && pact.kind === 'vassal') {
+    return nowMs < pact.breakNoticeAtMs + VASSAL_RELEASE_MS;
   }
   return nowMs < pact.untilMs;
+}
+
+/**
+ * The break is a later action. During the 24-hour notice the alliance still
+ * holds. `pactLive` does not end it. This refuses until the notice has aged.
+ */
+export function breakAlliance(
+  pact: GuildPact,
+  nowMs: number,
+): Result<GuildPact, 'kind' | 'notice' | 'early' | 'closed'> {
+  assertMs(nowMs, 'nowMs');
+  if (pact.kind !== 'alliance') {
+    return err('kind');
+  }
+  if (pact.brokenAtMs != null || !pactLive({ ...pact, brokenAtMs: null }, nowMs)) {
+    return err('closed');
+  }
+  if (pact.breakNoticeAtMs === null) {
+    return err('notice');
+  }
+  if (nowMs < pact.breakNoticeAtMs + ALLIANCE_BREAK_MS) {
+    return err('early');
+  }
+  return ok({ ...pact, brokenAtMs: nowMs });
 }
 
 /** Any stored live pact (alliance, coalition, vassal, non-aggression) is an ally. */

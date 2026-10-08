@@ -368,7 +368,7 @@ export async function postPatrol(input: {
   });
 }
 
-/** Posts `/pact/notice`. An alliance ends 24 hours later; a vassal ends after 7 days. */
+/** Posts `/pact/notice`. The alliance still holds for 24 hours; a vassal notice runs 7 days. */
 export async function noticePact(input: {
   server: string;
   pactId: string;
@@ -382,6 +382,24 @@ export async function noticePact(input: {
     body: { pactId: input.pactId, characterId: input.characterId },
     store: input.store,
     log: 'pact-notice',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/pact/break` after the 24-hour notice. The alliance holds until this action. */
+export async function breakPact(input: {
+  server: string;
+  pactId: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/pact/break',
+    body: { pactId: input.pactId, characterId: input.characterId },
+    store: input.store,
+    log: 'pact-break',
     ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
   });
 }

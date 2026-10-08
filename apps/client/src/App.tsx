@@ -13,6 +13,7 @@ import { CreationScreen, HudScreen } from './ui/screens';
 import { PlayPanels } from './play/screens';
 import {
   askPortal,
+  breakPact,
   completeTrade,
   declareWar,
   enterDungeon,
@@ -610,6 +611,18 @@ export function App() {
                 characterId,
                 nodeId: 'plains_mine',
                 assigneeId: characterId,
+                store: plan.store,
+              });
+            }}
+            onPactBreak={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void breakPact({
+                server: SERVER,
+                pactId: 'pact',
+                characterId,
                 store: plan.store,
               });
             }}

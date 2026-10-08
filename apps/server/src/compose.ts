@@ -58,6 +58,7 @@ import {
 import {
   allianceFriendlyFire,
   applyVassalTithe,
+  breakAlliance,
   breachNonAggression,
   depositBank,
   depositNodeChest,
@@ -706,6 +707,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     postPact,
     noticePact: noticeStoredPact,
     renewPact: renewStoredPact,
+    breakPact: breakStoredPact,
     registerContender: registerWarContender,
     postMercenaryContract,
     postPatrol,
@@ -1447,6 +1449,26 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return { ok: true, value: pacts.find((row) => row.id === pactId) };
   }
 
+  async function breakStoredPact(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const pactId = typeof body.pactId === 'string' ? body.pactId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const pact = pacts.find((row) => row.id === pactId);
+    if (pact === undefined) {
+      return { ok: false, code: 'closed' };
+    }
+    if (!pactDiplomat(pact.guildIds, characterId)) {
+      return { ok: false, code: 'rank' };
+    }
+    const broken = breakAlliance(pact, clock.now());
+    if (!broken.ok) {
+      return { ok: false, code: broken.code };
+    }
+    pacts = pacts.map((row) => (row.id === pactId ? { ...row, ...broken.value } : row));
+    return { ok: true, value: pacts.find((row) => row.id === pactId) };
+  }
+
   async function registerWarContender(
     body: Record<string, unknown>,
   ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
@@ -1640,6 +1662,17 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     patrols = nextPatrol;
   }
 
+  function tickAllianceBreaks(): void {
+    const now = clock.now();
+    pacts = pacts.map((pact) => {
+      if (pact.kind !== 'alliance' || pact.breakNoticeAtMs === null || pact.brokenAtMs != null) {
+        return pact;
+      }
+      const broken = breakAlliance(pact, now);
+      return broken.ok ? { ...pact, ...broken.value } : pact;
+    });
+  }
+
   async function tickVassalTithes(): Promise<void> {
     const now = clock.now();
     const next: StoredPact[] = [];
@@ -1699,6 +1732,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     applyNodeSeizure(ticked.seized);
     await tickContracts(ms);
     await tickVassalTithes();
+    tickAllianceBreaks();
   }
 
   function guardAllies(command: SimCommand): SimCommand {
@@ -1970,6 +2004,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     applyNodeSeizure(tickedNodes.seized);
     void tickContracts(SIM_TICK_MS);
     void tickVassalTithes();
+    tickAllianceBreaks();
     for (const entity of simWorld.entities) {
       if (entity.monsterId !== undefined || entity.nodeId === undefined) {
         continue;
@@ -3040,6 +3075,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/service/grant', action: 'service_grant' },
   { path: '/pact', action: 'pact' },
   { path: '/pact/notice', action: 'pact_notice' },
+  { path: '/pact/break', action: 'pact_break' },
   { path: '/pact/renew', action: 'pact_renew' },
   { path: '/war/contend', action: 'war_contend' },
   { path: '/mercenary', action: 'mercenary' },

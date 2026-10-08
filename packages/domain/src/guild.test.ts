@@ -58,6 +58,7 @@ import {
   applyVassalTithe,
   breachNonAggression,
   formPact,
+  breakAlliance,
   noticeAllianceBreak,
   noticeVassalRelease,
   pactAlly,
@@ -1059,7 +1060,13 @@ test('pacts make two guilds allies and a vassal cannot declare war alone', () =>
   expect(noticed.ok).toBe(true);
   if (noticed.ok) {
     expect(pactAlly([noticed.value], 'ash', 'wolves', ALLIANCE_BREAK_MS - 1)).toBe(true);
-    expect(pactAlly([noticed.value], 'ash', 'wolves', ALLIANCE_BREAK_MS)).toBe(false);
+    expect(pactAlly([noticed.value], 'ash', 'wolves', ALLIANCE_BREAK_MS)).toBe(true);
+    expect(breakAlliance(noticed.value, ALLIANCE_BREAK_MS - 1)).toEqual({ ok: false, code: 'early' });
+    const broken = breakAlliance(noticed.value, ALLIANCE_BREAK_MS);
+    expect(broken.ok).toBe(true);
+    if (broken.ok) {
+      expect(pactAlly([broken.value], 'ash', 'wolves', ALLIANCE_BREAK_MS)).toBe(false);
+    }
     const renewed = renewPact(noticed.value, 1_000);
     expect(renewed.ok).toBe(true);
     if (renewed.ok) {

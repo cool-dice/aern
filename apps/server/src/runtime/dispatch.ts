@@ -77,6 +77,7 @@ export interface LivePorts {
   postPact(body: Record<string, unknown>): Promise<LiveResult>;
   noticePact(body: Record<string, unknown>): Promise<LiveResult>;
   renewPact(body: Record<string, unknown>): Promise<LiveResult>;
+  breakPact(body: Record<string, unknown>): Promise<LiveResult>;
   registerContender(body: Record<string, unknown>): Promise<LiveResult>;
   postMercenaryContract(body: Record<string, unknown>): Promise<LiveResult>;
   postPatrol(body: Record<string, unknown>): Promise<LiveResult>;
@@ -140,6 +141,7 @@ const LIVE_ACTIONS = new Set([
   'service_grant',
   'pact',
   'pact_notice',
+  'pact_break',
   'pact_renew',
   'war_contend',
   'mercenary',
@@ -233,6 +235,8 @@ export async function runLive(
       return ports.postPact(body);
     case 'pact_notice':
       return ports.noticePact(body);
+    case 'pact_break':
+      return ports.breakPact(body);
     case 'pact_renew':
       return ports.renewPact(body);
     case 'war_contend':

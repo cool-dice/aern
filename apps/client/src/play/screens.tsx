@@ -66,6 +66,7 @@ export function PlayPanels({
   onMercenary,
   onPatrol,
   onPactNotice,
+  onPactBreak,
   onPactRenew,
   onContend,
 }: {
@@ -86,6 +87,7 @@ export function PlayPanels({
   onMercenary?: () => void;
   onPatrol?: () => void;
   onPactNotice?: () => void;
+  onPactBreak?: () => void;
   onPactRenew?: () => void;
   onContend?: () => void;
 }): ReactElement | null {
@@ -176,6 +178,9 @@ export function PlayPanels({
         </button>
         <button type="button" data-pact="notice" onClick={() => onPactNotice?.()}>
           notice
+        </button>
+        <button type="button" data-pact="break" onClick={() => onPactBreak?.()}>
+          break
         </button>
         <button type="button" data-pact="renew" onClick={() => onPactRenew?.()}>
           renew
