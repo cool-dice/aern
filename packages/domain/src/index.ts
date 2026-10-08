@@ -423,6 +423,7 @@ export {
   applyVassalTithe,
   titheDays,
   breachNonAggression,
+  failSuzerainDefense,
   allianceFriendlyFire,
   napBetween,
   postMercenary,

@@ -1416,6 +1416,19 @@ export function titheDays(input: { lastTitheAtMs: number | null; startedAtMs: nu
   return Math.floor((input.nowMs - from) / DAY_MS);
 }
 
+/**
+ * Artifact 17 §9.3: the suzerain must defend the vassal.
+ * A suzerain who never reaches the city during the defense window breaks that pact.
+ * §9.4 names the breach: 50_000 gold and a reputation flag for 7 days.
+ */
+export function failSuzerainDefense(input: { bank: number; nowMs: number }): {
+  bank: number;
+  fine: number;
+  flagUntilMs: number;
+} {
+  return breachNonAggression(input);
+}
+
 export function breachNonAggression(input: { bank: number; nowMs: number }): {
   bank: number;
   fine: number;

@@ -60,6 +60,7 @@ import {
   VASSAL_TAX_MIN,
   applyVassalTithe,
   breachNonAggression,
+  failSuzerainDefense,
   formPact,
   breakAlliance,
   releaseVassal,
@@ -1140,6 +1141,11 @@ test('pacts make two guilds allies and a vassal cannot declare war alone', () =>
     flagUntilMs: 7 * 24 * 60 * 60 * 1000,
   });
   expect(NAP_BREACH_GOLD).toBe(50_000);
+  expect(failSuzerainDefense({ bank: 80_000, nowMs: 0 })).toEqual({
+    bank: 30_000,
+    fine: 50_000,
+    flagUntilMs: 7 * 24 * 60 * 60 * 1000,
+  });
   const noticed = noticeAllianceBreak(alliance.value, 0);
   expect(noticed.ok).toBe(true);
   if (noticed.ok) {
