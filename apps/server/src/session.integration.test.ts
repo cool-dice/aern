@@ -7,6 +7,15 @@ import { buildApp, compose } from './compose';
 import type { PrismaWrite, RiftDb } from './infra/db/prisma';
 import { PROTOTYPE_MONSTERS } from './sim/bestiary';
 
+function silence(graph: { noteSidecar: (input: { atMs: number; characterId: string; action: string }) => void; state: () => Record<string, unknown> }, characterId: string): void {
+  const nowMs = graph.state().nowMs;
+  graph.noteSidecar({
+    atMs: typeof nowMs === 'number' ? nowMs : 0,
+    characterId,
+    action: 'wait',
+  });
+}
+
 const appearance: Appearance = {
   skin: 'fair',
   hair: 'brown',
@@ -64,7 +73,27 @@ test('character create enters the world and a command moves that entity', async 
       },
     });
     expect(moved.statusCode).toBe(200);
+    await built.app.inject({
+      method: 'POST',
+      url: '/sidecar',
+      payload: { characterId, action: 'wait', atMs: 1_000 },
+    });
     built.tickOnce();
+    const started = await built.app.inject({ method: 'GET', url: '/state' });
+    const crossing = started.json() as { self: { nodeId: string | null }; nowMs: number };
+    expect(crossing.self.nodeId).toBe('fort_humans');
+    for (let step = 0; step < 80 && crossing.self.nodeId !== 'edge_light'; step += 1) {
+      await built.app.inject({
+        method: 'POST',
+        url: '/sidecar',
+        payload: { characterId, action: 'wait', atMs: crossing.nowMs },
+      });
+      built.tickOnce();
+      const polled = await built.app.inject({ method: 'GET', url: '/state' });
+      const body = polled.json() as { self: { nodeId: string | null }; nowMs: number };
+      crossing.self = body.self;
+      crossing.nowMs = body.nowMs;
+    }
     const after = await built.app.inject({ method: 'GET', url: '/state' });
     const next = after.json() as { self: { cell: { x: number; y: number }; hp: number; nodeId: string | null } };
     expect(next.self.nodeId).toBe('edge_light');
@@ -179,7 +208,11 @@ test('accepted quests publish on /state and kill credit follows the attacker', a
   expect(alphaPlayed?.quests.find((quest) => quest.id === 'gather_metal')?.objectives[0]?.current).toBe(1);
   expect(alphaPlayed?.quests.find((quest) => quest.id === 'visit_hub')?.objectives[0]?.current).toBe(0);
   expect(await graph.act('dungeon_leave', { characterId: 'alpha' })).toMatchObject({ ok: true });
+  silence(graph, 'alpha');
+  graph.tickOnce();
   for (const to of ['edge_light', 'cross_light']) {
+    const from = (graph.state() as { self: { nodeId: string | null } | null }).self?.nodeId;
+    silence(graph, 'alpha');
     graph.submit({
       commandId: `walk-${to}`,
       seq: 2,
@@ -188,6 +221,14 @@ test('accepted quests publish on /state and kill credit follows the attacker', a
       params: { entityId: 'alpha', to },
     });
     graph.tickOnce();
+    expect((graph.state() as { self: { nodeId: string | null } | null }).self?.nodeId).toBe(from);
+    for (let step = 0; step < 80; step += 1) {
+      if ((graph.state() as { self: { nodeId: string | null } | null }).self?.nodeId === to) {
+        break;
+      }
+      silence(graph, 'alpha');
+      graph.tickOnce();
+    }
   }
   const walked = graph.state() as {
     self: { nodeId: string | null } | null;
@@ -500,9 +541,9 @@ test('story acts publish artifact scenes and live events advance them', async ()
   const act1 = studied.players[0]?.quests.find((quest) => quest.id === 'act1_light');
   const act3 = studied.players[0]?.quests.find((quest) => quest.id === 'act3_light');
   expect(act1?.objectives.find((objective) => objective.id === 'barrier')?.current).toBe(1);
-  expect(act3?.objectives.find((objective) => objective.id === 'archive')?.current).toBe(1);
+  expect(act3?.objectives.find((objective) => objective.id === 'archive')?.current).toBe(0);
 
-  expect(await graph.act('hack_start', { characterId: 'lia' })).toMatchObject({ ok: true });
+  expect(await graph.act('hack_start', { characterId: 'lia', subject: 'shutdown' })).toMatchObject({ ok: true });
   const password = (graph.state() as { hackPassword: string | null }).hackPassword;
   expect(password).toHaveLength(4);
   const guessed = await graph.act('hack_guess', { characterId: 'lia', attempt: password });
@@ -539,10 +580,14 @@ test('story acts publish artifact scenes and live events advance them', async ()
   const act3Inside = rings.players[0]?.quests.find((quest) => quest.id === 'act3_light');
   expect(act3Inside?.objectives.find((objective) => objective.id === 'outer_ring')?.current).toBe(0);
   expect(act3Inside?.objectives.find((objective) => objective.id === 'middle_ring')?.current).toBe(0);
-  expect(act3?.objectives.find((objective) => objective.id === 'archive')?.current).toBe(1);
+  expect(act3?.objectives.find((objective) => objective.id === 'archive')?.current).toBe(0);
 
   expect(await graph.act('dungeon_leave', { characterId: 'lia' })).toMatchObject({ ok: true });
+  silence(graph, 'lia');
+  graph.tickOnce();
   for (const to of ['forest_city', 'dwarf_fortress', 'troll_refuge', 'approach_light', 'primordial_outer']) {
+    const from = (graph.state() as { self: { nodeId: string | null } | null }).self?.nodeId;
+    silence(graph, 'lia');
     graph.submit({
       commandId: `ring-${to}`,
       seq: 3,
@@ -551,6 +596,14 @@ test('story acts publish artifact scenes and live events advance them', async ()
       params: { entityId: 'lia', to },
     });
     graph.tickOnce();
+    expect((graph.state() as { self: { nodeId: string | null } | null }).self?.nodeId).toBe(from);
+    for (let step = 0; step < 200; step += 1) {
+      if ((graph.state() as { self: { nodeId: string | null } | null }).self?.nodeId === to) {
+        break;
+      }
+      silence(graph, 'lia');
+      graph.tickOnce();
+    }
   }
   const arrived = graph.state() as {
     primordialOpened: boolean;
@@ -596,7 +649,7 @@ test('utility runs after 200ms of sidecar silence and the action is played', asy
 
   graph.tickOnce();
   graph.tickOnce();
-  const moved = graph.state() as {
+  let moved = graph.state() as {
     self: { cell: { x: number; y: number } } | null;
     entities: { id: string; hp: number }[];
     lastUtility: string | null;
@@ -604,10 +657,16 @@ test('utility runs after 200ms of sidecar silence and the action is played', asy
   };
   expect(['step_n', 'attack_melee', 'attack_ranged']).toContain(moved.lastUtility);
   expect(moved.playedUtility).toBeGreaterThan(0);
-  const damaged = moved.entities.some((entity) => {
-    const previous = beforeHp.get(entity.id);
-    return previous !== undefined && entity.hp < previous;
-  });
+  const hurt = (rows: { id: string; hp: number }[]): boolean =>
+    rows.some((entity) => {
+      const previous = beforeHp.get(entity.id);
+      return previous !== undefined && entity.hp < previous;
+    });
+  for (let step = 0; step < 80 && moved.self?.cell.x === 0 && moved.self?.cell.y === 0 && !hurt(moved.entities); step += 1) {
+    graph.tickOnce();
+    moved = graph.state() as typeof moved;
+  }
+  const damaged = hurt(moved.entities);
   const stepped = moved.self?.cell.x !== 0 || moved.self?.cell.y !== 0;
   expect(stepped || damaged).toBe(true);
 

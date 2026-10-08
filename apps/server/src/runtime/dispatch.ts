@@ -6,6 +6,7 @@ import type { RelicState, RelicSubtype } from '@rift/domain/relics';
 import { socketCount } from '@rift/domain/relics';
 import type { QuestObjectiveKind } from '@rift/domain/quests';
 import { derive, emptyPoints } from '@rift/domain/stats';
+import { choiceReputation } from '../sim/reputation';
 import { weatheredGatherSeconds } from '../sim/weather';
 import type { BuildService } from '../modules/build/service';
 import type { CraftService } from '../modules/craft/types';
@@ -49,6 +50,9 @@ export interface LivePorts {
   leaveDungeon(characterId: string): void;
   note(characterId: string, kind: QuestObjectiveKind, subject?: string): Promise<void>;
   applyChoice(characterId: string, questId: string | undefined, choiceId: string): Promise<boolean>;
+  shiftReputation(characterId: string, npcId: string, event: 'quest' | 'fail' | 'attack' | 'gift'): number;
+  portalTo(characterId: string, toNodeId: string): Promise<LiveResult>;
+  assignGuild(characterId: string, guildId: string): void;
   placeQuest(characterId: string, questId: string): Promise<void>;
   loadBuild(characterId: string): Promise<BuildState>;
   relicGrade(characterId: string): Promise<GradeId>;
@@ -91,6 +95,7 @@ const LIVE_ACTIONS = new Set([
   'encounter',
   'encounter_enter',
   'dialogue',
+  'portal',
 ]);
 
 export function isLiveAction(action: string): boolean {
@@ -149,6 +154,8 @@ export async function runLive(
       return encounterEnter(body, ports);
     case 'dialogue':
       return dialogue(body, ports);
+    case 'portal':
+      return portal(body, ports);
     default:
       return { ok: false, code: 'unknown' };
   }
@@ -185,12 +192,14 @@ async function hackStart(body: Record<string, unknown>, ports: LivePorts): Promi
     return { ok: false, code: 'invalid' };
   }
   const kind = enumOf(text(body, 'kind'), KEEPERS) ?? 'patrol';
+  const subject = text(body, 'subject') ?? text(body, 'objectiveId') ?? text(body, 'questId');
   const opened = ports.hack.start({
     characterId,
     kind,
     technique: numberOf(body.technique, 5),
     hasDeck: body.hasDeck !== false,
     nowMs: ports.now(),
+    ...(subject !== undefined ? { subject } : {}),
   });
   if (!opened.ok) {
     return { ok: false, code: opened.code };
@@ -358,12 +367,16 @@ async function dungeon(body: Record<string, unknown>, ports: LivePorts): Promise
   if (characterId === undefined) {
     return { ok: false, code: 'invalid' };
   }
-  const partySize = numberOf(body.partySize, 1);
+  const place = text(body, 'nodeId') ?? 'light_dungeon';
+  const questId = text(body, 'questId');
+  const party = ports.social.partyOf(characterId);
+  const partySize =
+    typeof body.partySize === 'number' ? numberOf(body.partySize, 1) : (party?.members.length ?? 1);
   const entered = ports.dungeon.enter({
     characterId,
-    nodeId: text(body, 'nodeId') ?? 'light_dungeon',
+    nodeId: place,
     edgeId: text(body, 'edgeId') ?? 'edge_light__fort_humans',
-    groupId: text(body, 'groupId') ?? characterId,
+    groupId: text(body, 'groupId') ?? party?.leaderId ?? characterId,
     nowMs: ports.now(),
     partySize,
   });
@@ -371,13 +384,17 @@ async function dungeon(body: Record<string, unknown>, ports: LivePorts): Promise
     return { ok: false, code: entered.code };
   }
   ports.enterDungeon(characterId, entered.value.instanceId, entered.value.layout);
-  await ports.note(characterId, 'visit');
+  await ports.note(characterId, 'visit', questId ?? place);
   if (partySize > 1) {
     await ports.note(characterId, 'escort');
   }
   return {
     ok: true,
-    value: { instanceId: entered.value.instanceId, roomId: entered.value.layout.entranceId },
+    value: {
+      instanceId: entered.value.instanceId,
+      roomId: entered.value.layout.entranceId,
+      rooms: entered.value.layout.rooms.map((room) => ({ id: room.id, x: room.x, y: room.y })),
+    },
   };
 }
 
@@ -504,6 +521,17 @@ async function guildCreate(body: Record<string, unknown>, ports: LivePorts): Pro
   if (!created.ok) {
     return { ok: false, code: created.code };
   }
+  if (Array.isArray(body.members)) {
+    for (const member of body.members) {
+      if (typeof member !== 'object' || member === null || !('id' in member)) {
+        continue;
+      }
+      const id = (member as { id?: unknown }).id;
+      if (typeof id === 'string' && id.length > 0) {
+        ports.assignGuild(id, created.value.guildId);
+      }
+    }
+  }
   const initiator = text(body, 'initiatorId');
   if (initiator !== undefined) {
     await ports.note(initiator, 'capture');
@@ -584,7 +612,19 @@ async function dialogue(body: Record<string, unknown>, ports: LivePorts): Promis
   if (!stored) {
     return { ok: false, code: 'inactive' };
   }
-  return { ok: true, value: { choiceId, questId: text(body, 'questId') ?? null } };
+  const npcId = text(body, 'npcId');
+  const reputation =
+    npcId === undefined ? null : ports.shiftReputation(characterId, npcId, choiceReputation(choiceId));
+  return { ok: true, value: { choiceId, questId: text(body, 'questId') ?? null, npcId, reputation } };
+}
+
+async function portal(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const toNodeId = text(body, 'toNodeId');
+  if (characterId === undefined || toNodeId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.portalTo(characterId, toNodeId);
 }
 
 async function encounterEnter(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
