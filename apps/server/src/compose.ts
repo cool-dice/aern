@@ -3761,7 +3761,15 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   async function payDissolution(
     guildId: string,
     by: string,
-  ): Promise<{ by: string; shares: { id: string; gold: number }[]; void: number; resources: { id: string; amount: number }[]; items: { id: string; amount: number }[] } | null> {
+  ): Promise<{
+    by: string;
+    shares: { id: string; gold: number }[];
+    void: number;
+    resources: { id: string; amount: number }[];
+    items: { id: string; amount: number }[];
+    resourceKinds: { kind: string; shares: { id: string; amount: number }[]; void: number }[];
+    itemKinds: { kind: string; shares: { id: string; amount: number }[]; void: number }[];
+  } | null> {
     const guild = await repos.guilds.findGuild(guildId);
     if (guild === null) {
       return null;
