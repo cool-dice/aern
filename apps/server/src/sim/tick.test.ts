@@ -880,6 +880,53 @@ test('a city geography ignores client pvp flags until war, a wave, or the encoun
   expect(open.entities.find((row) => row.id === 'kai')?.hp).toBeLessThan(40);
 });
 
+test('a one-node radius around a city blocks attacks even when that node is not safe', () => {
+  const zones = readFileSync(new URL('./zones.ts', import.meta.url), 'utf8');
+  const tick = readFileSync(new URL('./tick.ts', import.meta.url), 'utf8');
+  expect(zones.includes('inCitySafeRadius(')).toBe(true);
+  const attackBody = tick.slice(tick.indexOf('function applyAttack'), tick.indexOf('function enterCombat'));
+  expect(attackBody.includes('combatZone(')).toBe(true);
+  const geography = {
+    barrierDown: false,
+    nodes: [
+      { id: 'fort_humans', x: 0, y: 0, kind: 'city' as const, safe: true, side: 'light' as const, regionId: 'plains' },
+      { id: 'edge_light', x: 10, y: 0, kind: 'dungeon' as const, safe: false, side: 'light' as const, regionId: 'plains' },
+      { id: 'cross_light', x: 20, y: 0, kind: 'hub' as const, safe: false, side: 'light' as const, regionId: 'plains' },
+    ],
+    edges: [
+      { id: 'a', a: 'fort_humans', b: 'edge_light', length: 10 },
+      { id: 'b', a: 'edge_light', b: 'cross_light', length: 10 },
+    ],
+  };
+  const ring = [
+    entity({ id: 'lia', nodeId: 'edge_light', cell: { x: 0, y: 0 }, hp: 40, maxHp: 40, evasion: 0, armor: 0 }),
+    entity({ id: 'kai', nodeId: 'edge_light', cell: { x: 1, y: 0 }, hp: 40, maxHp: 40, evasion: 0, armor: 0 }),
+  ];
+  const hit = attack({
+    attackerId: 'lia',
+    targetId: 'kai',
+    melee: true,
+    range: 1,
+    weaponDamage: 12,
+    odCost: 0,
+    pvpOpen: true,
+    safeZone: false,
+  });
+  const blocked = stepTick(
+    world({ geography, warCities: ['fort_humans', 'edge_light'], entities: ring }),
+    [hit],
+    mulberry32(1),
+  );
+  expect(blocked.rejections).toContainEqual({ entityId: 'lia', code: 'safe' });
+  expect(blocked.entities.find((row) => row.id === 'kai')?.hp).toBe(40);
+  const outside = [
+    entity({ id: 'lia', nodeId: 'cross_light', cell: { x: 0, y: 0 }, hp: 40, maxHp: 40, evasion: 0, armor: 0 }),
+    entity({ id: 'kai', nodeId: 'cross_light', cell: { x: 1, y: 0 }, hp: 40, maxHp: 40, evasion: 0, armor: 0 }),
+  ];
+  const landed = stepTick(world({ geography, entities: outside }), [hit], mulberry32(1));
+  expect(landed.entities.find((row) => row.id === 'kai')?.hp).toBeLessThan(40);
+});
+
 test('respawn reads the war branch for defenders and attackers', () => {
   const source = readFileSync(new URL('./tick.ts', import.meta.url), 'utf8');
   const body = source.slice(source.indexOf('function applyRespawn'), source.indexOf('function warFrontFor'));

@@ -292,6 +292,7 @@ export {
   PROTOTYPE_NODE_IDS,
   prototypeWorld,
   neighbors,
+  inCitySafeRadius,
   pvpAllowed,
   canWalk,
   canBind,

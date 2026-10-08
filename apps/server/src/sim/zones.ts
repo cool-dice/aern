@@ -1,4 +1,4 @@
-import { pvpAllowed, type WorldNode } from '@rift/domain/world';
+import { inCitySafeRadius, pvpAllowed, type WorldNode } from '@rift/domain/world';
 import type { Geography } from './travel';
 
 const INVASION_COMBAT = new Set(['wave1', 'wave2', 'climax']);
@@ -26,6 +26,15 @@ export function combatZone(input: {
   const node = input.geography.nodes.find((candidate) => candidate.id === input.nodeId);
   if (node === undefined) {
     return { safeZone: false, pvpOpen: true };
+  }
+  if (
+    inCitySafeRadius({
+      nodes: input.geography.nodes,
+      edges: input.geography.edges,
+      nodeId: node.id,
+    })
+  ) {
+    return { safeZone: true, pvpOpen: false };
   }
   const warOpen =
     (input.warCities ?? []).includes(node.id) ||

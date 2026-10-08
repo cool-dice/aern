@@ -146,6 +146,25 @@ export function neighbors(edges: WorldEdge[], nodeId: string): string[] {
   return found;
 }
 
+/**
+ * Artifact 17 §11. One node around a city is a safe radius.
+ * The city node itself is not this radius; `combatZone` still reads that node's own flag.
+ */
+export function inCitySafeRadius(input: {
+  nodes: readonly { id: string; kind: string }[];
+  edges: readonly { a: string; b: string }[];
+  nodeId: string;
+}): boolean {
+  const cities = new Set(input.nodes.filter((node) => node.kind === 'city').map((node) => node.id));
+  if (cities.has(input.nodeId)) {
+    return false;
+  }
+  return input.edges.some(
+    (edge) =>
+      (edge.a === input.nodeId && cities.has(edge.b)) || (edge.b === input.nodeId && cities.has(edge.a)),
+  );
+}
+
 export function pvpAllowed(node: WorldNode, warOpen: boolean): boolean {
   if (warOpen) {
     return true;
