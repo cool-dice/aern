@@ -241,6 +241,8 @@ export interface QuestObjective {
   hub?: string;
   /** Geography node the player must walk into. Rings use this, not a visit count. */
   place?: string;
+  /** NPC this talk or learn objective names. */
+  npcId?: string;
   /** Named beat. Story acts require it; errands omit it. */
   scene?: string;
 }

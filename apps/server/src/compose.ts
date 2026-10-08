@@ -509,17 +509,28 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     shiftReputation(event.characterId, event.npcId ?? event.questId, 'fail');
   });
   bus.on('build.installed', (event) => {
-    if (event.kind === 'path') {
-      void note(event.characterId, 'learn');
+    if (event.subject === undefined || event.subject.length === 0) {
+      return;
     }
-    void note(event.characterId, 'craft');
+    if (event.kind === 'path') {
+      void note(event.characterId, 'learn', event.subject);
+    }
+    void note(event.characterId, 'craft', event.subject);
   });
   bus.on('chat.message', (event) => {
-    void note(event.senderId, 'talk');
+    if (event.subject === undefined || event.subject.length === 0) {
+      return;
+    }
+    void note(event.senderId, 'talk', event.subject);
   });
   bus.on('combat.hit', (event) => {
-    void note(event.targetId, 'defend');
-    void note(event.attackerId, 'pvp');
+    if (event.subject === undefined || event.subject.length === 0) {
+      return;
+    }
+    void note(event.targetId, 'defend', event.subject);
+    if (event.playerAttacker === true) {
+      void note(event.attackerId, 'pvp', event.subject);
+    }
   });
   const pending: ClientCommand[] = [];
   let sidecarHeardAt = clock.now();
@@ -1275,6 +1286,16 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
       clearDroppedKit(corpse.victimId);
       const killer = simWorld.entities.find((entity) => entity.id === corpse.killerId);
+      const victimGone = !simWorld.entities.some((entity) => entity.id === corpse.victimId);
+      if (victimGone && corpse.killerId !== undefined) {
+        bus.emit('combat.hit', {
+          attackerId: corpse.killerId,
+          targetId: corpse.victimId,
+          damage: 1,
+          subject: monsterOf.get(corpse.victimId) ?? killer?.monsterId ?? corpse.victimId,
+          playerAttacker: killer !== undefined && killer.monsterId === undefined,
+        });
+      }
       if (killer !== undefined && killer.monsterId === undefined) {
         void reportKind(killer.id, 'kill', monsterOf.get(corpse.victimId));
         if (corpse.victimId.includes(':elite') || corpse.victimId.includes('keeper')) {
@@ -1283,27 +1304,32 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
     }
     for (const entity of simWorld.entities) {
-      if (entity.monsterId !== undefined || entity.progress === undefined) {
+      const previous = beforeHp.get(entity.id);
+      if (previous === undefined || entity.hp >= previous) {
         continue;
       }
-      const previous = beforeHp.get(entity.id);
-      if (previous !== undefined && entity.hp < previous && entity.hp > 0) {
+      if (entity.monsterId === undefined && entity.progress !== undefined && entity.hp > 0) {
         void note(entity.id, 'survive');
-        void note(entity.id, 'defend');
       }
+      if (entity.lastAttackerId === undefined) {
+        continue;
+      }
+      const attacker = simWorld.entities.find((row) => row.id === entity.lastAttackerId);
+      const subject = attacker?.monsterId ?? entity.monsterId ?? entity.id;
+      bus.emit('combat.hit', {
+        attackerId: entity.lastAttackerId,
+        targetId: entity.id,
+        damage: previous - entity.hp,
+        subject,
+        playerAttacker: attacker !== undefined && attacker.monsterId === undefined,
+      });
     }
     for (const command of commands) {
       const rejected = simWorld.rejections.some((row) => row.entityId === commandActor(command));
       if (rejected) {
         continue;
       }
-      if (command.type === 'attack') {
-        const attacker = simWorld.entities.find((entity) => entity.id === command.attackerId);
-        const target = simWorld.entities.find((entity) => entity.id === command.targetId);
-        if (attacker?.monsterId === undefined && target?.monsterId === undefined && attacker !== undefined) {
-          void note(attacker.id, 'pvp');
-        }
-      } else if (command.type === 'loot') {
+      if (command.type === 'loot') {
         void note(command.entityId, 'collect');
       } else if (command.type === 'respawn') {
         void note(command.entityId, 'survive');

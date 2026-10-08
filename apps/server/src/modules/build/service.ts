@@ -64,7 +64,7 @@ export function createBuildService(bus: Bus): BuildService {
         nowMs: input.nowMs,
         rng: { nextInt: () => 0, nextUnit: () => 0 },
       });
-      bus.emit('build.installed', { characterId: input.characterId, kind: 'relic' });
+      bus.emit('build.installed', { characterId: input.characterId, kind: 'relic', subject: input.subtype });
       return ok({
         gold: started.value.gold,
         readyAtMs: started.value.readyAtMs,
@@ -76,7 +76,7 @@ export function createBuildService(bus: Bus): BuildService {
       if (!installed.ok) {
         return err(installed.code);
       }
-      bus.emit('build.installed', { characterId: input.characterId, kind: 'echo' });
+      bus.emit('build.installed', { characterId: input.characterId, kind: 'echo', subject: input.program.templateId });
       return ok({ state: installed.value, neuroshock: neuroshock(installed.value) });
     },
     learnPath(input) {
@@ -84,7 +84,7 @@ export function createBuildService(bus: Bus): BuildService {
       if (!learned.ok) {
         return err(learned.code);
       }
-      bus.emit('build.installed', { characterId: input.characterId, kind: 'path' });
+      bus.emit('build.installed', { characterId: input.characterId, kind: 'path', subject: input.program.templateId });
       return ok(learned.value);
     },
     equipCore(input) {
@@ -92,7 +92,7 @@ export function createBuildService(bus: Bus): BuildService {
       if (!equipped.ok) {
         return err(equipped.code);
       }
-      bus.emit('build.installed', { characterId: input.characterId, kind: 'core' });
+      bus.emit('build.installed', { characterId: input.characterId, kind: 'core', subject: input.core.templateId });
       return ok(equipped.value);
     },
   };

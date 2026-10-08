@@ -1,8 +1,25 @@
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import type { Appearance } from '@rift/domain/character';
 import { SERVICE_CUT_PERCENT } from '@rift/domain/economy';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
+import { emptyPoints } from '@rift/domain/stats';
+import { loadCatalog } from '@rift/content';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
+
+const appearance: Appearance = {
+  skin: 'fair',
+  hair: 'brown',
+  eyes: 'green',
+  horns: false,
+  ears: 'round',
+  tattoos: 'none',
+  scars: 'none',
+  heightCm: 180,
+  build: 'average',
+};
 
 test('city fees are applied from the live tick, portal, and repair', () => {
   const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
@@ -223,4 +240,136 @@ test('a guild member on a resource node starts the plant timer', async () => {
     }
   }
   expect(plantMs).toBeGreaterThanOrEqual(100);
+});
+
+test('quest notes from build, chat, and combat carry a subject', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const build = readFileSync(new URL('./modules/build/service.ts', import.meta.url), 'utf8');
+  const social = readFileSync(new URL('./modules/social/service.ts', import.meta.url), 'utf8');
+  expect(composeSource.includes("note(event.characterId, 'learn', event.subject)")).toBe(true);
+  expect(composeSource.includes("note(event.characterId, 'craft', event.subject)")).toBe(true);
+  expect(composeSource.includes("note(event.senderId, 'talk', event.subject)")).toBe(true);
+  expect(composeSource.includes("note(event.targetId, 'defend', event.subject)")).toBe(true);
+  expect(composeSource.includes("note(event.attackerId, 'pvp', event.subject)")).toBe(true);
+  expect(composeSource.includes("bus.emit('combat.hit'")).toBe(true);
+  expect(build.includes('subject: input.program.templateId')).toBe(true);
+  expect(social.includes('subject: input.npcId')).toBe(true);
+});
+
+test('a named subject advances that objective and a different unnamed one stays put', async () => {
+  const loaded = loadCatalog(join(dirname(fileURLToPath(import.meta.url)), '../../../packages/content/data'));
+  const catalog = {
+    ...loaded,
+    quests: [
+      ...loaded.quests,
+      {
+        id: 'note_probe',
+        prototype: true,
+        story: false,
+        daily: false,
+        repeatable: false,
+        difficulty: 'easy' as const,
+        objectives: [
+          { id: 'named_talk', kind: 'talk', target: 1, npcId: 'koval' },
+          { id: 'other_talk', kind: 'talk', target: 1 },
+          { id: 'named_craft', kind: 'craft', target: 1, itemId: 'ward' },
+          { id: 'other_craft', kind: 'craft', target: 1 },
+          { id: 'named_learn', kind: 'learn', target: 1, itemId: 'ward' },
+          { id: 'other_learn', kind: 'learn', target: 1 },
+          { id: 'named_pvp', kind: 'pvp', target: 1, monsterId: 'spore_rat' },
+          { id: 'other_pvp', kind: 'pvp', target: 1 },
+          { id: 'named_defend', kind: 'defend', target: 1, monsterId: 'spore_rat' },
+          { id: 'other_defend', kind: 'defend', target: 1 },
+        ],
+      },
+    ],
+  };
+  const graph = compose({ nowMs: 1_000, catalog });
+  const created = await graph.character.service.create({
+    accountId: 'account-cara',
+    controller: 'player',
+    name: 'Cara',
+    clean: true,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  await graph.character.service.grantXp(characterId, 200_000);
+  graph.enterCharacter('account-cara', characterId);
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId, action: 'wait' });
+  expect((await graph.act('quest_accept', { characterId, questId: 'note_probe' })).ok).toBe(true);
+  expect((await graph.act('path_learn', { characterId, templateId: 'ward', grade: 1 })).ok).toBe(true);
+  graph.social.service.register({ id: characterId, nodeId: 'fort_humans', language: 'common_light', upy: 100 });
+  expect(
+    await graph.social.service.say({
+      senderId: characterId,
+      channel: 'local',
+      text: 'hello',
+      nowMs: 1_000,
+      npcId: 'koval',
+    }),
+  ).toMatchObject({ ok: true });
+  expect((await graph.act('encounter_enter', { characterId })).ok).toBe(true);
+  const current = (objectiveId: string): number => {
+    const state = graph.state() as {
+      players: { id: string; quests: { id: string; objectives: { id: string; current: number }[] }[] }[];
+    };
+    const player = state.players.find((row) => row.id === characterId);
+    const quest = player?.quests.find((row) => row.id === 'note_probe');
+    return quest?.objectives.find((row) => row.id === objectiveId)?.current ?? 0;
+  };
+  const rat = (graph.state() as { entities: { id: string; monsterId: string | null }[] }).entities.find(
+    (entity) => entity.monsterId === 'spore_rat',
+  );
+  expect(rat).toBeDefined();
+  const ratHp = (): number | null => {
+    const state = graph.state() as { entities: { id: string; hp: number }[] };
+    return state.entities.find((entity) => entity.id === rat?.id)?.hp ?? null;
+  };
+  for (let i = 0; i < 20 && current('named_pvp') < 1 && ratHp() !== null; i += 1) {
+    graph.submit({
+      commandId: `hit-rat-${String(i)}`,
+      seq: 2 + i,
+      issuedAtMs: 2_000,
+      action: 'attack_ranged',
+      targetId: rat?.id,
+      params: {
+        entityId: characterId,
+        weaponDamage: 1,
+        range: 8,
+        odCost: 0,
+        distance: 1,
+        pvpOpen: true,
+        safeZone: false,
+      },
+    });
+    graph.tickOnce();
+    await Promise.resolve();
+  }
+  for (let i = 0; i < 8 && current('named_defend') < 1; i += 1) {
+    graph.submit({
+      commandId: `rat-hit-${String(i)}`,
+      seq: 40 + i,
+      issuedAtMs: 4_000,
+      action: 'attack_ranged',
+      targetId: characterId,
+      params: { entityId: rat?.id, weaponDamage: 4, range: 8, odCost: 0, pvpOpen: true, safeZone: false },
+    });
+    graph.tickOnce();
+    await Promise.resolve();
+  }
+  expect(current('named_craft')).toBe(1);
+  expect(current('other_craft')).toBe(0);
+  expect(current('named_learn')).toBe(1);
+  expect(current('other_learn')).toBe(0);
+  expect(current('named_talk')).toBe(1);
+  expect(current('other_talk')).toBe(0);
+  expect(current('named_defend')).toBe(1);
+  expect(current('other_defend')).toBe(0);
+  expect(current('named_pvp')).toBe(1);
+  expect(current('other_pvp')).toBe(0);
 });

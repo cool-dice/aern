@@ -38,6 +38,8 @@ export interface SocialService {
     nowMs: number;
     subject?: string;
     recipientId?: string;
+    /** NPC this line is addressed to. Omitted lines do not advance a talk objective. */
+    npcId?: string;
   }): Promise<Result<{ delivered: number }, string>>;
   invite(partyLeaderId: string, targetId: string, role: string): Promise<Result<void, string>>;
   /**

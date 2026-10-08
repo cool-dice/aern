@@ -36,7 +36,7 @@ function templateOf(offer: QuestOffer): QuestProgress {
     repeatable: offer.repeatable,
     status: 'active',
     objectives: offer.objectives.map((objective) => {
-      const subject = objective.monsterId ?? objective.itemId ?? objective.place;
+      const subject = objective.monsterId ?? objective.itemId ?? objective.place ?? objective.npcId;
       return {
         id: objective.id,
         kind: objective.kind as QuestObjectiveKind,

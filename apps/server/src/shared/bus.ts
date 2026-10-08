@@ -1,16 +1,16 @@
 export interface DomainEventMap {
   'character.created': { characterId: string };
-  'combat.hit': { attackerId: string; targetId: string; damage: number };
+  'combat.hit': { attackerId: string; targetId: string; damage: number; subject?: string; playerAttacker?: boolean };
   'character.downed': { characterId: string };
   'item.crafted': { characterId: string; itemId: string };
-  'chat.message': { channel: string; senderId: string };
+  'chat.message': { channel: string; senderId: string; subject?: string };
   'quest.completed': { characterId: string; questId: string; npcId?: string };
   'quest.failed': { characterId: string; questId: string; npcId?: string };
   'ai.rejected': { characterId: string; code: string };
   'gather.completed': { characterId: string; nodeId: string };
   'hack.opened': { characterId: string; kind: string; subject?: string };
   'wiki.written': { articleId: string; authorId: string };
-  'build.installed': { characterId: string; kind: string };
+  'build.installed': { characterId: string; kind: string; subject?: string };
 }
 
 export interface Bus {

@@ -491,7 +491,6 @@ async function craftStart(body: Record<string, unknown>, ports: LivePorts): Prom
     return { ok: false, code: started.code };
   }
   const cut = await ports.creditService(characterId, started.value.goldSpent);
-  await ports.note(characterId, 'craft');
   return { ok: true, value: { ...started.value, serviceCut: cut } };
 }
 
@@ -505,7 +504,6 @@ async function craftComplete(body: Record<string, unknown>, ports: LivePorts): P
   if (!done.ok) {
     return { ok: false, code: done.code };
   }
-  await ports.note(characterId, 'craft');
   return { ok: true, value: done.value };
 }
 

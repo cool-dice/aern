@@ -233,7 +233,11 @@ export function createSocialService(
       }
 
       repository.remember(sender.id, input.text, input.nowMs);
-      bus.emit('chat.message', { channel: input.channel, senderId: sender.id });
+      bus.emit('chat.message', {
+        channel: input.channel,
+        senderId: sender.id,
+        ...(input.npcId !== undefined && input.npcId.length > 0 ? { subject: input.npcId } : {}),
+      });
       return ok({ delivered });
     },
 
