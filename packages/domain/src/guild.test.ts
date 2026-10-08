@@ -77,7 +77,9 @@ import {
   suzerainDefenders,
   renewPact,
   postMercenary,
+  postGuildQuest,
   postPatrolQuest,
+  settleGuildQuest,
   nodeAccessCategory,
   setNodeAccess,
   setNodeTax,
@@ -1423,6 +1425,78 @@ test('mercenary and patrol contracts pay on completion and fail when the clock r
       durationMs: 1,
     }),
   ).toEqual({ ok: false, code: 'rank' });
+});
+
+test('a guild quest uses the 3 hour patrol example and pays only when it is completed', () => {
+  expect(postGuildQuest({ rank: 'officer', nodeId: 'plains_mine', nowMs: 0, bank: PATROL_QUEST_GOLD })).toEqual({
+    ok: false,
+    code: 'rank',
+  });
+  expect(postGuildQuest({ rank: 'leader', nodeId: 'plains_mine', nowMs: 0, bank: PATROL_QUEST_GOLD - 1 })).toEqual({
+    ok: false,
+    code: 'gold',
+  });
+  expect(postGuildQuest({ rank: 'council', nodeId: 'plains_mine', nowMs: 0, bank: PATROL_QUEST_GOLD })).toEqual({
+    ok: true,
+    value: {
+      rewardGold: PATROL_QUEST_GOLD,
+      nodeId: 'plains_mine',
+      untilMs: PATROL_QUEST_MS,
+      durationMs: PATROL_QUEST_MS,
+      visibleTo: 'members',
+    },
+  });
+  const early = settleGuildQuest({
+    status: 'open',
+    presentMs: 0,
+    durationMs: PATROL_QUEST_MS,
+    untilMs: PATROL_QUEST_MS,
+    deltaMs: PATROL_QUEST_MS - 1,
+    present: true,
+    nowMs: PATROL_QUEST_MS - 1,
+    bank: PATROL_QUEST_GOLD,
+    rewardGold: PATROL_QUEST_GOLD,
+  });
+  expect(early).toEqual({ status: 'open', presentMs: PATROL_QUEST_MS - 1, pay: 0 });
+  expect(
+    settleGuildQuest({
+      status: 'open',
+      presentMs: early.presentMs,
+      durationMs: PATROL_QUEST_MS,
+      untilMs: PATROL_QUEST_MS,
+      deltaMs: 1,
+      present: true,
+      nowMs: PATROL_QUEST_MS,
+      bank: PATROL_QUEST_GOLD,
+      rewardGold: PATROL_QUEST_GOLD,
+    }),
+  ).toEqual({ status: 'complete', presentMs: PATROL_QUEST_MS, pay: PATROL_QUEST_GOLD });
+  expect(
+    settleGuildQuest({
+      status: 'open',
+      presentMs: 0,
+      durationMs: PATROL_QUEST_MS,
+      untilMs: PATROL_QUEST_MS,
+      deltaMs: 1,
+      present: false,
+      nowMs: PATROL_QUEST_MS,
+      bank: PATROL_QUEST_GOLD,
+      rewardGold: PATROL_QUEST_GOLD,
+    }),
+  ).toEqual({ status: 'failed', presentMs: 0, pay: 0 });
+  expect(
+    settleGuildQuest({
+      status: 'open',
+      presentMs: PATROL_QUEST_MS,
+      durationMs: PATROL_QUEST_MS,
+      untilMs: PATROL_QUEST_MS,
+      deltaMs: 0,
+      present: true,
+      nowMs: PATROL_QUEST_MS,
+      bank: 0,
+      rewardGold: PATROL_QUEST_GOLD,
+    }),
+  ).toEqual({ status: 'failed', presentMs: PATROL_QUEST_MS, pay: 0 });
 });
 
 test('section 11 freezes repeated unfought wars and lifts a stale portal block', () => {

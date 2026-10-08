@@ -351,6 +351,31 @@ export async function postMercenary(input: {
   });
 }
 
+/** Posts `/guild/quest`. Section 8.7: a leader or council member posts a guild quest. */
+export async function postGuildQuest(input: {
+  server: string;
+  guildId: string;
+  characterId: string;
+  nodeId: string;
+  assigneeId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/guild/quest',
+    body: {
+      guildId: input.guildId,
+      characterId: input.characterId,
+      nodeId: input.nodeId,
+      assigneeId: input.assigneeId,
+    },
+    store: input.store,
+    log: 'guild-quest',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/patrol`. The default reward is the 3-hour guild patrol. */
 export async function postPatrol(input: {
   server: string;

@@ -24,6 +24,7 @@ import {
   noticePact,
   postCoalition,
   postGuildEmblem,
+  postGuildQuest,
   postMercenary,
   postPatrol,
   registerContender,
@@ -614,6 +615,20 @@ export function App() {
                 return;
               }
               void postPatrol({
+                server: SERVER,
+                guildId: 'guild',
+                characterId,
+                nodeId: 'plains_mine',
+                assigneeId: characterId,
+                store: plan.store,
+              });
+            }}
+            onGuildQuest={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postGuildQuest({
                 server: SERVER,
                 guildId: 'guild',
                 characterId,

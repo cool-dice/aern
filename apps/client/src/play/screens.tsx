@@ -65,6 +65,7 @@ export function PlayPanels({
   onWithdraw,
   onMercenary,
   onPatrol,
+  onGuildQuest,
   onPactNotice,
   onPactBreak,
   onPactRenew,
@@ -92,6 +93,7 @@ export function PlayPanels({
   onWithdraw?: () => void;
   onMercenary?: () => void;
   onPatrol?: () => void;
+  onGuildQuest?: () => void;
   onPactNotice?: () => void;
   onPactBreak?: () => void;
   onPactRenew?: () => void;
@@ -187,6 +189,9 @@ export function PlayPanels({
         </button>
         <button type="button" data-patrol="post" onClick={() => onPatrol?.()}>
           patrol
+        </button>
+        <button type="button" data-guild-quest="post" onClick={() => onGuildQuest?.()}>
+          quest
         </button>
         <button type="button" data-pact="notice" onClick={() => onPactNotice?.()}>
           notice

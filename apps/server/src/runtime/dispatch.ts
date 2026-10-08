@@ -82,6 +82,7 @@ export interface LivePorts {
   registerContender(body: Record<string, unknown>): Promise<LiveResult>;
   postMercenaryContract(body: Record<string, unknown>): Promise<LiveResult>;
   postPatrol(body: Record<string, unknown>): Promise<LiveResult>;
+  acceptGuildQuest(body: Record<string, unknown>): Promise<LiveResult>;
   memberRank(guildId: string, characterId: string): GuildRank | null;
   vassalMayWar(guildId: string, suzerainConsent: boolean): LiveResult;
   warLimits(cityId: string, guildId: string): {
@@ -211,6 +212,7 @@ const LIVE_ACTIONS = new Set([
   'war_contend',
   'mercenary',
   'patrol',
+  'guild_quest',
   'guild_war',
   'guild_withdraw',
   'guild_rank',
@@ -319,6 +321,8 @@ export async function runLive(
       return ports.postMercenaryContract(body);
     case 'patrol':
       return ports.postPatrol(body);
+    case 'guild_quest':
+      return ports.acceptGuildQuest(body);
     case 'guild_war':
       return guildWar(body, ports);
     case 'guild_withdraw':

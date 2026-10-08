@@ -2099,6 +2099,60 @@ export function postPatrolQuest(input: {
   });
 }
 
+export interface GuildQuestPost {
+  rewardGold: number;
+  nodeId: string;
+  untilMs: number;
+  durationMs: number;
+  visibleTo: 'members';
+}
+
+/**
+ * Artifact 17 §8.7. A leader or council member posts a guild quest.
+ * The named example is a node patrol for 3 real hours paying 5 000 gold.
+ * Members can see it. The bank is not charged until the quest is completed.
+ */
+export function postGuildQuest(input: {
+  rank: GuildRank;
+  nodeId: string;
+  nowMs: number;
+  bank: number;
+  rewardGold?: number;
+  durationMs?: number;
+}): Result<GuildQuestPost, 'rank' | 'gold' | 'node'> {
+  const posted = postPatrolQuest({
+    rank: input.rank,
+    rewardGold: input.rewardGold ?? PATROL_QUEST_GOLD,
+    bank: input.bank,
+    nodeId: input.nodeId,
+    nowMs: input.nowMs,
+    durationMs: input.durationMs ?? PATROL_QUEST_MS,
+  });
+  if (!posted.ok) {
+    return posted;
+  }
+  return ok({ ...posted.value, visibleTo: 'members' });
+}
+
+/**
+ * Artifact 17 §8.7. Staying on the node for the full duration completes the
+ * quest and pays the bank reward. A missed deadline, or a bank that can no
+ * longer cover the reward, fails the quest and pays nothing.
+ */
+export function settleGuildQuest(input: {
+  status: ContractStatus;
+  presentMs: number;
+  durationMs: number;
+  untilMs: number;
+  deltaMs: number;
+  present: boolean;
+  nowMs: number;
+  bank: number;
+  rewardGold: number;
+}): { status: ContractStatus; presentMs: number; pay: number } {
+  return tickContract({ ...input, kind: 'patrol' });
+}
+
 export type ContractStatus = 'open' | 'complete' | 'failed';
 
 /**

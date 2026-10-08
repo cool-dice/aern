@@ -455,6 +455,8 @@ export {
   postMercenary,
   escortArrived,
   postPatrolQuest,
+  postGuildQuest,
+  settleGuildQuest,
   tickContract,
 } from './guild';
 export type {

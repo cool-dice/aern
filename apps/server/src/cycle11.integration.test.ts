@@ -4,6 +4,8 @@ import {
   GUILD_CREATE_GOLD,
   INTERNAL_VOTE_MS,
   LEADER_ABSENCE_MS,
+  PATROL_QUEST_GOLD,
+  PATROL_QUEST_MS,
   WITHDRAW_ITEMS,
 } from '@rift/domain/guild';
 import { emptyPoints, type StatBlock } from '@rift/domain/stats';
@@ -71,6 +73,21 @@ test('cycle 11 hooks are called from tickOnce, skipMs, or the live route', () =>
     expect(tickBody.includes(hook)).toBe(true);
     expect(skipBody.includes(hook)).toBe(true);
   }
+  expect(tickBody.includes('await tickGuildQuests(')).toBe(true);
+  expect(skipBody.includes('await tickGuildQuests(')).toBe(true);
+  expect(dispatch.includes("case 'guild_quest'")).toBe(true);
+  expect(dispatch.includes('acceptGuildQuest(')).toBe(true);
+  const postedQuest = composeSource.slice(
+    composeSource.indexOf('async function acceptGuildQuest'),
+    composeSource.indexOf('async function tickGuildQuests'),
+  );
+  expect(postedQuest.includes('postGuildQuest(')).toBe(true);
+  const settledQuest = composeSource.slice(
+    composeSource.indexOf('async function tickGuildQuests'),
+    composeSource.indexOf('function contractDuty'),
+  );
+  expect(settledQuest.includes('settleGuildQuest(')).toBe(true);
+  expect(composeSource.includes('focus?.guildId === quest.guildId')).toBe(true);
   const finish = composeSource.slice(
     composeSource.indexOf('async function finishLeaderPoll'),
     composeSource.indexOf('async function castLeaderBallot'),
@@ -161,6 +178,55 @@ test('cycle 11 hooks are called from tickOnce, skipMs, or the live route', () =>
   expect(pull.includes('resourceAmount')).toBe(true);
   expect(pull.includes('creditWithdrawal(')).toBe(true);
   expect(pull.includes('ports.guild.withdraw(')).toBe(true);
+});
+
+test('a guild quest pays the bank reward only after the patrol is completed', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  const guildId = await foundGuild(graph);
+  const guild = await graph.guild.repository.findGuild(guildId);
+  if (guild === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...guild, bank: 20_000 });
+  expect(
+    await graph.act('guild_quest', {
+      guildId,
+      characterId: 'm1',
+      nodeId: 'plains_mine',
+      assigneeId: 'lia',
+    }),
+  ).toMatchObject({ ok: false, code: 'rank' });
+  const posted = await graph.act('guild_quest', {
+    guildId,
+    characterId: 'lia',
+    nodeId: 'plains_mine',
+    assigneeId: 'lia',
+  });
+  expect(posted).toMatchObject({
+    ok: true,
+    value: { rewardGold: PATROL_QUEST_GOLD, durationMs: PATROL_QUEST_MS, visibleTo: 'members', status: 'open' },
+  });
+  expect((graph.state() as { guildQuests: { status: string }[] }).guildQuests).toHaveLength(1);
+  const wallet = graph.economy.service.balance('lia') ?? 0;
+  await graph.skipMs(PATROL_QUEST_MS);
+  expect((graph.state() as { guildQuests: { status: string }[] }).guildQuests[0]?.status).toBe('failed');
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(20_000);
+  expect(graph.economy.service.balance('lia')).toBe(wallet);
+  expect(
+    await graph.act('guild_quest', {
+      guildId,
+      characterId: 'lia',
+      nodeId: 'plains_mine',
+      assigneeId: 'lia',
+    }),
+  ).toMatchObject({ ok: true });
+  graph.place('lia', 'plains_mine');
+  await graph.skipMs(PATROL_QUEST_MS);
+  const quests = (graph.state() as { guildQuests: { status: string }[] }).guildQuests;
+  expect(quests.map((quest) => quest.status)).toEqual(['failed', 'complete']);
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(20_000 - PATROL_QUEST_GOLD);
+  expect(graph.economy.service.balance('lia')).toBe(wallet + PATROL_QUEST_GOLD);
 });
 
 test('an internal ballot stays open for 24 hours and the leader breaks the tie', async () => {

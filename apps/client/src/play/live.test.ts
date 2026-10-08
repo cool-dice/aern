@@ -11,6 +11,7 @@ import {
   enterDungeon,
   grantNode,
   postGuildEmblem,
+  postGuildQuest,
   postMercenary,
   postPatrol,
   rentStorage,
@@ -50,6 +51,8 @@ test('the play screen posts craft and trade through App', () => {
   expect(app).toContain('dissolveGuild(');
   expect(app).toContain('strikeNode(');
   expect(app).toContain('postPatrol(');
+  expect(app).toContain('postGuildQuest(');
+  expect(app).toContain('onGuildQuest=');
   expect(app).toContain('onCraft=');
   expect(app).toContain('onTrade=');
   expect(app).toContain('onPortal=');
@@ -62,6 +65,7 @@ test('the play screen posts craft and trade through App', () => {
   expect(panels).toContain('data-dungeon="solo"');
   expect(panels).toContain('data-vote="choice"');
   expect(panels).toContain('data-emblem="set"');
+  expect(panels).toContain('data-guild-quest="post"');
   expect(app).toContain('onChoice=');
   expect(app).toContain('onEmblem=');
 });
@@ -316,6 +320,29 @@ test('the play session posts city fees, node commands, storage, war, and contrac
   expect(store.getState().serviceResult?.route).toBe('/patrol');
   expect(store.getState().captures).toEqual([{ cityId: 'fort_humans', guildId: 'wolves', heldMs: 1, won: true }]);
   expect(store.getState().resourceNodes[0]?.chest).toBe(4);
+});
+
+test('the play session posts a section 8.7 guild quest', async () => {
+  const store = createClientStore();
+  const calls: { url: string; body: Record<string, unknown> }[] = [];
+  await postGuildQuest({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    nodeId: 'plains_mine',
+    assigneeId: 'lia',
+    store,
+    fetchImpl: async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
+      return { ok: true, json: async () => ({ ok: true }) };
+    },
+  });
+  expect(calls).toEqual([
+    {
+      url: 'http://game.example/guild/quest',
+      body: { guildId: 'wolves', characterId: 'lia', nodeId: 'plains_mine', assigneeId: 'lia' },
+    },
+  ]);
 });
 
 test('the play session posts an internal ballot choice and a guild emblem', async () => {

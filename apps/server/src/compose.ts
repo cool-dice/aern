@@ -93,7 +93,9 @@ import {
   PATROL_QUEST_MS,
   pactAlly,
   postMercenary,
+  postGuildQuest,
   postPatrolQuest,
+  settleGuildQuest,
   registerContender,
   renewPact,
   REVOTE_MS,
@@ -388,6 +390,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   let diplomacy: { pactId: string; guildId: string; characterId: string; text: string; atMs: number }[] = [];
   let mercenaries: StoredMercenary[] = [];
   let patrols: StoredPatrol[] = [];
+  let guildQuests: StoredPatrol[] = [];
   let contenders: { warId: string; guildId: string }[] = [];
   const declaredAtMs = new Map<string, number>();
   const neutralCities = new Set<string>();
@@ -875,6 +878,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     registerContender: registerWarContender,
     postMercenaryContract,
     postPatrol,
+    acceptGuildQuest,
     memberRank,
     declareNeutralCity,
     rememberDeclaration(guildId) {
@@ -1995,6 +1999,79 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return { ok: true, value: stored };
   }
 
+  async function acceptGuildQuest(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const nodeId = typeof body.nodeId === 'string' ? body.nodeId : '';
+    const assigneeId = typeof body.assigneeId === 'string' ? body.assigneeId : '';
+    const rank = memberRank(guildId, characterId);
+    if (rank === null) {
+      return { ok: false, code: 'rank' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null || !guild.memberIds.includes(assigneeId)) {
+      return { ok: false, code: 'member' };
+    }
+    const posted = postGuildQuest({
+      rank,
+      nodeId,
+      nowMs: clock.now(),
+      bank: guild.bank,
+      ...(typeof body.rewardGold === 'number' ? { rewardGold: body.rewardGold } : {}),
+      ...(typeof body.durationMs === 'number' ? { durationMs: body.durationMs } : {}),
+    });
+    if (!posted.ok) {
+      return { ok: false, code: posted.code };
+    }
+    const stored: StoredPatrol = {
+      id: nextDiplomacyId('gquest'),
+      guildId,
+      nodeId: posted.value.nodeId,
+      rewardGold: posted.value.rewardGold,
+      postedAtMs: clock.now(),
+      untilMs: posted.value.untilMs,
+      durationMs: posted.value.durationMs,
+      assigneeId,
+      presentMs: 0,
+      status: 'open',
+    };
+    guildQuests = [...guildQuests, stored];
+    return { ok: true, value: { ...stored, visibleTo: posted.value.visibleTo } };
+  }
+
+  async function tickGuildQuests(deltaMs: number): Promise<void> {
+    const now = clock.now();
+    const next: StoredPatrol[] = [];
+    for (const quest of guildQuests) {
+      const present = quest.assigneeId !== null && standingAt(quest.assigneeId, quest.nodeId);
+      const ticked = settleGuildQuest({
+        status: quest.status,
+        presentMs: quest.presentMs,
+        durationMs: quest.durationMs,
+        untilMs: quest.untilMs,
+        deltaMs,
+        present,
+        nowMs: now,
+        bank: (await repos.guilds.findGuild(quest.guildId))?.bank ?? 0,
+        rewardGold: quest.rewardGold,
+      });
+      if (ticked.pay > 0 && quest.assigneeId !== null) {
+        const guild = await repos.guilds.findGuild(quest.guildId);
+        if (guild !== null && guild.bank >= ticked.pay) {
+          await repos.guilds.saveGuild({ ...guild, bank: guild.bank - ticked.pay });
+          const wallet = repos.economy.getCharacter(quest.assigneeId);
+          if (wallet !== null) {
+            repos.economy.saveCharacter({ ...wallet, gold: wallet.gold + ticked.pay });
+          }
+        }
+      }
+      next.push({ ...quest, presentMs: ticked.presentMs, status: ticked.status });
+    }
+    guildQuests = next;
+  }
+
   function contractDuty(contract: StoredMercenary): boolean {
     const actor = simWorld.entities.find(
       (entity) => entity.id === contract.mercenaryId && entity.monsterId === undefined,
@@ -2202,6 +2279,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     noteNodeCaptures(ownersBeforeSkip);
     applyNodeSeizure(ticked.seized);
     await tickContracts(ms);
+    await tickGuildQuests(ms);
     await tickVassalTithes();
     tickAllianceBreaks();
     tickVassalReleases();
@@ -4234,6 +4312,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       runtimeError = error;
     });
     await tickContracts(SIM_TICK_MS);
+    await tickGuildQuests(SIM_TICK_MS);
     await tickVassalTithes();
     tickAllianceBreaks();
     tickVassalReleases();
@@ -4258,6 +4337,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     pacts: StoredPact[];
     mercenaries: StoredMercenary[];
     patrols: StoredPatrol[];
+    guildQuests: StoredPatrol[];
     contenders: { warId: string; guildId: string }[];
     guildVaults: { guildId: string; amount: number }[];
   } {
@@ -4281,6 +4361,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       pacts,
       mercenaries,
       patrols,
+      guildQuests,
       contenders,
       guildVaults: [...guildVaults.entries()].map(([guildId, amount]) => ({ guildId, amount })),
     });
@@ -4352,6 +4433,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     if ('patrols' in loaded && Array.isArray(loaded.patrols)) {
       patrols = loaded.patrols as StoredPatrol[];
+    }
+    if ('guildQuests' in loaded && Array.isArray(loaded.guildQuests)) {
+      guildQuests = loaded.guildQuests as StoredPatrol[];
     }
     if ('contenders' in loaded && Array.isArray(loaded.contenders)) {
       contenders = loaded.contenders.flatMap((row) => {
@@ -4633,6 +4717,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       diplomacy,
       mercenaries,
       patrols,
+      guildQuests: guildQuests.filter((quest) => focus?.guildId === quest.guildId),
       contenders,
       reputation: focus?.reputation ?? {},
     };
@@ -5285,6 +5370,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/war/contend', action: 'war_contend' },
   { path: '/mercenary', action: 'mercenary' },
   { path: '/patrol', action: 'patrol' },
+  { path: '/guild/quest', action: 'guild_quest' },
   { path: '/war', action: 'guild_war' },
   { path: '/guild/withdraw', action: 'guild_withdraw' },
   { path: '/guild/rank', action: 'guild_rank' },
