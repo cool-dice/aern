@@ -1,6 +1,6 @@
 # 118. Наблюдение 896 и mock-сайдкар
 
-status: pending
+status: done
 
 ## Правило GDD
 

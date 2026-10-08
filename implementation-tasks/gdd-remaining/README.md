@@ -23,6 +23,6 @@
 | 115 | [115-prisma-repositories.md](115-prisma-repositories.md) | done |
 | 116 | [116-client-play-loop.md](116-client-play-loop.md) | done |
 | 117 | [117-client-screens.md](117-client-screens.md) | done |
-| 118 | [118-sidecar-observation.md](118-sidecar-observation.md) | pending |
+| 118 | [118-sidecar-observation.md](118-sidecar-observation.md) | done |
 | 119 | [119-quest-catalog.md](119-quest-catalog.md) | pending |
 | 120 | [120-hack-grid.md](120-hack-grid.md) | done |

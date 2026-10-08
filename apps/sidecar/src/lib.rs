@@ -1,6 +1,6 @@
 //! Mock perception sidecar. JSON lines on stdin/stdout. No weights, no GPU, no network.
 //!
-//! The observation encoder stays in TypeScript. `encode` only reports the shared layout.
+//! `encode` returns a clipped numeric vector of length 896. Weights are not in this repo.
 
 mod actions;
 
@@ -42,6 +42,7 @@ struct EncodedBody<'a> {
     kind: &'a str,
     length: usize,
     source: &'a str,
+    values: Vec<f64>,
     blocks: Vec<EncodedBlock<'a>>,
 }
 
@@ -85,7 +86,7 @@ pub fn handle_line(line: &str) -> String {
     match kind {
         "ping" => to_json(&Typed { kind: "pong" }),
         "decide" => handle_decide(object),
-        "encode" => encode_stub(),
+        "encode" => encode_observation(object),
         _ => error("unknown"),
     }
 }
@@ -142,8 +143,31 @@ fn handle_decide(object: &serde_json::Map<String, serde_json::Value>) -> String 
     }
 }
 
-/// Layout report. Does not clip, pad, or otherwise rebuild the TypeScript vector.
-fn encode_stub() -> String {
+fn clip_unit(value: f64) -> f64 {
+    if !value.is_finite() {
+        return 0.0;
+    }
+    value.clamp(0.0, 1.0)
+}
+
+fn write_block(values: &mut [f64], offset: usize, length: usize, items: &[serde_json::Value]) {
+    for (index, item) in items.iter().enumerate().take(length) {
+        values[offset + index] = clip_unit(item.as_f64().unwrap_or(0.0));
+    }
+}
+
+/// Numeric observation of length 896. There is no trained weight file.
+fn encode_observation(object: &serde_json::Map<String, serde_json::Value>) -> String {
+    let mut values = vec![0.0; OBSERVATION_LENGTH];
+    if let Some(observation) = object.get("observation").and_then(serde_json::Value::as_array) {
+        write_block(&mut values, 0, OBSERVATION_LENGTH, observation);
+    } else {
+        for block in OBSERVATION_BLOCKS {
+            if let Some(items) = object.get(block.name).and_then(serde_json::Value::as_array) {
+                write_block(&mut values, block.offset, block.length, items);
+            }
+        }
+    }
     let blocks = OBSERVATION_BLOCKS
         .iter()
         .map(|block| EncodedBlock {
@@ -155,7 +179,8 @@ fn encode_stub() -> String {
     to_json(&EncodedBody {
         kind: "encoded",
         length: OBSERVATION_LENGTH,
-        source: "stub",
+        source: "mock",
+        values,
         blocks,
     })
 }
@@ -331,16 +356,28 @@ mod tests {
     }
 
     #[test]
-    fn encode_stub_reports_layout_without_a_vector() {
+    fn encode_returns_a_clipped_vector_of_length_896() {
         let raw = handle_line(r#"{"type":"encode","self":[2,-1]}"#);
         let value: serde_json::Value = serde_json::from_str(&raw).expect("encode json");
         assert_eq!(value["type"], "encoded");
         assert_eq!(value["length"], 896);
-        assert_eq!(value["source"], "stub");
-        assert!(value.get("values").is_none());
+        assert_eq!(value["source"], "mock");
+        let values = value["values"].as_array().expect("values");
+        assert_eq!(values.len(), 896);
+        assert_eq!(values[0].as_f64(), Some(1.0));
+        assert_eq!(values[1].as_f64(), Some(0.0));
         assert_eq!(value["blocks"][0]["name"], "self");
         assert_eq!(value["blocks"][0]["offset"], 0);
         assert_eq!(value["blocks"][8]["name"], "memory");
         assert_eq!(value["blocks"][8]["offset"], 768);
+
+        let padded = handle_line(r#"{"type":"encode","observation":[0.5, 2, -3]}"#);
+        let padded_value: serde_json::Value = serde_json::from_str(&padded).expect("padded json");
+        let padded_values = padded_value["values"].as_array().expect("padded values");
+        assert_eq!(padded_values.len(), 896);
+        assert_eq!(padded_values[0].as_f64(), Some(0.5));
+        assert_eq!(padded_values[1].as_f64(), Some(1.0));
+        assert_eq!(padded_values[2].as_f64(), Some(0.0));
+        assert_eq!(padded_value["source"], "mock");
     }
 }
