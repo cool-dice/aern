@@ -576,6 +576,23 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/stash/expand`. One purchase is 50 slots for 1 000 gold. */
+export async function postExpandStash(input: {
+  server: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/stash/expand',
+    body: { characterId: input.characterId },
+    store: input.store,
+    log: 'stash-expand',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/npc/buy`. The server prices the catalog row; the request carries no price. */
 export async function postBuyNpc(input: {
   server: string;

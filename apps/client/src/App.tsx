@@ -42,6 +42,7 @@ import {
   postBreakClean,
   postOpenChest,
   postBuyNpc,
+  postExpandStash,
   readBankLog,
   registerContender,
   renewPact,
@@ -775,6 +776,17 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onExpandStash={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postExpandStash({
+                server: SERVER,
+                characterId,
                 store: plan.store,
               });
             }}

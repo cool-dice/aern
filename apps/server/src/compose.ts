@@ -77,6 +77,8 @@ import {
   ownedCrossingFee,
   buyFromNpc,
   deposit,
+  expandStash,
+  STASH_BASE_SLOTS,
   rentStorage,
   serviceCut,
   setCityFee,
@@ -961,6 +963,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     breakPurity,
     openLiveChest,
     buyNpc,
+    growStash,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -3955,6 +3958,27 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return { ok: true, value: { gold, price: quoted.value, itemId } };
   }
 
+  /** Artifact 13. 1 000 gold buys 50 slots, up to 1 000 slots. The returned gold is the cost. */
+  function growStash(body: Record<string, unknown>): { ok: boolean; code?: string; value?: unknown } {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    if (characterId.length === 0) {
+      return { ok: false, code: 'character' };
+    }
+    const wallet =
+      repos.economy.getCharacter(characterId) ??
+      newEconomyCharacter({ characterId, side: 'light', gold: 0 });
+    const expanded = expandStash(wallet.stashSlots ?? STASH_BASE_SLOTS);
+    if (!expanded.ok) {
+      return { ok: false, code: expanded.code };
+    }
+    if (wallet.gold < expanded.value.gold) {
+      return { ok: false, code: 'gold' };
+    }
+    const gold = wallet.gold - expanded.value.gold;
+    repos.economy.saveCharacter({ ...wallet, gold, stashSlots: expanded.value.slots });
+    return { ok: true, value: { gold, slots: expanded.value.slots, cost: expanded.value.gold } };
+  }
+
   function regionLevelOf(characterId: string): number {
     const entity = simWorld.entities.find((row) => row.id === characterId);
     const nodeId = entity?.nodeId ?? entity?.bindNodeId;
@@ -6678,6 +6702,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/purity/break', action: 'purity_break' },
   { path: '/chest', action: 'chest_open' },
   { path: '/npc/buy', action: 'npc_buy' },
+  { path: '/stash/expand', action: 'stash_expand' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

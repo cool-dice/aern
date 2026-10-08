@@ -32,6 +32,8 @@ export interface EconomyCharacter {
   visited: string[];
   portalCooldownUntilMs: number;
   items: Record<string, EconomyItem>;
+  /** Personal stash. Absent means the 200-slot base. */
+  stashSlots?: number;
 }
 
 export interface PortalNode {

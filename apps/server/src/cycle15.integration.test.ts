@@ -623,3 +623,49 @@ test('an npc sale uses the catalog grade and refuses a unique', async () => {
   expect(graph.economy.service.balance(characterId)).toBe(100);
   expect(graph.heldItemQty(characterId, 'rift_blade')).toBe(0);
 });
+
+test('expandStash runs from the live route', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const stash = composeSource.slice(
+    composeSource.indexOf('function growStash'),
+    composeSource.indexOf('function regionLevelOf'),
+  );
+  expect(stash.includes('expandStash(')).toBe(true);
+  expect(dispatch.includes('growStash(')).toBe(true);
+  expect(app.includes('postExpandStash(')).toBe(true);
+});
+
+test('stash expansion buys 50 slots for 1000 gold and stops at 1000 slots', async () => {
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-stash',
+    controller: 'player',
+    name: 'Stash',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  graph.seedTrader({ characterId, gold: 999 });
+  expect(await graph.act('stash_expand', { characterId })).toMatchObject({ ok: false, code: 'gold' });
+  expect(graph.economy.service.balance(characterId)).toBe(999);
+  graph.creditGold(characterId, 16_001);
+  expect(await graph.act('stash_expand', { characterId })).toMatchObject({
+    ok: true,
+    value: { slots: 250, cost: 1_000 },
+  });
+  expect(await graph.act('stash_expand', { characterId })).toMatchObject({
+    ok: true,
+    value: { slots: 300, cost: 1_000 },
+  });
+  for (let step = 0; step < 14; step += 1) {
+    expect((await graph.act('stash_expand', { characterId })).ok).toBe(true);
+  }
+  expect(await graph.act('stash_expand', { characterId })).toMatchObject({ ok: false, code: 'cap' });
+});

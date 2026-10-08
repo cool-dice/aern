@@ -69,6 +69,7 @@ function copyCharacter(character: EconomyCharacter): EconomyCharacter {
     visited: [...character.visited],
     portalCooldownUntilMs: character.portalCooldownUntilMs,
     items: copyItems(character.items),
+    ...(character.stashSlots !== undefined ? { stashSlots: character.stashSlots } : {}),
   };
 }
 
