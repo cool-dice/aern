@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { GUILD_BANK_CAP } from './economy';
+import { GUILD_BANK_CAP, PORTAL_BLOCK_MS } from './economy';
 import {
   CITY_CAPTURE_COOLDOWN_MS,
   CONTENDER_CLOSE_MS,
@@ -78,6 +78,7 @@ import {
   setNodeTax,
   settleNodeDrop,
   tickContract,
+  reviewSection11,
   vassalMayDeclare,
   type GuildFounder,
 } from './guild';
@@ -1308,4 +1309,73 @@ test('mercenary and patrol contracts pay on completion and fail when the clock r
       durationMs: 1,
     }),
   ).toEqual({ ok: false, code: 'rank' });
+});
+
+test('section 11 freezes repeated unfought wars and lifts a stale portal block', () => {
+  const draw = {
+    attackerGuildId: 'oak',
+    ownerGuildId: 'wolves',
+    cityId: 'fort_humans',
+    atMs: 0,
+    roster: ['lia'],
+    blows: 0,
+    elapsedMs: 1,
+    heldMs: 0,
+    result: 'draw' as const,
+  };
+  const again = reviewSection11({
+    nowMs: 10,
+    lastOfficeMs: null,
+    history: [draw],
+    next: { ...draw, atMs: 10 },
+    portals: [{ cityId: 'fort_humans', blockedForMs: PORTAL_BLOCK_MS, warActive: false }],
+    ballots: [
+      { voterId: 'lia', ai: false, carrierOnline: true },
+      { voterId: 'lia', ai: false, carrierOnline: true },
+    ],
+    carriers: [{ carrierId: 'host', botIds: ['bot-a', 'bot-b'] }],
+    withdrawalsLogged: 1,
+  });
+  expect(again.freezeRewards).toBe(true);
+  expect(again.reasons).toContain('repeat_no_fight');
+  expect(again.portalsLifted).toEqual(['fort_humans']);
+  expect(again.vote).toBe('stuffed');
+  expect(again.multibox).toBe('carrier');
+  expect(again.withdrawalsLogged).toBe(1);
+  const hold = reviewSection11({
+    nowMs: 10,
+    lastOfficeMs: 0,
+    history: [],
+    next: { ...draw, result: 'win', heldMs: WAR_HOLD_MS, blows: 0 },
+    portals: [],
+    ballots: [{ voterId: 'bot', ai: true, carrierOnline: false }],
+    carriers: [],
+    withdrawalsLogged: 0,
+  });
+  expect(hold.freezeRewards).toBe(false);
+  expect(hold.altGuild).toBe('cooldown');
+  expect(hold.vote).toBe('offline');
+  const quick = reviewSection11({
+    nowMs: 10,
+    lastOfficeMs: null,
+    history: [],
+    next: { ...draw, result: 'win', heldMs: 0, blows: 0, roster: ['lia', 'kai'] },
+    portals: [],
+    ballots: [],
+    carriers: [{ carrierId: 'host', botIds: ['only'] }],
+    withdrawalsLogged: 0,
+  });
+  expect(quick.reasons).toContain('quick_win');
+  expect(quick.multibox).toBe('ok');
+  const swapped = reviewSection11({
+    nowMs: 20,
+    lastOfficeMs: null,
+    history: [{ ...draw, result: 'win', attackerGuildId: 'wolves', ownerGuildId: 'oak', heldMs: WAR_HOLD_MS, blows: 3 }],
+    next: { ...draw, result: 'declared', attackerGuildId: 'oak', ownerGuildId: 'wolves' },
+    portals: [],
+    ballots: [],
+    carriers: [],
+    withdrawalsLogged: 0,
+  });
+  expect(swapped.reasons).toContain('city_swap');
 });

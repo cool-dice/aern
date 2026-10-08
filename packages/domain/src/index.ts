@@ -418,6 +418,7 @@ export {
   noticeVassalRelease,
   renewPact,
   suzerainDefenders,
+  reviewSection11,
   coalitionChannel,
   vassalMayDeclare,
   applyVassalTithe,

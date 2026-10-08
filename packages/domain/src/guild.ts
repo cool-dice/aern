@@ -1,4 +1,4 @@
-import { GUILD_BANK_CAP } from './economy';
+import { askHostilePortal, GUILD_BANK_CAP, PORTAL_BLOCK_MS } from './economy';
 import { err, ok, type Result } from './result';
 import type { Rng } from './rng';
 
@@ -1649,4 +1649,151 @@ export function tickContract(input: {
     return { status: 'failed', presentMs, pay: 0 };
   }
   return { status: 'open', presentMs, pay: 0 };
+}
+
+export interface WarStamp {
+  attackerGuildId: string;
+  ownerGuildId: string | null;
+  cityId: string;
+  atMs: number;
+  roster: readonly string[];
+  blows: number;
+  elapsedMs: number;
+  heldMs: number;
+  result: 'declared' | 'win' | 'draw';
+}
+
+export type CollusionReason = 'repeat_no_fight' | 'same_roster' | 'quick_win' | 'city_swap';
+
+function rosterKey(roster: readonly string[]): string {
+  return [...roster].sort().join('\0');
+}
+
+/** A 10-minute hold is a real defense. A war with no blows and no hold was not fought. */
+function warWasFought(stamp: WarStamp): boolean {
+  return stamp.blows > 0 || (stamp.result === 'win' && stamp.heldMs >= WAR_HOLD_MS);
+}
+
+/**
+ * Artifact 17 §11. Alt-guilds, collusion, portal grief, votes, and multibox.
+ * Repeated wars without a fight, identical rosters, quick wins, and city swaps
+ * freeze rewards until a review. A legal 10-minute hold is not a quick win.
+ */
+export function reviewSection11(input: {
+  nowMs: number;
+  lastOfficeMs: number | null;
+  history: readonly WarStamp[];
+  next: WarStamp | null;
+  portals: readonly { cityId: string; blockedForMs: number; warActive: boolean }[];
+  ballots: readonly { voterId: string; ai: boolean; carrierOnline: boolean }[];
+  carriers: readonly { carrierId: string; botIds: readonly string[] }[];
+  withdrawalsLogged: number;
+}): {
+  altGuild: 'ok' | 'cooldown';
+  reasons: CollusionReason[];
+  freezeRewards: boolean;
+  portalsLifted: string[];
+  vote: 'ok' | 'offline' | 'stuffed';
+  multibox: 'ok' | 'carrier';
+  withdrawalsLogged: number;
+} {
+  assertMs(input.nowMs, 'nowMs');
+  if (!Number.isInteger(input.withdrawalsLogged) || input.withdrawalsLogged < 0) {
+    throw new RangeError(`withdrawalsLogged must be an integer >= 0, got ${String(input.withdrawalsLogged)}`);
+  }
+  let altGuild: 'ok' | 'cooldown' = 'ok';
+  if (input.lastOfficeMs !== null) {
+    assertMs(input.lastOfficeMs, 'lastOfficeMs');
+    if (input.nowMs - input.lastOfficeMs < OFFICE_COOLDOWN_MS) {
+      altGuild = 'cooldown';
+    }
+  }
+  const reasons: CollusionReason[] = [];
+  const next = input.next;
+  if (next !== null) {
+    const quiet = !warWasFought(next);
+    const priorQuiet = input.history.some(
+      (row) =>
+        row.attackerGuildId === next.attackerGuildId &&
+        row.cityId === next.cityId &&
+        row.ownerGuildId === next.ownerGuildId &&
+        row.result !== 'declared' &&
+        !warWasFought(row),
+    );
+    if (quiet && next.result !== 'declared' && priorQuiet) {
+      reasons.push('repeat_no_fight');
+    }
+    if (quiet && next.result === 'declared' && priorQuiet) {
+      reasons.push('repeat_no_fight');
+    }
+    if (next.roster.length >= 2) {
+      const key = rosterKey(next.roster);
+      if (
+        input.history.some(
+          (row) =>
+            row.attackerGuildId === next.attackerGuildId &&
+            row.cityId === next.cityId &&
+            rosterKey(row.roster) === key,
+        )
+      ) {
+        reasons.push('same_roster');
+      }
+    }
+    if (next.result === 'win' && next.blows === 0 && next.heldMs < WAR_HOLD_MS) {
+      reasons.push('quick_win');
+    }
+    if (
+      (next.result === 'win' || next.result === 'declared') &&
+      next.ownerGuildId !== null &&
+      next.attackerGuildId !== next.ownerGuildId &&
+      input.history.some(
+        (row) =>
+          row.result === 'win' &&
+          row.attackerGuildId !== row.ownerGuildId &&
+          row.attackerGuildId === next.ownerGuildId &&
+          row.ownerGuildId === next.attackerGuildId,
+      )
+    ) {
+      reasons.push('city_swap');
+    }
+  }
+  const portalsLifted: string[] = [];
+  for (const portal of input.portals) {
+    const asked = askHostilePortal({
+      stance: 'neutral',
+      warActive: portal.warActive,
+      blockedForMs: portal.blockedForMs,
+      granted: false,
+    });
+    if (asked.ok && !portal.warActive && portal.blockedForMs >= PORTAL_BLOCK_MS) {
+      portalsLifted.push(portal.cityId);
+    }
+  }
+  const seen = new Set<string>();
+  let vote: 'ok' | 'offline' | 'stuffed' = 'ok';
+  for (const ballot of input.ballots) {
+    if (seen.has(ballot.voterId)) {
+      vote = 'stuffed';
+      continue;
+    }
+    seen.add(ballot.voterId);
+    if (ballot.ai && !ballot.carrierOnline && vote === 'ok') {
+      vote = 'offline';
+    }
+  }
+  let multibox: 'ok' | 'carrier' = 'ok';
+  for (const carrier of input.carriers) {
+    if (new Set(carrier.botIds.filter((id) => id.length > 0)).size > 1) {
+      multibox = 'carrier';
+    }
+  }
+  return {
+    altGuild,
+    reasons,
+    freezeRewards: reasons.length > 0,
+    portalsLifted,
+    vote,
+    multibox,
+    withdrawalsLogged: input.withdrawalsLogged,
+  };
 }
