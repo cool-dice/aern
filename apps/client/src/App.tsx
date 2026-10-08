@@ -35,6 +35,7 @@ import {
   postPurify,
   postRemoveRelic,
   postMatchmake,
+  postTeach,
   readBankLog,
   registerContender,
   renewPact,
@@ -764,6 +765,18 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onTeach={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postTeach({
+                server: SERVER,
+                characterId,
+                language: 'common_dark',
                 store: plan.store,
               });
             }}

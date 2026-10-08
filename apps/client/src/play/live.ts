@@ -576,6 +576,24 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/language/teach`. A lesson is 100 gold, caps at 80, and waits 24 hours. */
+export async function postTeach(input: {
+  server: string;
+  characterId: string;
+  language: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/language/teach',
+    body: { characterId: input.characterId, language: input.language },
+    store: input.store,
+    log: 'language-teach',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/party/match`. Artifact 16 §4: level within 5, optional role, open seats. */
 export async function postMatchmake(input: {
   server: string;

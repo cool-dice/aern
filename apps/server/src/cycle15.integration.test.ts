@@ -256,3 +256,75 @@ test('party search keeps a candidate within 5 levels of the asked role and skips
   const damage = await graph.act('party_match', { characterId: seeker, role: 'damage' });
   expect(damage).toMatchObject({ ok: true, value: { picked: [] } });
 });
+
+test('gainUpy runs from the teacher route and from tickOnce and skipMs', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const tickBody = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('function simSnapshot'),
+  );
+  const skipBody = composeSource.slice(
+    composeSource.indexOf('async function skipMs'),
+    composeSource.indexOf('function guardAllies'),
+  );
+  const teach = composeSource.slice(
+    composeSource.indexOf('async function teachLanguage'),
+    composeSource.indexOf('function noteWarBlow'),
+  );
+  const passive = composeSource.slice(
+    composeSource.indexOf('async function advanceLanguage'),
+    composeSource.indexOf('async function teachLanguage'),
+  );
+  expect(tickBody.includes('advanceLanguage(')).toBe(true);
+  expect(skipBody.includes('advanceLanguage(')).toBe(true);
+  expect(passive.includes('gainUpy(')).toBe(true);
+  expect(teach.includes('gainUpy(')).toBe(true);
+  expect(dispatch.includes('teachLanguage(')).toBe(true);
+  expect(composeSource.includes("path: '/language/teach'")).toBe(true);
+  expect(app.includes('postTeach(')).toBe(true);
+});
+
+test('a teacher lesson costs 100 gold under the cap, and passive gain waits two online hours beside a speaker', async () => {
+  const graph = compose({ nowMs: 0 });
+  const points = { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 };
+  const human = await graph.character.service.create({
+    accountId: 'account-human',
+    controller: 'player',
+    name: 'Lia',
+    clean: true,
+    points,
+    appearance,
+  });
+  const demon = await graph.character.service.create({
+    accountId: 'account-demon',
+    controller: 'bot',
+    name: 'Vex',
+    clean: true,
+    points,
+    appearance,
+  });
+  expect(human.ok && demon.ok).toBe(true);
+  if (!human.ok || !demon.ok) {
+    return;
+  }
+  const humanId = human.value.characterId;
+  const demonId = demon.value.characterId;
+  expect(await graph.act('language_teach', { characterId: humanId, language: 'common_light' })).toMatchObject({
+    ok: false,
+    code: 'cap',
+  });
+  graph.creditGold(humanId, 100);
+  graph.enterWorld(humanId, 'fort_humans');
+  graph.enterWorld(demonId, 'fort_humans');
+  await graph.skipMs(7_200_000 - 100);
+  await graph.tickOnce();
+  const learned = await graph.act('language_teach', { characterId: humanId, language: 'common_dark' });
+  expect(learned).toMatchObject({ ok: true, value: { language: 'common_dark', upy: 6, gold: 0 } });
+  graph.creditGold(humanId, 100);
+  expect(await graph.act('language_teach', { characterId: humanId, language: 'common_dark' })).toMatchObject({
+    ok: false,
+    code: 'cooldown',
+  });
+});

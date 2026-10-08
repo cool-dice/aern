@@ -177,6 +177,7 @@ export interface LivePorts {
   ): Promise<void>;
   removeWornRelic(body: Record<string, unknown>): Promise<LiveResult>;
   matchParty(body: Record<string, unknown>): Promise<LiveResult>;
+  teachLanguage(body: Record<string, unknown>): Promise<LiveResult>;
   setNeural(characterId: string, nn: number, nnLimit: number): void;
   walletGold(characterId: string): number;
   setGold(characterId: string, gold: number): void;
@@ -258,6 +259,7 @@ const LIVE_ACTIONS = new Set([
   'purify',
   'relic_remove',
   'party_match',
+  'language_teach',
   'node_strike',
   'coalition_say',
 ]);
@@ -404,6 +406,8 @@ export async function runLive(
       return ports.removeWornRelic(body);
     case 'party_match':
       return ports.matchParty(body);
+    case 'language_teach':
+      return ports.teachLanguage(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':

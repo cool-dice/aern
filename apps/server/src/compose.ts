@@ -61,6 +61,7 @@ import { beginPurify, completePurify, nnUsed, type BuildState } from '@rift/doma
 import { removeRelic, type RelicState } from '@rift/domain/relics';
 import { RACES } from '@rift/domain/character';
 import { PARTY_MAX, matchmake, type PartyRole } from '@rift/domain/social';
+import { gainUpy, type LanguageId } from '@rift/domain/language';
 import {
   askHostilePortal,
   isCityService,
@@ -425,6 +426,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const cheatRepeat = new Set<string>();
   const purifyingIds = new Set<string>();
   const lfgRoles = new Map<string, PartyRole>();
+  const upyMemory = new Map<string, { lastLessonMs: Partial<Record<LanguageId, number>>; onlineMs: number }>();
   /** Deposits and reads posted to a coalition. There is still no shared balance. */
   const coalitionLedger = new Map<
     string,
@@ -940,6 +942,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     startPurify,
     removeWornRelic,
     matchParty,
+    teachLanguage,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -2392,6 +2395,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await inspectRewardFreezes();
     await reviewCheatStrikes();
     await finishPurifications();
+    await advanceLanguage(ms);
     refreshPortalLifts();
     await sampleBalance();
   }
@@ -3565,6 +3569,112 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
     }
     return { ok: true, value: { picked, joined, seats } };
+  }
+
+  function isLanguage(value: string): value is LanguageId {
+    return value === 'common_light' || value === 'common_dark' || value === 'ancient';
+  }
+
+  function nativeLanguage(raceId: string): LanguageId {
+    const race = RACES.find((row) => row.id === raceId);
+    return race?.side === 'dark' ? 'common_dark' : 'common_light';
+  }
+
+  /**
+   * Artifact 3 §4–5.1. Passive understanding waits 7 200 000 ms online beside a speaker.
+   * A teacher costs 100 gold, stops at 80, and waits 24 hours before the same language.
+   */
+  async function advanceLanguage(deltaMs: number): Promise<void> {
+    if (deltaMs <= 0) {
+      return;
+    }
+    const spoken = new Map<string, LanguageId>();
+    for (const entity of simWorld.entities) {
+      if (entity.monsterId !== undefined || entity.phase !== 'online') {
+        continue;
+      }
+      const record = await repos.characters.findById(entity.id);
+      if (record === null) {
+        continue;
+      }
+      spoken.set(entity.id, nativeLanguage(record.raceId));
+    }
+    for (const entity of simWorld.entities) {
+      if (entity.monsterId !== undefined || entity.phase !== 'online' || entity.nodeId === undefined) {
+        continue;
+      }
+      const record = await repos.characters.findById(entity.id);
+      if (record === null) {
+        continue;
+      }
+      const memory = upyMemory.get(entity.id) ?? { lastLessonMs: {}, onlineMs: 0 };
+      memory.onlineMs += deltaMs;
+      let heard: LanguageId | null = null;
+      for (const [id, language] of spoken) {
+        if (id === entity.id) {
+          continue;
+        }
+        const other = simWorld.entities.find((row) => row.id === id);
+        if (other?.phase === 'online' && other.nodeId === entity.nodeId) {
+          heard = language;
+          break;
+        }
+      }
+      if (heard !== null) {
+        const gained = gainUpy({
+          state: { values: { ...record.languages }, lastLessonMs: { ...memory.lastLessonMs } },
+          language: heard,
+          gain: 'passive',
+          nowMs: clock.now(),
+          onlineMsSinceLastPassive: memory.onlineMs,
+          gold: repos.economy.getCharacter(entity.id)?.gold ?? 0,
+        });
+        if (gained.ok) {
+          memory.onlineMs = 0;
+          memory.lastLessonMs = gained.value.state.lastLessonMs;
+          await repos.characters.update({ ...record, languages: { ...gained.value.state.values } });
+        }
+      }
+      upyMemory.set(entity.id, memory);
+    }
+  }
+
+  async function teachLanguage(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const language = typeof body.language === 'string' ? body.language : '';
+    if (characterId.length === 0 || !isLanguage(language)) {
+      return { ok: false, code: 'language' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const memory = upyMemory.get(characterId) ?? { lastLessonMs: {}, onlineMs: 0 };
+    const gold = repos.economy.getCharacter(characterId)?.gold ?? 0;
+    const gained = gainUpy({
+      state: { values: { ...record.languages }, lastLessonMs: { ...memory.lastLessonMs } },
+      language,
+      gain: 'teacher',
+      nowMs: clock.now(),
+      onlineMsSinceLastPassive: memory.onlineMs,
+      gold,
+    });
+    if (!gained.ok) {
+      return { ok: false, code: gained.code };
+    }
+    memory.lastLessonMs = gained.value.state.lastLessonMs;
+    upyMemory.set(characterId, memory);
+    await repos.characters.update({ ...record, languages: { ...gained.value.state.values } });
+    const wallet = repos.economy.getCharacter(characterId);
+    if (wallet !== null) {
+      repos.economy.saveCharacter({ ...wallet, gold: gained.value.gold });
+    }
+    return {
+      ok: true,
+      value: { language, upy: gained.value.state.values[language], gold: gained.value.gold },
+    };
   }
 
   function noteWarBlow(attackerId: string, targetId: string): void {
@@ -5172,6 +5282,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await inspectRewardFreezes();
     await reviewCheatStrikes();
     await finishPurifications();
+    await advanceLanguage(SIM_TICK_MS);
     refreshPortalLifts();
     await sampleBalance();
   }
@@ -6269,6 +6380,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/purify', action: 'purify' },
   { path: '/relic/remove', action: 'relic_remove' },
   { path: '/party/match', action: 'party_match' },
+  { path: '/language/teach', action: 'language_teach' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

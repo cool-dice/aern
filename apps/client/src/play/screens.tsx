@@ -81,6 +81,7 @@ export function PlayPanels({
   onPurify,
   onRemoveRelic,
   onMatchmake,
+  onTeach,
   onVote,
   onChoice,
   onEmblem,
@@ -119,6 +120,7 @@ export function PlayPanels({
   onPurify?: () => void;
   onRemoveRelic?: () => void;
   onMatchmake?: () => void;
+  onTeach?: () => void;
   onVote?: () => void;
   onChoice?: () => void;
   onEmblem?: () => void;
@@ -248,6 +250,9 @@ export function PlayPanels({
         </button>
         <button type="button" data-coalition="read" onClick={() => onCoalitionRead?.()}>
           read
+        </button>
+        <button type="button" data-language="teach" onClick={() => onTeach?.()}>
+          lesson
         </button>
         <button type="button" data-party="match" onClick={() => onMatchmake?.()}>
           group
