@@ -23,6 +23,8 @@ import {
   grantNode,
   noticePact,
   postCoalition,
+  decipherAncient,
+  encodeAncientLine,
   postContractBoard,
   postDoctrine,
   postGuildEmblem,
@@ -620,6 +622,26 @@ export function App() {
                 server: SERVER,
                 guildId: 'guild',
                 characterId,
+                store: plan.store,
+              });
+            }}
+            onAncientEncode={() => {
+              void encodeAncientLine({
+                server: SERVER,
+                text: 'привет',
+                store: plan.store,
+              });
+            }}
+            onAncientDecipher={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void decipherAncient({
+                server: SERVER,
+                characterId,
+                fragmentId: 'fragment_rift_01',
+                attempt: '?',
                 store: plan.store,
               });
             }}

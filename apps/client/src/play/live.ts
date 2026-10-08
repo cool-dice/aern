@@ -386,6 +386,48 @@ export async function readBankLog(input: {
   });
 }
 
+/** Posts `/ancient/encode`. The server cipher is a substitution, and spaces stay spaces. */
+export async function encodeAncientLine(input: {
+  server: string;
+  text: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/ancient/encode',
+    body: { text: input.text },
+    store: input.store,
+    log: 'ancient-encode',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/ancient/decipher`. A mismatch does not reveal the plaintext. */
+export async function decipherAncient(input: {
+  server: string;
+  characterId: string;
+  fragmentId: string;
+  attempt: string;
+  store: ClientStore;
+  knownLetters?: string[];
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/ancient/decipher',
+    body: {
+      characterId: input.characterId,
+      fragmentId: input.fragmentId,
+      attempt: input.attempt,
+      ...(input.knownLetters !== undefined ? { knownLetters: input.knownLetters } : {}),
+    },
+    store: input.store,
+    log: 'ancient-decipher',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/contract`. The board is a hub or a city. A kill below level 10 is refused. */
 export async function postContractBoard(input: {
   server: string;

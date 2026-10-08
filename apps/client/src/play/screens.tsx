@@ -66,6 +66,8 @@ export function PlayPanels({
   onDoctrine,
   onBankLog,
   onContract,
+  onAncientEncode,
+  onAncientDecipher,
   onMercenary,
   onPatrol,
   onGuildQuest,
@@ -97,6 +99,8 @@ export function PlayPanels({
   onDoctrine?: () => void;
   onBankLog?: () => void;
   onContract?: () => void;
+  onAncientEncode?: () => void;
+  onAncientDecipher?: () => void;
   onMercenary?: () => void;
   onPatrol?: () => void;
   onGuildQuest?: () => void;
@@ -198,6 +202,12 @@ export function PlayPanels({
         </button>
         <button type="button" data-contract="post" onClick={() => onContract?.()}>
           contract
+        </button>
+        <button type="button" data-ancient="encode" onClick={() => onAncientEncode?.()}>
+          encode
+        </button>
+        <button type="button" data-ancient="decipher" onClick={() => onAncientDecipher?.()}>
+          decipher
         </button>
         <button type="button" data-mercenary="post" onClick={() => onMercenary?.()}>
           mercenary

@@ -109,6 +109,8 @@ export interface LivePorts {
   judgeReport(body: Record<string, unknown>): LiveResult;
   sayChat(body: Record<string, unknown>): Promise<LiveResult>;
   noteCheatStrike(body: Record<string, unknown>): Promise<LiveResult>;
+  encodeAncientText(body: Record<string, unknown>): LiveResult;
+  decipherAncient(body: Record<string, unknown>): LiveResult;
   memberDoctrine(characterId: string): DoctrineId | null;
   holdWithdrawal(input: {
     guildId: string;
@@ -239,6 +241,8 @@ const LIVE_ACTIONS = new Set([
   'report_judge',
   'chat_say',
   'cheat_strike',
+  'ancient_encode',
+  'ancient_decipher',
   'node_strike',
   'coalition_say',
 ]);
@@ -373,6 +377,10 @@ export async function runLive(
       return ports.sayChat(body);
     case 'cheat_strike':
       return ports.noteCheatStrike(body);
+    case 'ancient_encode':
+      return ports.encodeAncientText(body);
+    case 'ancient_decipher':
+      return ports.decipherAncient(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':

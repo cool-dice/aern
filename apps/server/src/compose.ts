@@ -1,6 +1,7 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadCatalog, type Catalog } from '@rift/content';
+import { buildPermutation, decipherAttempt, encodeAncient } from '@rift/domain/ancient';
 import type { NodeKind, WorldEdge, WorldNode } from '@rift/domain/world';
 import type { WorldRepository } from './modules/world/repository';
 import { parseClientCommand, type ClientCommand } from '@rift/protocol';
@@ -306,6 +307,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const clock = manualClock(options.nowMs ?? 0);
   const bus = createBus();
   const catalog = resolveCatalog(options);
+  const ancientPermutation = buildPermutation(options.jwtSecret ?? DEV_JWT_SECRET);
+  const solvedAncient = new Map<string, Set<string>>();
   const repos = openRepositories(options.databaseUrl, clock, options.db);
   const openWars: StoredWar[] = [];
   const guildOf = new Map<string, string>();
@@ -914,6 +917,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     judgeReport,
     sayChat,
     noteCheatStrike,
+    encodeAncientText,
+    decipherAncient,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -3184,6 +3189,67 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     const strikes = recordCheatStrike(accountId, clock.now());
     return { ok: true, value: { accountId, strikes } };
+  }
+
+  function encodeAncientText(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const text = typeof body.text === 'string' ? body.text : '';
+    if (text.length === 0) {
+      return { ok: false, code: 'text' };
+    }
+    return { ok: true, value: { ciphertext: encodeAncient(text, ancientPermutation) } };
+  }
+
+  /**
+   * Artifact 3 §6. A substitution attempt either matches the server cipher or returns
+   * `mismatch`. A solved fragment shows its plaintext. Failures do not reveal it.
+   */
+  function decipherAncient(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const fragmentId = typeof body.fragmentId === 'string' ? body.fragmentId : '';
+    const attempt = typeof body.attempt === 'string' ? body.attempt : '';
+    if (characterId.length === 0 || fragmentId.length === 0 || attempt.length === 0) {
+      return { ok: false, code: 'fragment' };
+    }
+    const found = catalog.fragments.find((row) => row.id === fragmentId);
+    if (found === undefined) {
+      return { ok: false, code: 'fragment' };
+    }
+    const knownLetters = Array.isArray(body.knownLetters)
+      ? body.knownLetters.filter((letter): letter is string => typeof letter === 'string')
+      : [];
+    const solved = solvedAncient.get(characterId)?.has(fragmentId) ?? false;
+    const result = decipherAttempt({
+      fragment: {
+        id: found.id,
+        plaintext: found.lore,
+        x: found.x,
+        y: found.y,
+        recipeId: found.recipeId,
+        password: found.password,
+      },
+      permutation: ancientPermutation,
+      knownLetters,
+      attempt,
+      solved,
+    });
+    if (!result.ok) {
+      return { ok: false, code: result.code };
+    }
+    const known = solvedAncient.get(characterId) ?? new Set<string>();
+    known.add(fragmentId);
+    solvedAncient.set(characterId, known);
+    return {
+      ok: true,
+      value: {
+        plaintext: result.value.plaintext,
+        solved: result.value.solved,
+        firstSolve: result.value.firstSolve,
+      },
+    };
   }
 
   function noteWarRoster(): void {
@@ -5902,6 +5968,8 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/report/judge', action: 'report_judge' },
   { path: '/chat', action: 'chat_say' },
   { path: '/cheat/strike', action: 'cheat_strike' },
+  { path: '/ancient/encode', action: 'ancient_encode' },
+  { path: '/ancient/decipher', action: 'ancient_decipher' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

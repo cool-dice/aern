@@ -341,7 +341,7 @@ describe('loadCatalog', () => {
     });
     expect(catalog.fragments[0]).toEqual({
       id: 'fragment_rift_01',
-      lore: 'Предтечи открыли Разлом в Изначальном городе.',
+      lore: 'Предтечи открыли Разлом в Изначальном городе',
       x: 40,
       y: 0,
       recipeId: 'energy_blade',

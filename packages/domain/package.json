@@ -8,6 +8,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./ai": "./src/ai.ts",
+    "./ancient": "./src/ancient.ts",
     "./build": "./src/build.ts",
     "./character": "./src/character.ts",
     "./death": "./src/death.ts",

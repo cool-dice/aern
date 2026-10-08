@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { buildPermutation, encodeAncient } from '@rift/domain/ancient';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
 
@@ -160,4 +161,74 @@ test('three cheat strikes in 24 hours ban the account for 7 days, and the next w
   expect(await graph.auth.service.login('lia@rift.test', 'password1')).toEqual({ ok: false, code: 'banned' });
   await graph.skipMs(7 * 86_400_000);
   expect(await graph.auth.service.login('lia@rift.test', 'password1')).toEqual({ ok: false, code: 'banned' });
+});
+
+test('ancient encode and decipher are live routes', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const encode = composeSource.slice(
+    composeSource.indexOf('function encodeAncientText'),
+    composeSource.indexOf('function decipherAncient'),
+  );
+  const decipher = composeSource.slice(
+    composeSource.indexOf('function decipherAncient'),
+    composeSource.indexOf('function noteWarRoster'),
+  );
+  expect(encode.includes('encodeAncient(')).toBe(true);
+  expect(decipher.includes('decipherAttempt(')).toBe(true);
+  expect(decipher.includes('lockout')).toBe(false);
+  expect(dispatch.includes("case 'ancient_encode'")).toBe(true);
+  expect(dispatch.includes('encodeAncientText(')).toBe(true);
+  expect(dispatch.includes("case 'ancient_decipher'")).toBe(true);
+  expect(dispatch.includes('decipherAncient(')).toBe(true);
+  expect(composeSource.includes("path: '/ancient/encode'")).toBe(true);
+  expect(composeSource.includes("path: '/ancient/decipher'")).toBe(true);
+  expect(app.includes('encodeAncientLine(')).toBe(true);
+  expect(app.includes('decipherAncient(')).toBe(true);
+});
+
+test('a matching substitution reveals the fragment and a mismatch does not lock the character out', async () => {
+  const graph = compose({ nowMs: 0, jwtSecret: 'test-secret' });
+  graph.enterCharacter('account-lia', 'lia');
+  const permutation = buildPermutation('test-secret');
+  const encoded = await graph.act('ancient_encode', { text: 'привет' });
+  expect(encoded).toMatchObject({
+    ok: true,
+    value: { ciphertext: encodeAncient('привет', permutation) },
+  });
+  const wrong = await graph.act('ancient_decipher', {
+    characterId: 'lia',
+    fragmentId: 'fragment_rift_01',
+    attempt: '?',
+    knownLetters: ['п'],
+  });
+  expect(wrong).toEqual({ ok: false, code: 'mismatch' });
+  const again = await graph.act('ancient_decipher', {
+    characterId: 'lia',
+    fragmentId: 'fragment_rift_01',
+    attempt: '??',
+  });
+  expect(again).toEqual({ ok: false, code: 'mismatch' });
+  expect(JSON.stringify(again)).not.toContain('Предтечи');
+  const opened = await graph.act('ancient_decipher', {
+    characterId: 'lia',
+    fragmentId: 'fragment_rift_01',
+    attempt: permutation,
+    knownLetters: ['п'],
+  });
+  expect(opened.ok).toBe(true);
+  if (!opened.ok || opened.value === undefined || typeof opened.value !== 'object') {
+    return;
+  }
+  const value = opened.value as { plaintext: string; solved: boolean; firstSolve: boolean };
+  expect(value.solved).toBe(true);
+  expect(value.firstSolve).toBe(true);
+  expect(value.plaintext.includes('Предтечи')).toBe(true);
+  const repeat = await graph.act('ancient_decipher', {
+    characterId: 'lia',
+    fragmentId: 'fragment_rift_01',
+    attempt: permutation,
+  });
+  expect(repeat).toMatchObject({ ok: true, value: { firstSolve: false, solved: true } });
 });
