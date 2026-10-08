@@ -11,8 +11,16 @@ export const GUILD_MIN_LEVEL = 5;
 export const OFFICE_COOLDOWN_MS = 7 * DAY_MS;
 /** First leader tie waits this long; the wait itself is the caller's `revote` flag. */
 export const REVOTE_MS = DAY_MS;
+/** Artifact 17 §3.3. An internal ballot stays open for 24 real hours. */
+export const INTERNAL_VOTE_MS = DAY_MS;
+/** Artifact 17 §3.3. After this absence the senior council casts the deciding vote. */
+export const DECIDING_ABSENCE_MS = DAY_MS;
+/** Artifact 17 §2.5. A leader absent this long loses the seat. */
+export const LEADER_ABSENCE_MS = 14 * DAY_MS;
 /** A novice cannot be promoted before this probation ends. */
 export const NOVICE_LOCK_MS = 72 * 60 * 60 * 1000;
+/** Artifact 17 §3.1. An officer invites at most this many characters in a day. */
+export const OFFICER_INVITES_PER_DAY = 5;
 
 export const WAR_GOLD = 50_000;
 export const WAR_RESOURCES = 20_000;
@@ -60,6 +68,17 @@ export const WITHDRAW_PERCENT: Record<GuildRank, number> = {
   veteran: 1,
   novice: 0,
 };
+
+/** Artifact 17 §4.2. Items a rank may take from the bank in one day. */
+export const WITHDRAW_ITEMS: Record<GuildRank, number> = {
+  leader: 10,
+  council: 20,
+  officer: 5,
+  veteran: 1,
+  novice: 0,
+};
+
+const LEADERSHIP_RANKS = new Set<GuildRank>(['leader', 'council', 'officer']);
 
 export const DOCTRINE_IDS = ['fury', 'fortitude', 'labor', 'greed', 'knowledge', 'guard'] as const;
 export type DoctrineId = (typeof DOCTRINE_IDS)[number];
@@ -111,6 +130,8 @@ export type GuildCode =
 export interface GuildDraft {
   name: string;
   tag: string;
+  emblem: string;
+  description: string;
   leaderId: string;
   memberIds: string[];
   gold: number;
@@ -179,6 +200,8 @@ export function createGuild(input: {
   nowMs: number;
   lastOfficeMs: number | null;
   leaderId: string;
+  emblem?: string;
+  description?: string;
 }): Result<GuildDraft, 'size' | 'level' | 'gold' | 'member' | 'cooldown'> {
   if (!NAME_PATTERN.test(input.name)) {
     throw new RangeError('guild name must be 3..24 letters or spaces');
@@ -226,6 +249,8 @@ export function createGuild(input: {
   return ok({
     name: input.name,
     tag: input.tag,
+    emblem: input.emblem ?? '',
+    description: input.description ?? '',
     leaderId: input.leaderId,
     memberIds: [...ids],
     gold: 0,
@@ -401,6 +426,15 @@ export function withdraw(input: {
   leaderConfirm: boolean;
   councilConfirms: number;
   councilVote: boolean;
+  /** Gold already taken today. The percent cap is the day's total. */
+  goldWithdrawnToday?: number;
+  resourceStock?: number;
+  resourceAmount?: number;
+  resourcesWithdrawnToday?: number;
+  /** Occupied item slots. The bank holds at most `GUILD_BANK_SLOTS`. */
+  itemSlots?: number;
+  itemAmount?: number;
+  itemsWithdrawnToday?: number;
 }): Result<{ bank: number; amount: number }, 'rank' | 'limit' | 'confirm' | 'gold'> {
   if (!isRank(input.rank)) {
     throw new RangeError(`unknown rank: ${String(input.rank)}`);
@@ -415,11 +449,39 @@ export function withdraw(input: {
   if (input.bank > GUILD_BANK_CAP) {
     throw new RangeError(`bank exceeds cap ${String(GUILD_BANK_CAP)}`);
   }
+  const itemSlots = input.itemSlots ?? 0;
+  const itemAmount = input.itemAmount ?? 0;
+  const itemsWithdrawnToday = input.itemsWithdrawnToday ?? 0;
+  const resourceStock = input.resourceStock ?? 0;
+  const resourceAmount = input.resourceAmount ?? 0;
+  const resourcesWithdrawnToday = input.resourcesWithdrawnToday ?? 0;
+  const goldWithdrawnToday = input.goldWithdrawnToday ?? 0;
+  assertNonNegativeInteger(itemSlots, 'itemSlots');
+  assertNonNegativeInteger(itemAmount, 'itemAmount');
+  assertNonNegativeInteger(itemsWithdrawnToday, 'itemsWithdrawnToday');
+  assertNonNegativeInteger(resourceStock, 'resourceStock');
+  assertNonNegativeInteger(resourceAmount, 'resourceAmount');
+  assertNonNegativeInteger(resourcesWithdrawnToday, 'resourcesWithdrawnToday');
+  assertNonNegativeInteger(goldWithdrawnToday, 'goldWithdrawnToday');
+  if (itemSlots > GUILD_BANK_SLOTS) {
+    return err('limit');
+  }
   if (input.rank === 'novice') {
-    if (input.amount === 0) {
+    if (input.amount === 0 && itemAmount === 0 && resourceAmount === 0) {
       return ok({ bank: input.bank, amount: 0 });
     }
     return err('rank');
+  }
+  const itemCap = WITHDRAW_ITEMS[input.rank];
+  if (itemsWithdrawnToday + itemAmount > itemCap) {
+    return err('limit');
+  }
+  const resourceAllowance = Math.floor((resourceStock * WITHDRAW_PERCENT[input.rank]) / 100);
+  if (resourcesWithdrawnToday + resourceAmount > resourceAllowance) {
+    return err('limit');
+  }
+  if (resourceAmount > resourceStock) {
+    return err('limit');
   }
   if (input.amount > input.bank) {
     return err('gold');
@@ -428,24 +490,25 @@ export function withdraw(input: {
     return ok({ bank: input.bank, amount: 0 });
   }
 
+  const spentGold = goldWithdrawnToday + input.amount;
   const allowance = Math.floor((input.bank * WITHDRAW_PERCENT[input.rank]) / 100);
   const band10 = Math.floor((input.bank * 10) / 100);
   const band25 = Math.floor((input.bank * 25) / 100);
   if (input.rank === 'officer' || input.rank === 'veteran') {
-    if (input.amount > allowance) {
+    if (spentGold > allowance) {
       return err('limit');
     }
     return ok({ bank: input.bank - input.amount, amount: input.amount });
   }
 
   const confirmed = input.leaderConfirm && input.councilConfirms >= 2;
-  if (input.amount <= band10) {
-    if (input.amount > allowance) {
+  if (spentGold <= band10) {
+    if (spentGold > allowance) {
       return err('limit');
     }
     return ok({ bank: input.bank - input.amount, amount: input.amount });
   }
-  if (input.amount <= band25) {
+  if (spentGold <= band25) {
     if (!confirmed) {
       return err('confirm');
     }
@@ -455,6 +518,22 @@ export function withdraw(input: {
     return err('confirm');
   }
   return ok({ bank: input.bank - input.amount, amount: input.amount });
+}
+
+/** Artifact 17 §4.1. A deposit that would pass 500 item slots is refused. */
+export function reserveItemSlots(
+  slots: number,
+  adding: number,
+): Result<{ slots: number }, 'limit'> {
+  assertNonNegativeInteger(slots, 'slots');
+  assertNonNegativeInteger(adding, 'adding');
+  if (adding === 0) {
+    return slots > GUILD_BANK_SLOTS ? err('limit') : ok({ slots });
+  }
+  if (slots + adding > GUILD_BANK_SLOTS) {
+    return err('limit');
+  }
+  return ok({ slots: slots + adding });
 }
 
 export function declareWar(input: {
@@ -898,6 +977,230 @@ export function dissolveShares(
   return { shares, void: gold - paid };
 }
 
+export interface ContributionRow {
+  id: string;
+  contributed: number;
+}
+
+export interface AssetSplit {
+  shares: { id: string; amount: number }[];
+  void: number;
+}
+
+/**
+ * Artifact 17 §2.4 and §4.3. Gold, resources, and items each split by their
+ * own contribution ledger. An empty ledger sends that pile to `void`.
+ */
+export function dissolveHoldings(input: {
+  gold: number;
+  resources: number;
+  items: number;
+  goldLedger: ContributionRow[];
+  resourceLedger: ContributionRow[];
+  itemLedger: ContributionRow[];
+}): { gold: AssetSplit; resources: AssetSplit; items: AssetSplit } {
+  return {
+    gold: asAmount(dissolveShares(input.gold, input.goldLedger)),
+    resources: asAmount(dissolveShares(input.resources, input.resourceLedger)),
+    items: asAmount(dissolveShares(input.items, input.itemLedger)),
+  };
+}
+
+function asAmount(split: { shares: { id: string; gold: number }[]; void: number }): AssetSplit {
+  return {
+    shares: split.shares.map((share) => ({ id: share.id, amount: share.gold })),
+    void: split.void,
+  };
+}
+
+export type InternalClose =
+  | { status: 'open' }
+  | { status: 'quorum' }
+  | { status: 'failed' }
+  | { status: 'passed'; choice: string; by: 'majority' | 'leader' | 'council'; deciderId: string | null };
+
+/**
+ * Artifact 17 §3.3. The ballot stays open for 24 hours. Quorum is half of the
+ * members who may vote. A tie is the leader's vote, or the senior council's
+ * when the leader has been absent for more than 24 hours.
+ */
+export function closeInternalVote(input: {
+  openedAtMs: number;
+  nowMs: number;
+  ballots: { voterId: string; choice: string }[];
+  eligibleIds: string[];
+  ranks: Partial<Record<string, GuildRank>>;
+  leaderId: string;
+  leaderAbsentMs: number;
+  council: { id: string; seniorityMs: number }[];
+}): Result<InternalClose, 'rank' | 'member'> {
+  assertMs(input.openedAtMs, 'openedAtMs');
+  assertMs(input.nowMs, 'nowMs');
+  assertNonNegativeInteger(input.leaderAbsentMs, 'leaderAbsentMs');
+  if (input.nowMs < input.openedAtMs + INTERNAL_VOTE_MS) {
+    return ok({ status: 'open' });
+  }
+  const members = new Set(input.eligibleIds);
+  const latest = new Map<string, string>();
+  for (const ballot of input.ballots) {
+    if (!members.has(ballot.voterId)) {
+      return err('member');
+    }
+    if (input.ranks[ballot.voterId] === 'novice') {
+      return err('rank');
+    }
+    if (ballot.choice.length === 0) {
+      throw new RangeError('choice must be non-empty');
+    }
+    latest.set(ballot.voterId, ballot.choice);
+  }
+  const eligible = input.eligibleIds.filter((id) => input.ranks[id] !== 'novice');
+  if (!voteQuorum(latest.size, eligible.length)) {
+    return ok({ status: 'quorum' });
+  }
+  const counts = new Map<string, number>();
+  for (const choice of latest.values()) {
+    counts.set(choice, (counts.get(choice) ?? 0) + 1);
+  }
+  let top = 0;
+  for (const count of counts.values()) {
+    if (count > top) {
+      top = count;
+    }
+  }
+  const tied: string[] = [];
+  for (const [choice, count] of counts) {
+    if (count === top) {
+      tied.push(choice);
+    }
+  }
+  tied.sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+  const sole = tied.length === 1 ? tied[0] : undefined;
+  if (sole !== undefined && top * 2 > latest.size) {
+    return ok({ status: 'passed', choice: sole, by: 'majority', deciderId: null });
+  }
+  const deciderId =
+    input.leaderAbsentMs > DECIDING_ABSENCE_MS ? seniorCouncil(input.council) : input.leaderId;
+  if (deciderId === null) {
+    return ok({ status: 'failed' });
+  }
+  const choice = latest.get(deciderId);
+  if (choice === undefined || !tied.includes(choice)) {
+    return ok({ status: 'failed' });
+  }
+  return ok({
+    status: 'passed',
+    choice,
+    by: input.leaderAbsentMs > DECIDING_ABSENCE_MS ? 'council' : 'leader',
+    deciderId,
+  });
+}
+
+function seniorCouncil(council: { id: string; seniorityMs: number }[]): string | null {
+  const rows = [...council];
+  rows.sort((left, right) => {
+    if (left.seniorityMs !== right.seniorityMs) {
+      return right.seniorityMs - left.seniorityMs;
+    }
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
+  return rows[0]?.id ?? null;
+}
+
+export type AbsenceSuccession =
+  | { action: 'wait' }
+  | { action: 'transfer'; toId: string; seat: 'council' | 'officer' }
+  | { action: 'dissolve' };
+
+/**
+ * Artifact 17 §2.5. Fourteen days of absence moves the seat to the council
+ * member with the greatest seniority, then activity. With no council, the
+ * officer with the greatest seniority takes it. With neither, the guild dissolves.
+ */
+export function succeedAbsentLeader(input: {
+  absentMs: number;
+  council: { id: string; seniorityMs: number; activity: number }[];
+  officers: { id: string; seniorityMs: number }[];
+}): AbsenceSuccession {
+  assertNonNegativeInteger(input.absentMs, 'absentMs');
+  if (input.absentMs < LEADER_ABSENCE_MS) {
+    return { action: 'wait' };
+  }
+  const council = [...input.council].sort((left, right) => {
+    assertNonNegativeInteger(left.seniorityMs, 'seniorityMs');
+    assertNonNegativeInteger(left.activity, 'activity');
+    assertNonNegativeInteger(right.seniorityMs, 'seniorityMs');
+    assertNonNegativeInteger(right.activity, 'activity');
+    if (left.id.length === 0 || right.id.length === 0) {
+      throw new RangeError('council id must be non-empty');
+    }
+    if (left.seniorityMs !== right.seniorityMs) {
+      return right.seniorityMs - left.seniorityMs;
+    }
+    if (left.activity !== right.activity) {
+      return right.activity - left.activity;
+    }
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
+  const councilor = council[0];
+  if (councilor !== undefined) {
+    return { action: 'transfer', toId: councilor.id, seat: 'council' };
+  }
+  const officers = [...input.officers].sort((left, right) => {
+    assertNonNegativeInteger(left.seniorityMs, 'seniorityMs');
+    assertNonNegativeInteger(right.seniorityMs, 'seniorityMs');
+    if (left.id.length === 0 || right.id.length === 0) {
+      throw new RangeError('officer id must be non-empty');
+    }
+    if (left.seniorityMs !== right.seniorityMs) {
+      return right.seniorityMs - left.seniorityMs;
+    }
+    return left.id < right.id ? -1 : left.id > right.id ? 1 : 0;
+  });
+  const officer = officers[0];
+  if (officer !== undefined) {
+    return { action: 'transfer', toId: officer.id, seat: 'officer' };
+  }
+  return { action: 'dissolve' };
+}
+
+/** Artifact 17 §10. An AI holds at most one leadership post at a time. */
+export function aiLeadership(input: {
+  ai: boolean;
+  rank: GuildRank;
+  posts: number;
+}): Result<true, 'limit'> {
+  if (!isRank(input.rank)) {
+    throw new RangeError(`unknown rank: ${String(input.rank)}`);
+  }
+  assertNonNegativeInteger(input.posts, 'posts');
+  if (!input.ai || !LEADERSHIP_RANKS.has(input.rank)) {
+    return ok(true);
+  }
+  if (input.posts >= 1) {
+    return err('limit');
+  }
+  return ok(true);
+}
+
+/** Leader, council, and officer may invite. An officer stops at five a day. */
+export function officerInvite(input: {
+  rank: GuildRank;
+  invitesToday: number;
+}): Result<true, 'rank' | 'limit'> {
+  if (!isRank(input.rank)) {
+    throw new RangeError(`unknown rank: ${String(input.rank)}`);
+  }
+  assertNonNegativeInteger(input.invitesToday, 'invitesToday');
+  if (input.rank !== 'leader' && input.rank !== 'council' && input.rank !== 'officer') {
+    return err('rank');
+  }
+  if (input.rank === 'officer' && input.invitesToday >= OFFICER_INVITES_PER_DAY) {
+    return err('limit');
+  }
+  return ok(true);
+}
+
 /** Artifact 17 §8. One guild member plants a flag in 60 real seconds. */
 export const NODE_PLANT_MS = 60_000;
 /** No owning-guild member online for 30 real minutes drops the flag. */
@@ -1097,6 +1400,7 @@ const NODE_CHEST_RANKS = new Set<GuildRank>(['leader', 'council', 'officer']);
 
 /**
  * Artifact 17 §8.3. The capturer takes the flag down and pockets the chest.
+ * The capturer does not have to be the guild that currently owns the node.
  * This is not §8.4: an absence drop leaves the chest for the next planter.
  */
 export function strikeNodeFlag(input: {
@@ -1107,7 +1411,7 @@ export function strikeNodeFlag(input: {
   if (!isRank(input.rank)) {
     throw new RangeError(`unknown rank: ${String(input.rank)}`);
   }
-  if (input.guildId.length === 0 || input.node.guildId === null || input.node.guildId !== input.guildId) {
+  if (input.guildId.length === 0 || input.node.guildId === null) {
     return err('owner');
   }
   if (!NODE_CHEST_RANKS.has(input.rank)) {

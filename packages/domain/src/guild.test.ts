@@ -85,6 +85,17 @@ import {
   measureSection12,
   voteQuorum,
   vassalMayDeclare,
+  INTERNAL_VOTE_MS,
+  DECIDING_ABSENCE_MS,
+  LEADER_ABSENCE_MS,
+  WITHDRAW_ITEMS,
+  OFFICER_INVITES_PER_DAY,
+  aiLeadership,
+  closeInternalVote,
+  dissolveHoldings,
+  officerInvite,
+  reserveItemSlots,
+  succeedAbsentLeader,
   type GuildFounder,
 } from './guild';
 import { mulberry32, type Rng } from './rng';
@@ -136,6 +147,8 @@ test('three founders are refused and four of level 5 pay the charter fee', () =>
       tag: 'RW',
       leaderId: 'leader',
       memberIds: ['leader', 'm1', 'm2', 'm3'],
+      emblem: '',
+      description: '',
       gold: 0,
     },
   });
@@ -1394,8 +1407,11 @@ test('a creation vote needs half the eligible members', () => {
 test('taking the flag down pockets the chest and an absence drop does not', () => {
   const owned = { ...freshResourceNode('plains_mine'), guildId: 'wolves', chest: 40 };
   expect(strikeNodeFlag({ node: owned, guildId: 'ash', rank: 'leader' })).toEqual({
-    ok: false,
-    code: 'owner',
+    ok: true,
+    value: {
+      pocketed: 40,
+      node: { ...owned, guildId: null, chest: 0 },
+    },
   });
   expect(strikeNodeFlag({ node: owned, guildId: 'wolves', rank: 'veteran' })).toEqual({
     ok: false,
@@ -1478,4 +1494,192 @@ test('section 12 scores the named targets and does not invent a gate', () => {
   expect(hit.draws).toEqual({ observed: 10, onTarget: true });
   expect(hit.averageNodeTax).toEqual({ observed: 15, onTarget: true });
   expect(hit.guildBankTurnover.onTarget).toBe(true);
+});
+
+test('an internal ballot waits 24 hours, then the leader or senior council breaks a tie', () => {
+  expect(INTERNAL_VOTE_MS).toBe(DAY_MS);
+  expect(DECIDING_ABSENCE_MS).toBe(DAY_MS);
+  const shared = {
+    eligibleIds: ['a', 'b', 'c', 'leader', 'senior'],
+    ranks: {
+      a: 'veteran' as const,
+      b: 'veteran' as const,
+      c: 'officer' as const,
+      leader: 'leader' as const,
+      senior: 'council' as const,
+    },
+    leaderId: 'leader',
+    council: [{ id: 'senior', seniorityMs: 10 }, { id: 'junior', seniorityMs: 1 }],
+  };
+  const split = [
+    { voterId: 'a', choice: 'yes' },
+    { voterId: 'b', choice: 'no' },
+    { voterId: 'c', choice: 'later' },
+  ];
+  expect(
+    closeInternalVote({ ...shared, ballots: split, openedAtMs: 0, nowMs: INTERNAL_VOTE_MS - 1, leaderAbsentMs: 0 }),
+  ).toEqual({
+    ok: true,
+    value: { status: 'open' },
+  });
+  expect(
+    closeInternalVote({
+      ...shared,
+      ballots: [...split, { voterId: 'leader', choice: 'yes' }],
+      openedAtMs: 0,
+      nowMs: INTERNAL_VOTE_MS,
+      leaderAbsentMs: DECIDING_ABSENCE_MS,
+    }),
+  ).toEqual({
+    ok: true,
+    value: { status: 'passed', choice: 'yes', by: 'leader', deciderId: 'leader' },
+  });
+  expect(
+    closeInternalVote({
+      ...shared,
+      ballots: [
+        { voterId: 'a', choice: 'yes' },
+        { voterId: 'b', choice: 'no' },
+        { voterId: 'c', choice: 'later' },
+        { voterId: 'leader', choice: 'no' },
+        { voterId: 'senior', choice: 'yes' },
+      ],
+      openedAtMs: 0,
+      nowMs: INTERNAL_VOTE_MS,
+      leaderAbsentMs: DECIDING_ABSENCE_MS + 1,
+    }),
+  ).toEqual({
+    ok: true,
+    value: { status: 'passed', choice: 'yes', by: 'council', deciderId: 'senior' },
+  });
+  expect(
+    closeInternalVote({
+      ...shared,
+      ballots: [{ voterId: 'a', choice: 'yes' }],
+      ranks: { a: 'novice' },
+      openedAtMs: 0,
+      nowMs: INTERNAL_VOTE_MS,
+      leaderAbsentMs: 0,
+    }),
+  ).toEqual({ ok: false, code: 'rank' });
+});
+
+test('fourteen days of leader absence transfers by seniority and activity, or dissolves', () => {
+  expect(LEADER_ABSENCE_MS).toBe(14 * DAY_MS);
+  expect(succeedAbsentLeader({ absentMs: LEADER_ABSENCE_MS - 1, council: [], officers: [] })).toEqual({
+    action: 'wait',
+  });
+  expect(
+    succeedAbsentLeader({
+      absentMs: LEADER_ABSENCE_MS,
+      council: [
+        { id: 'old', seniorityMs: 10, activity: 1 },
+        { id: 'busy', seniorityMs: 10, activity: 5 },
+        { id: 'new', seniorityMs: 2, activity: 9 },
+      ],
+      officers: [{ id: 'off', seniorityMs: 100 }],
+    }),
+  ).toEqual({ action: 'transfer', toId: 'busy', seat: 'council' });
+  expect(
+    succeedAbsentLeader({
+      absentMs: LEADER_ABSENCE_MS,
+      council: [],
+      officers: [
+        { id: 'short', seniorityMs: 1 },
+        { id: 'long', seniorityMs: 8 },
+      ],
+    }),
+  ).toEqual({ action: 'transfer', toId: 'long', seat: 'officer' });
+  expect(succeedAbsentLeader({ absentMs: LEADER_ABSENCE_MS, council: [], officers: [] })).toEqual({
+    action: 'dissolve',
+  });
+});
+
+test('dissolution splits resources and items on their own ledgers', () => {
+  const split = dissolveHoldings({
+    gold: 100,
+    resources: 10,
+    items: 3,
+    goldLedger: [
+      { id: 'a', contributed: 1 },
+      { id: 'b', contributed: 1 },
+    ],
+    resourceLedger: [{ id: 'a', contributed: 3 }],
+    itemLedger: [],
+  });
+  expect(split.gold).toEqual({
+    shares: [
+      { id: 'a', amount: 50 },
+      { id: 'b', amount: 50 },
+    ],
+    void: 0,
+  });
+  expect(split.resources).toEqual({ shares: [{ id: 'a', amount: 10 }], void: 0 });
+  expect(split.items).toEqual({ shares: [], void: 3 });
+});
+
+test('withdraw enforces item slots and the daily item and resource caps', () => {
+  expect(WITHDRAW_ITEMS.leader).toBe(10);
+  expect(WITHDRAW_ITEMS.council).toBe(20);
+  expect(WITHDRAW_ITEMS.novice).toBe(0);
+  expect(reserveItemSlots(GUILD_BANK_SLOTS, 1)).toEqual({ ok: false, code: 'limit' });
+  expect(reserveItemSlots(499, 1)).toEqual({ ok: true, value: { slots: 500 } });
+  expect(
+    withdraw({
+      rank: 'leader',
+      bank: 1_000,
+      amount: 0,
+      leaderConfirm: false,
+      councilConfirms: 0,
+      councilVote: false,
+      itemSlots: GUILD_BANK_SLOTS + 1,
+    }),
+  ).toEqual({ ok: false, code: 'limit' });
+  expect(
+    withdraw({
+      rank: 'leader',
+      bank: 1_000,
+      amount: 0,
+      leaderConfirm: false,
+      councilConfirms: 0,
+      councilVote: false,
+      itemAmount: 11,
+    }),
+  ).toEqual({ ok: false, code: 'limit' });
+  expect(
+    withdraw({
+      rank: 'officer',
+      bank: 1_000,
+      amount: 0,
+      leaderConfirm: false,
+      councilConfirms: 0,
+      councilVote: false,
+      resourceStock: 100,
+      resourceAmount: 6,
+    }),
+  ).toEqual({ ok: false, code: 'limit' });
+  expect(
+    withdraw({
+      rank: 'veteran',
+      bank: 1_000,
+      amount: 0,
+      leaderConfirm: false,
+      councilConfirms: 0,
+      councilVote: false,
+      itemAmount: 1,
+      resourceStock: 100,
+      resourceAmount: 1,
+    }),
+  ).toEqual({ ok: true, value: { bank: 1_000, amount: 0 } });
+});
+
+test('an AI cannot hold a second leadership post, and an officer stops at five invites', () => {
+  expect(aiLeadership({ ai: true, rank: 'officer', posts: 1 })).toEqual({ ok: false, code: 'limit' });
+  expect(aiLeadership({ ai: true, rank: 'leader', posts: 0 })).toEqual({ ok: true, value: true });
+  expect(aiLeadership({ ai: false, rank: 'leader', posts: 3 })).toEqual({ ok: true, value: true });
+  expect(aiLeadership({ ai: true, rank: 'veteran', posts: 2 })).toEqual({ ok: true, value: true });
+  expect(OFFICER_INVITES_PER_DAY).toBe(5);
+  expect(officerInvite({ rank: 'officer', invitesToday: 5 })).toEqual({ ok: false, code: 'limit' });
+  expect(officerInvite({ rank: 'veteran', invitesToday: 0 })).toEqual({ ok: false, code: 'rank' });
+  expect(officerInvite({ rank: 'leader', invitesToday: 5 })).toEqual({ ok: true, value: true });
 });
