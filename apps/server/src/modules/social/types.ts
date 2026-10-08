@@ -57,4 +57,9 @@ export interface SocialService {
   partyOf(characterId: string): Party | null;
   /** Last sanction written on the character. `none` when they were never sanctioned. */
   sanctionOf(characterId: string): Sanction;
+  /**
+   * Applies a named sanction for its duration. Does not count as an automute.
+   * Returns false when the character is not registered.
+   */
+  imposeSanction(characterId: string, sanction: Sanction, nowMs: number): boolean;
 }

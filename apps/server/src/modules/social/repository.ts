@@ -24,6 +24,8 @@ export interface SocialRepository {
   character(id: string): CharacterState | null;
   charactersAt(nodeId: string): CharacterState[];
   applySanction(id: string, sanction: Sanction, untilMs: number | null, nowMs: number): void;
+  /** Writes a sanction without counting it as an automute. */
+  setSanction(id: string, sanction: Sanction, untilMs: number | null): boolean;
   remember(id: string, text: string, nowMs: number): void;
   partyByMember(id: string): Party | null;
   saveParty(party: Party): void;
@@ -125,6 +127,16 @@ export function createSocialRepository(): SocialRepository {
       character.sanction = sanction;
       character.sanctionUntilMs = untilMs;
       character.automuteAtMs.push(nowMs);
+    },
+
+    setSanction(id, sanction, untilMs) {
+      const character = characters.get(id);
+      if (character === undefined) {
+        return false;
+      }
+      character.sanction = sanction;
+      character.sanctionUntilMs = untilMs;
+      return true;
     },
 
     remember(id, text, nowMs) {

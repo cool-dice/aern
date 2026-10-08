@@ -812,6 +812,7 @@ function bindSocial(db: RiftDb): SocialRepository {
     character: (id) => inner.character(id),
     charactersAt: (nodeId) => inner.charactersAt(nodeId),
     applySanction: (id, sanction, untilMs, nowMs) => inner.applySanction(id, sanction, untilMs, nowMs),
+    setSanction: (id, sanction, untilMs) => inner.setSanction(id, sanction, untilMs),
     remember: (id, text, nowMs) => inner.remember(id, text, nowMs),
     partyByMember: (id) => inner.partyByMember(id),
     saveParty: (party) => inner.saveParty(party),

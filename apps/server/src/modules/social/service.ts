@@ -109,6 +109,10 @@ export function createSocialService(
       return repository.character(characterId)?.sanction ?? 'none';
     },
 
+    imposeSanction(characterId, sanction, nowMs) {
+      return repository.setSanction(characterId, sanction, sanctionUntil(sanction, nowMs));
+    },
+
     grantTitle(input) {
       const granted = repository.grantTitle(input.characterId, input.titleId);
       if (!granted.ok) {

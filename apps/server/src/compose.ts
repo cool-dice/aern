@@ -4,7 +4,7 @@ import { loadCatalog, type Catalog } from '@rift/content';
 import type { NodeKind, WorldEdge, WorldNode } from '@rift/domain/world';
 import type { WorldRepository } from './modules/world/repository';
 import { parseClientCommand, type ClientCommand } from '@rift/protocol';
-import { GUILD_NAME_BLACKLIST } from '@rift/domain/moderation';
+import { falseReportSanction, GUILD_NAME_BLACKLIST } from '@rift/domain/moderation';
 import { mulberry32 } from '@rift/domain/rng';
 import { EQUIP_SLOTS, type EquipSlot, type GradeId } from '@rift/domain/items';
 import { STAT_IDS, derive, emptyPoints, type StatBlock } from '@rift/domain/stats';
@@ -402,6 +402,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     string,
     { doctrine: DoctrineId; changedAtMs: number; affects: DoctrineAffect; multiplier: number }
   >();
+  let playerReports: {
+    id: string;
+    reporterId: string;
+    targetId: string;
+    reason: string;
+    atMs: number;
+    verdict: 'open' | 'false' | 'upheld';
+  }[] = [];
   let boardContracts: {
     id: string;
     type: ContractType;
@@ -893,6 +901,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     readBankLog,
     changeDoctrine,
     postBoardContract,
+    fileReport,
+    judgeReport,
+    sayChat,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -3018,6 +3029,85 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         },
       ];
     });
+  }
+
+  function fileReport(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const reporterId = typeof body.reporterId === 'string' ? body.reporterId : '';
+    const targetId = typeof body.targetId === 'string' ? body.targetId : '';
+    const reason = typeof body.reason === 'string' ? body.reason.trim() : '';
+    if (reporterId.length === 0 || targetId.length === 0 || reporterId === targetId || reason.length === 0) {
+      return { ok: false, code: 'report' };
+    }
+    const row = {
+      id: nextDiplomacyId('report'),
+      reporterId,
+      targetId,
+      reason,
+      atMs: clock.now(),
+      verdict: 'open' as const,
+    };
+    playerReports = [...playerReports, row];
+    return { ok: true, value: { id: row.id, reporterId, targetId } };
+  }
+
+  /**
+   * Artifact 32 §10. A moderator who judges a report false mutes the reporter for 24 hours.
+   * The mute is `falseReportSanction` and blocks chat until that window elapses.
+   */
+  function judgeReport(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const reportId = typeof body.reportId === 'string' ? body.reportId : '';
+    const reviewerId = typeof body.reviewerId === 'string' ? body.reviewerId : '';
+    const report = playerReports.find((row) => row.id === reportId);
+    if (report === undefined || report.verdict !== 'open') {
+      return { ok: false, code: 'report' };
+    }
+    const role = staffRoles.get(reviewerId);
+    if (role !== 'moderator' && role !== 'admin') {
+      return { ok: false, code: 'rank' };
+    }
+    const falseVerdict = body.verdict === false || body.verdict === 'false';
+    if (!falseVerdict) {
+      report.verdict = 'upheld';
+      return { ok: true, value: { id: report.id, verdict: 'upheld' } };
+    }
+    const sanction = falseReportSanction();
+    const nodeId = characterNode(report.reporterId) ?? 'fort_humans';
+    social.service.register({ id: report.reporterId, nodeId, language: 'common_light' });
+    if (!social.service.imposeSanction(report.reporterId, sanction, clock.now())) {
+      return { ok: false, code: 'missing' };
+    }
+    report.verdict = 'false';
+    const untilMs = social.repository.character(report.reporterId)?.sanctionUntilMs ?? null;
+    return {
+      ok: true,
+      value: { id: report.id, reporterId: report.reporterId, sanction, untilMs },
+    };
+  }
+
+  async function sayChat(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const text = typeof body.text === 'string' ? body.text : '';
+    if (characterId.length === 0 || text.trim().length === 0) {
+      return { ok: false, code: 'invalid' };
+    }
+    const nodeId = characterNode(characterId) ?? 'fort_humans';
+    social.service.register({ id: characterId, nodeId, language: 'common_light' });
+    const sent = await social.service.say({
+      senderId: characterId,
+      channel: 'local',
+      text,
+      nowMs: clock.now(),
+    });
+    if (!sent.ok) {
+      return { ok: false, code: sent.code };
+    }
+    return { ok: true, value: sent.value };
   }
 
   function noteWarRoster(): void {
@@ -5703,6 +5793,9 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/guild/doctrine', action: 'guild_doctrine' },
   { path: '/guild/bank', action: 'guild_bank' },
   { path: '/contract', action: 'contract_post' },
+  { path: '/report', action: 'report_file' },
+  { path: '/report/judge', action: 'report_judge' },
+  { path: '/chat', action: 'chat_say' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 
