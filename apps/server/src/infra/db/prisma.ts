@@ -215,6 +215,7 @@ function characterBlob(record: CharacterRecord): Record<string, unknown> {
     points: record.points,
     languages: record.languages,
     stats: record.stats,
+    ...(record.build !== undefined ? { build: record.build } : {}),
   };
 }
 
@@ -261,6 +262,7 @@ function toCharacter(row: Record<string, unknown>): CharacterRecord {
     stats: blob.stats as StatBlock,
     languages: blob.languages as CharacterRecord['languages'],
     phase,
+    ...(blob.build !== undefined ? { build: blob.build as CharacterRecord['build'] } : {}),
   };
 }
 
@@ -345,6 +347,10 @@ function bindCharacters(db: RiftDb): CharacterRepository {
     async findByName(name) {
       const row = await db.character.findUnique({ where: { name } });
       return row === null ? null : toCharacter(row);
+    },
+    async listByAccount(accountId) {
+      const rows = await db.character.findMany({ where: { accountId } });
+      return rows.map((row) => toCharacter(row));
     },
     async insert(record) {
       const data = characterData(record);

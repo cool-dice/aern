@@ -42,6 +42,7 @@ import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
 import { OBSERVATION_LENGTH } from '@rift/domain/ai';
 import type { QuestObjectiveKind } from '@rift/domain/quests';
+import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { newEconomyCharacter } from './modules/economy/repository';
 import { observeEntity } from './modules/ai/observe';
 import { SIDECAR_TIMEOUT_MS } from './modules/ai/types';
@@ -97,7 +98,7 @@ export interface ServerComposition {
   ai: AiModule;
   bindGateway: (server: WebSocketServer) => void;
   enterCharacter: (accountId: string, characterId: string) => void;
-  resume: (accountId: string) => void;
+  resume: (accountId: string) => Promise<void>;
   act: (action: string, body: Record<string, unknown>) => Promise<{ ok: boolean; code?: string; value?: unknown }>;
   state: () => Record<string, unknown>;
   creditGold: (characterId: string, amount: number) => void;
@@ -339,7 +340,6 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const rng = mulberry32(1);
   const weatherRng = mulberry32(2);
   const sockets = new Set<{ send(data: string): void }>();
-  const charactersByAccount = new Map<string, string[]>();
   const parked = spawnNamed('keeper_enhanced', 'content:keeper_enhanced');
 
   const livePorts: LivePorts = {
@@ -378,12 +378,17 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     },
   };
 
-  function rememberCharacter(accountId: string, characterId: string): void {
-    const ids = charactersByAccount.get(accountId) ?? [];
-    if (!ids.includes(characterId)) {
-      ids.push(characterId);
-      charactersByAccount.set(accountId, ids);
+  function openWallet(characterId: string): void {
+    if (repos.economy.getCharacter(characterId) !== null) {
+      return;
     }
+    repos.economy.saveCharacter(
+      newEconomyCharacter({ characterId, side: 'light', gold: GUILD_CREATE_GOLD }),
+    );
+  }
+
+  function rememberCharacter(_accountId: string, characterId: string): void {
+    openWallet(characterId);
     enterWorld(characterId);
   }
 
@@ -687,9 +692,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     enterWorld,
     creditGuildGold: creditGold,
     enterCharacter: rememberCharacter,
-    resume(accountId: string) {
-      for (const id of charactersByAccount.get(accountId) ?? []) {
-        enterWorld(id);
+    async resume(accountId: string) {
+      const saved = await repos.characters.listByAccount(accountId);
+      for (const record of saved) {
+        openWallet(record.id);
+        enterWorld(record.id, record.bindNodeId === '' ? 'fort_humans' : record.bindNodeId);
       }
     },
     act: (action, body) => runLive(action, body, livePorts),
@@ -828,7 +835,7 @@ function registerHttp(app: FastifyInstance, composition: ServerComposition): voi
     }
     const access = auth.service.verifyAccess(result.value.accessToken);
     if (access.ok) {
-      composition.resume(access.value.accountId);
+      await composition.resume(access.value.accountId);
     }
     return reply.send({
       ...result.value,

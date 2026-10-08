@@ -5,6 +5,7 @@ import type { CharacterRecord } from './types';
 export interface CharacterRepository {
   findById(id: string): Promise<CharacterRecord | null>;
   findByName(name: string): Promise<CharacterRecord | null>;
+  listByAccount(accountId: string): Promise<CharacterRecord[]>;
   insert(record: CharacterRecord): Promise<void>;
   update(record: CharacterRecord): Promise<void>;
 }
@@ -37,6 +38,21 @@ function copyRecord(record: CharacterRecord): CharacterRecord {
     stats: copyStats(record.stats),
     languages: { ...record.languages },
     phase: record.phase,
+    ...(record.build !== undefined
+      ? {
+          build:
+            record.build === null
+              ? null
+              : {
+                  programs: record.build.programs.map((program) => ({ ...program })),
+                  cores: record.build.cores.map((core) => ({ ...core })),
+                  relicSocketFree: record.build.relicSocketFree,
+                  relicGrade: record.build.relicGrade,
+                  purifyingUntilMs: record.build.purifyingUntilMs,
+                  echoIds: [...record.build.echoIds],
+                },
+        }
+      : {}),
   };
 }
 
@@ -55,6 +71,16 @@ export class MemoryCharacterRepository implements CharacterRepository {
       return null;
     }
     return this.findById(id);
+  }
+
+  async listByAccount(accountId: string): Promise<CharacterRecord[]> {
+    const rows: CharacterRecord[] = [];
+    for (const record of this.byId.values()) {
+      if (record.accountId === accountId) {
+        rows.push(copyRecord(record));
+      }
+    }
+    return rows;
   }
 
   async insert(record: CharacterRecord): Promise<void> {

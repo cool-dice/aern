@@ -190,6 +190,16 @@ function createCharacterRepository(): CharacterRepository {
       return record === undefined ? null : copyCharacter(record);
     },
 
+    async listByAccount(accountId) {
+      const rows: CharacterRecord[] = [];
+      for (const record of byId.values()) {
+        if (record.accountId === accountId) {
+          rows.push(copyCharacter(record));
+        }
+      }
+      return rows;
+    },
+
     async insert(record) {
       if (byId.has(record.id) || byName.has(record.name)) {
         throw new Error('character already exists');

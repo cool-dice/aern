@@ -1,4 +1,5 @@
 import type { Appearance } from '@rift/domain/character';
+import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { emptyPoints } from '@rift/domain/stats';
 import { expect, test } from 'vitest';
 import { buildApp, compose } from './compose';
@@ -65,6 +66,64 @@ test('character create enters the world and a command moves that entity', async 
     const after = await built.app.inject({ method: 'GET', url: '/state' });
     const next = after.json() as { self: { cell: { x: number; y: number }; hp: number } };
     expect(next.self.cell.x).toBeGreaterThan(0);
+  } finally {
+    await built.close();
+  }
+});
+
+test('login resume loads repository characters and create opens a guild wallet', async () => {
+  const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  const created = await graph.character.service.create({
+    accountId: 'account-ria',
+    controller: 'player',
+    name: 'Ria',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  expect(graph.state().self).toBeNull();
+  await graph.resume('account-ria');
+  const resumed = graph.state() as { self: { id: string } | null };
+  expect(resumed.self?.id).toBe(created.value.characterId);
+  expect(graph.economy.service.balance(created.value.characterId)).toBe(GUILD_CREATE_GOLD);
+
+  const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  try {
+    const httpCreated = await built.app.inject({
+      method: 'POST',
+      url: '/characters',
+      payload: {
+        accountId: 'account-lia',
+        name: 'Lia',
+        clean: false,
+        points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+        appearance,
+      },
+    });
+    const { characterId } = httpCreated.json() as { characterId: string };
+    expect(built.economy.service.balance(characterId)).toBe(GUILD_CREATE_GOLD);
+    const guild = await built.app.inject({
+      method: 'POST',
+      url: '/guild',
+      payload: {
+        name: 'Red Wolves',
+        tag: 'RW',
+        initiatorId: characterId,
+        members: [
+          { id: characterId, level: 5 },
+          { id: 'm1', level: 5 },
+          { id: 'm2', level: 5 },
+          { id: 'm3', level: 5 },
+        ],
+        gold: GUILD_CREATE_GOLD,
+      },
+    });
+    expect(guild.statusCode).toBe(200);
+    expect(built.economy.service.balance(characterId)).toBe(0);
   } finally {
     await built.close();
   }
