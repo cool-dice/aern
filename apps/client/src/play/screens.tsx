@@ -76,6 +76,8 @@ export function PlayPanels({
   onPactRenew,
   onContend,
   onCoalition,
+  onCoalitionDeposit,
+  onCoalitionRead,
   onVote,
   onChoice,
   onEmblem,
@@ -109,6 +111,8 @@ export function PlayPanels({
   onPactRenew?: () => void;
   onContend?: () => void;
   onCoalition?: () => void;
+  onCoalitionDeposit?: () => void;
+  onCoalitionRead?: () => void;
   onVote?: () => void;
   onChoice?: () => void;
   onEmblem?: () => void;
@@ -232,6 +236,12 @@ export function PlayPanels({
         </button>
         <button type="button" data-coalition="say" onClick={() => onCoalition?.()}>
           coalition
+        </button>
+        <button type="button" data-coalition="deposit" onClick={() => onCoalitionDeposit?.()}>
+          deposit
+        </button>
+        <button type="button" data-coalition="read" onClick={() => onCoalitionRead?.()}>
+          read
         </button>
         <button type="button" data-vote="leader" onClick={() => onVote?.()}>
           vote

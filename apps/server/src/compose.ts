@@ -91,6 +91,7 @@ import {
   officerInvite,
   reserveItemSlots,
   NEUTRAL_GUARD_COUNT,
+  coalitionBank,
   coalitionChannel,
   napBetween,
   noticeAllianceBreak,
@@ -919,6 +920,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     noteCheatStrike,
     encodeAncientText,
     decipherAncient,
+    useCoalitionBank,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -3250,6 +3252,33 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         firstSolve: result.value.firstSolve,
       },
     };
+  }
+
+  /**
+   * Artifact 17 §9.2. A coalition has no shared bank. Members may post a deposit
+   * or a read; `coalitionBank` refuses both.
+   */
+  function useCoalitionBank(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const op = body.op === 'deposit' || body.op === 'read' ? body.op : '';
+    if (characterId.length === 0 || op === '') {
+      return { ok: false, code: 'op' };
+    }
+    const guildId = guildOf.get(characterId);
+    if (guildId === undefined) {
+      return { ok: false, code: 'member' };
+    }
+    const pact = coalitionChannel(pacts, guildId, clock.now());
+    if (pact === null) {
+      return { ok: false, code: 'member' };
+    }
+    const bank = coalitionBank();
+    if (!bank.ok) {
+      return { ok: false, code: bank.code, value: { op, guildId } };
+    }
+    return { ok: false, code: 'bank', value: { op, guildId } };
   }
 
   function noteWarRoster(): void {
@@ -5970,6 +5999,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/cheat/strike', action: 'cheat_strike' },
   { path: '/ancient/encode', action: 'ancient_encode' },
   { path: '/ancient/decipher', action: 'ancient_decipher' },
+  { path: '/coalition/bank', action: 'coalition_bank' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

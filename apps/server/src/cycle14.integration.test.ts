@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { buildPermutation, encodeAncient } from '@rift/domain/ancient';
+import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
 
@@ -173,7 +174,7 @@ test('ancient encode and decipher are live routes', () => {
   );
   const decipher = composeSource.slice(
     composeSource.indexOf('function decipherAncient'),
-    composeSource.indexOf('function noteWarRoster'),
+    composeSource.indexOf('function useCoalitionBank'),
   );
   expect(encode.includes('encodeAncient(')).toBe(true);
   expect(decipher.includes('decipherAttempt(')).toBe(true);
@@ -231,4 +232,93 @@ test('a matching substitution reveals the fragment and a mismatch does not lock 
     attempt: permutation,
   });
   expect(repeat).toMatchObject({ ok: true, value: { firstSolve: false, solved: true } });
+});
+
+test('a coalition bank route calls coalitionBank for members', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const bank = composeSource.slice(
+    composeSource.indexOf('function useCoalitionBank'),
+    composeSource.indexOf('function noteWarRoster'),
+  );
+  expect(bank.includes('coalitionBank(')).toBe(true);
+  expect(dispatch.includes("case 'coalition_bank'")).toBe(true);
+  expect(dispatch.includes('useCoalitionBank(')).toBe(true);
+  expect(composeSource.includes("path: '/coalition/bank'")).toBe(true);
+  expect(app.includes("op: 'deposit'")).toBe(true);
+  expect(app.includes("op: 'read'")).toBe(true);
+  expect(app.includes('postCoalitionBank(')).toBe(true);
+});
+
+test('coalition members can post a deposit and a read, and the artifact keeps the bank closed', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.enterCharacter('account-kai', 'kai');
+  const wolves = await graph.act('guild_create', {
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    emblem: 'wolf',
+    description: 'the red pack',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'lia', level: 5, confirmed: true },
+      { id: 'm1', level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
+    ],
+  });
+  expect(wolves.ok).toBe(true);
+  const ash = await graph.act('guild_create', {
+    name: 'Ash Keepers',
+    tag: 'ASH',
+    initiatorId: 'kai',
+    leaderId: 'kai',
+    emblem: 'ash',
+    description: 'the ash keep',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'k1', level: 5, confirmed: true },
+      { id: 'k2', level: 5, confirmed: true },
+      { id: 'k3', level: 5, confirmed: true },
+    ],
+  });
+  expect(ash.ok).toBe(true);
+  const wolvesId = (wolves.value as { guildId: string }).guildId;
+  const ashId = (ash.value as { guildId: string }).guildId;
+  expect(await graph.act('coalition_bank', { characterId: 'lia', op: 'deposit', amount: 10 })).toMatchObject({
+    ok: false,
+    code: 'member',
+  });
+  expect(
+    await graph.act('pact', {
+      kind: 'coalition',
+      guildIds: [wolvesId, ashId],
+      targetGuildId: 'outsiders',
+      characterId: 'lia',
+    }),
+  ).toMatchObject({ ok: true });
+  expect(await graph.act('coalition_bank', { characterId: 'lia', op: 'deposit', amount: 10 })).toMatchObject({
+    ok: false,
+    code: 'bank',
+    value: { op: 'deposit', guildId: wolvesId },
+  });
+  expect(await graph.act('coalition_bank', { characterId: 'kai', op: 'read' })).toMatchObject({
+    ok: false,
+    code: 'bank',
+    value: { op: 'read', guildId: ashId },
+  });
+  expect(await graph.act('coalition_bank', { characterId: 'm1', op: 'read' })).toMatchObject({
+    ok: false,
+    code: 'bank',
+    value: { op: 'read', guildId: wolvesId },
+  });
+  graph.enterCharacter('account-noa', 'noa');
+  expect(await graph.act('coalition_bank', { characterId: 'noa', op: 'deposit', amount: 10 })).toMatchObject({
+    ok: false,
+    code: 'member',
+  });
 });

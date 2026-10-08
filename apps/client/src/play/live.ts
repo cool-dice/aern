@@ -576,6 +576,29 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/coalition/bank`. Artifact 17 §9.2: a coalition has no shared bank. */
+export async function postCoalitionBank(input: {
+  server: string;
+  characterId: string;
+  op: 'deposit' | 'read';
+  store: ClientStore;
+  amount?: number;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/coalition/bank',
+    body: {
+      characterId: input.characterId,
+      op: input.op,
+      ...(input.amount !== undefined ? { amount: input.amount } : {}),
+    },
+    store: input.store,
+    log: input.op === 'deposit' ? 'coalition-deposit' : 'coalition-read',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/coalition`. Only a live coalition has this diplomatic channel. */
 export async function postCoalition(input: {
   server: string;

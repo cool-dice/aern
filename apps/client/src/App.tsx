@@ -23,6 +23,7 @@ import {
   grantNode,
   noticePact,
   postCoalition,
+  postCoalitionBank,
   decipherAncient,
   encodeAncientLine,
   postContractBoard,
@@ -747,6 +748,31 @@ export function App() {
                 server: SERVER,
                 pactId: 'pact',
                 characterId,
+                store: plan.store,
+              });
+            }}
+            onCoalitionDeposit={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postCoalitionBank({
+                server: SERVER,
+                characterId,
+                op: 'deposit',
+                amount: 10,
+                store: plan.store,
+              });
+            }}
+            onCoalitionRead={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postCoalitionBank({
+                server: SERVER,
+                characterId,
+                op: 'read',
                 store: plan.store,
               });
             }}
