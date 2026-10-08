@@ -275,6 +275,57 @@ test('a blocked step rejects and leaves the entity where regen left it', () => {
   expect(blocked.entities[0]).toEqual(quiet.entities[0]);
 });
 
+test('neuroshock halves speed and weapon damage while overloaded', () => {
+  const start = world({
+    entities: [
+      entity({
+        id: 'a',
+        reaction: 15,
+        inCombat: true,
+        od: 5,
+        odFrac: 5,
+        overloaded: true,
+        cell: { x: 0, y: 0 },
+      }),
+      entity({ id: 't', evasion: 0, od: 0, hp: 100, cell: { x: 3, y: 0 } }),
+    ],
+  });
+  const moved = stepTick(start, [move('a', 'e', false)], mulberry32(1));
+  expect(moved.rejections).toEqual([]);
+  expect(moved.entities[0]?.cell).toEqual({ x: 1, y: 0 });
+
+  const struck = stepTick(
+    start,
+    [attack({ attackerId: 'a', targetId: 't', weaponDamage: 10, distance: 1 })],
+    mulberry32(1),
+  );
+  expect(struck.rejections).toEqual([]);
+  expect(struck.entities[1]?.hp).toBe(93);
+});
+
+test('mutation empower increases the hit', () => {
+  const start = world({
+    entities: [
+      entity({
+        id: 'a',
+        inCombat: true,
+        od: 5,
+        odFrac: 5,
+        statuses: [
+          { id: 'mutation', expiresAtMs: 100_000, sourceId: 'src', mutationEffect: 'empower' },
+        ],
+      }),
+      entity({ id: 't', evasion: 0, od: 0, hp: 100, cell: { x: 1, y: 0 } }),
+    ],
+  });
+  const done = stepTick(
+    start,
+    [attack({ attackerId: 'a', targetId: 't', weaponDamage: 10, distance: 1 })],
+    mulberry32(1),
+  );
+  expect(done.entities[1]?.hp).toBe(78);
+});
+
 test('slow halves the cells of a long step', () => {
   const start = world({
     entities: [

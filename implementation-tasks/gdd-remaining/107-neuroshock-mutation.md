@@ -1,6 +1,6 @@
 # 107. Нейрошок и мутация в бою
 
-status: pending
+status: done
 
 ## Правило GDD
 

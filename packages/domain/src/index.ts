@@ -95,7 +95,9 @@ export {
   nnCostProgram,
   nnCostCore,
   nnUsed,
+  NEUROSHOCK_FACTOR,
   neuroshock,
+  neuroshockScale,
   effectMultiplier,
   installEcho,
   learnPath,
@@ -116,13 +118,15 @@ export {
   STATUS_IDS,
   STATUS_DIFFICULTY,
   STATUS_DURATION_SECONDS,
+  MUTATION_EFFECTS,
   statusDifficulty,
   statusDurationMs,
+  rollMutationEffect,
   statusResist,
   tryApplyStatus,
   tickStatuses,
 } from './status';
-export type { StatusId, StatusInstance } from './status';
+export type { StatusId, StatusInstance, MutationEffect } from './status';
 
 export {
   DIRS,

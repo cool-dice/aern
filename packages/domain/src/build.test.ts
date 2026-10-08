@@ -7,7 +7,9 @@ import {
   equipCore,
   installEcho,
   learnPath,
+  NEUROSHOCK_FACTOR,
   neuroshock,
+  neuroshockScale,
   nnCostCore,
   nnCostProgram,
   nnUsed,
@@ -124,6 +126,9 @@ test('will 2 with a grade-3 program and a grade-5 core is neuroshock', () => {
   }).nnLimit;
   expect(limit).toBe(4);
   expect(neuroshock(state)).toBe(true);
+  expect(NEUROSHOCK_FACTOR).toBe(0.5);
+  expect(neuroshockScale(20, true)).toBe(10);
+  expect(neuroshockScale(20, false)).toBe(20);
 });
 
 test('forgetting multipliers are 1, 0.75, 0.5, and 0', () => {

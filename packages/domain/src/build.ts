@@ -140,8 +140,19 @@ export function nnUsed(state: BuildState): number {
  * Combat reads this flag and applies speed ×0.5 and damage ×0.5 until the load drops.
  * Neuroshock is not resisted and is not a task-011 status id.
  */
+/** Speed and weapon damage while neural load is over the limit. */
+export const NEUROSHOCK_FACTOR = 0.5;
+
 export function neuroshock(state: BuildState): boolean {
   return nnUsed(state) > neuralLimit(state);
+}
+
+/** Halves a non-negative combat number while neuroshock is active. */
+export function neuroshockScale(value: number, shocked: boolean): number {
+  if (!shocked) {
+    return value;
+  }
+  return value * NEUROSHOCK_FACTOR;
 }
 
 /** Forgetting steps: ×1, ×0.75, ×0.5, ×0. Load at step 3 is still occupied. */

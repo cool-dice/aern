@@ -1,14 +1,18 @@
 import { expect, test } from 'vitest';
+import { mulberry32 } from './rng';
 import { derive, emptyPoints, type StatBlock } from './stats';
 import {
+  MUTATION_EFFECTS,
   STATUS_DIFFICULTY,
   STATUS_DURATION_SECONDS,
   STATUS_IDS,
+  rollMutationEffect,
   statusDifficulty,
   statusDurationMs,
   statusResist,
   tickStatuses,
   tryApplyStatus,
+  type MutationEffect,
   type StatusId,
   type StatusInstance,
 } from './status';
@@ -21,7 +25,7 @@ function block(partial: Partial<StatBlock> = {}): StatBlock {
 function apply(
   id: StatusId,
   existing: StatusInstance[] = [],
-  overrides: { resist?: number; nowMs?: number; sourceId?: string } = {},
+  overrides: { resist?: number; nowMs?: number; sourceId?: string; mutationEffect?: MutationEffect } = {},
 ): { applied: boolean; statuses: StatusInstance[] } {
   return tryApplyStatus({
     resist: overrides.resist ?? 0,
@@ -29,6 +33,8 @@ function apply(
     nowMs: overrides.nowMs ?? 0,
     sourceId: overrides.sourceId ?? 'src',
     existing,
+    rng: mulberry32(1),
+    ...(overrides.mutationEffect !== undefined ? { mutationEffect: overrides.mutationEffect } : {}),
   });
 }
 
@@ -198,15 +204,40 @@ test('slow halves speed while it is active and is 1 otherwise', () => {
   expect(tickStatuses(slowed.statuses, 5_000, 1).speedMultiplier).toBe(1);
 });
 
-test('mutation stays active without changing combat numbers', () => {
-  const mutated = apply('mutation');
+test('mutation lasts 60 seconds and applies one rolled effect', () => {
+  const first = rollMutationEffect(mulberry32(4));
+  const again = rollMutationEffect(mulberry32(4));
+  expect(again).toBe(first);
+  expect(MUTATION_EFFECTS).toContain(first);
+
+  const seen = new Set<string>();
+  for (let seed = 1; seed < 40; seed += 1) {
+    seen.add(rollMutationEffect(mulberry32(seed)));
+  }
+  expect(seen.size).toBeGreaterThan(1);
+
+  const mutated = apply('mutation', [], { mutationEffect: 'wither' });
   expect(mutated.statuses[0]?.expiresAtMs).toBe(60_000);
+  expect(mutated.statuses[0]?.mutationEffect).toBe('wither');
   const ticked = tickStatuses(mutated.statuses, 0, 1);
   expect(ticked.active).toEqual(mutated.statuses);
-  expect(ticked.hpLoss).toBe(0);
-  expect(ticked.accuracyPenalty).toBe(0);
+  expect(ticked.hpLoss).toBe(2);
+  expect(ticked.damageMultiplier).toBe(1);
   expect(ticked.speedMultiplier).toBe(1);
   expect(ticked.stunned).toBe(false);
+
+  expect(tickStatuses(apply('mutation', [], { mutationEffect: 'empower' }).statuses, 0, 1).damageMultiplier).toBe(1.5);
+  expect(tickStatuses(apply('mutation', [], { mutationEffect: 'weaken' }).statuses, 0, 1).damageMultiplier).toBe(0.5);
+  expect(tickStatuses(apply('mutation', [], { mutationEffect: 'haste' }).statuses, 0, 1).speedMultiplier).toBe(1.5);
+  expect(tickStatuses(apply('mutation', [], { mutationEffect: 'sluggish' }).statuses, 0, 1).speedMultiplier).toBe(0.5);
+  expect(tickStatuses(apply('mutation', [], { mutationEffect: 'regenerate' }).statuses, 0, 1).hpLoss).toBe(-1);
+  expect(() => tryApplyStatus({
+    resist: 0,
+    id: 'mutation',
+    nowMs: 0,
+    sourceId: 'src',
+    existing: [],
+  })).toThrow(/mutation requires rng/);
 });
 
 test('tryApplyStatus does not mutate the existing list', () => {

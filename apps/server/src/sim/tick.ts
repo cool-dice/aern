@@ -1,3 +1,4 @@
+import { neuroshockScale } from '@rift/domain/build';
 import {
   limbMax,
   orderByInitiative,
@@ -104,6 +105,7 @@ export interface SimWorld {
 interface StatusMods {
   accuracyPenalty: number;
   speedMultiplier: number;
+  damageMultiplier: number;
 }
 
 interface OrderedCommand {
@@ -139,6 +141,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     mods.set(entity.id, {
       accuracyPenalty: status.accuracyPenalty,
       speedMultiplier: status.speedMultiplier,
+      damageMultiplier: status.damageMultiplier,
     });
   }
 
@@ -267,7 +270,9 @@ function applyMove(
     return;
   }
 
-  const speed = mods.get(entity.id)?.speedMultiplier ?? 1;
+  const speed =
+    (mods.get(entity.id)?.speedMultiplier ?? 1) *
+    (entity.overloaded === true ? neuroshockScale(1, true) : 1);
   const downed = entity.phase === 'downed';
   const pace = cellsFor({
     reaction: entity.reaction,
@@ -345,7 +350,9 @@ function applyAttack(
   const result = resolveAttack({
     attacker: toCombatant(attackerDraft, mods.get(attacker.id)?.accuracyPenalty ?? 0),
     target: toCombatant(targetDraft, mods.get(target.id)?.accuracyPenalty ?? 0),
-    weaponDamage: command.weaponDamage,
+    weaponDamage:
+      neuroshockScale(command.weaponDamage, attacker.overloaded === true) *
+      (mods.get(attacker.id)?.damageMultiplier ?? 1),
     odCost: command.odCost,
     range: command.range,
     distance: command.distance ?? chebyshev(attackerDraft.cell, targetDraft.cell),
