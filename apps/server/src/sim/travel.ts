@@ -57,7 +57,8 @@ function bestAligned(from: GeoNode, linked: readonly GeoNode[], dir: Dir): GeoNo
       continue;
     }
     const cosine = (vx * delta.x + vy * delta.y) / (len * dirLen);
-    if (cosine <= 0) {
+    // Eight facings. A neighbor more than half a facing away is not that exit.
+    if (cosine < Math.cos(Math.PI / 8)) {
       continue;
     }
     const closerTie = Math.abs(cosine - bestScore) <= 1e-9 && len < bestLen;
