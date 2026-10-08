@@ -254,6 +254,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     if (entity.phase === 'offline' || entity.frozen === true) {
       continue;
     }
+    const localWeather = shelteredFromWeather(world, entity) ? combatWeather(world.weatherId, true) : weather;
     regenOd(entity);
     const seconds = tick % TICKS_PER_SECOND === 0 ? 1 : 0;
     const status = tickStatuses(entity.statuses, nowMs, seconds);
@@ -261,9 +262,9 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     entity.stunned = status.stunned;
     if (seconds === 1) {
       entity.hp -= status.hpLoss;
-      entity.hp -= weather.hpPerSecond;
+      entity.hp -= localWeather.hpPerSecond;
     }
-    if (weather.mutationChance > 0 && rng.nextUnit() < weather.mutationChance) {
+    if (localWeather.mutationChance > 0 && rng.nextUnit() < localWeather.mutationChance) {
       const rolled = tryApplyStatus({
         resist: 0,
         id: 'mutation',
@@ -390,6 +391,18 @@ function dirToward(from: Cell, to: Cell): Dir {
     return 'w';
   }
   return 'nw';
+}
+
+/** A safe city or hub drops weather damage. The world flag still shelters everyone. */
+function shelteredFromWeather(world: SimWorld, entity: SimEntity): boolean {
+  if (world.safeZone === true) {
+    return true;
+  }
+  if (entity.nodeId === undefined || world.geography === undefined) {
+    return false;
+  }
+  const node = world.geography.nodes.find((row) => row.id === entity.nodeId);
+  return node?.safe === true;
 }
 
 function zoneOf(world: SimWorld): {

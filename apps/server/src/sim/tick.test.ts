@@ -86,6 +86,8 @@ function world(partial: Partial<SimWorld> & Pick<SimWorld, 'entities'>): SimWorl
     obstacles: partial.obstacles ?? [],
     history: partial.history ?? [],
     lootTables: partial.lootTables,
+    weatherId: partial.weatherId,
+    safeZone: partial.safeZone,
     geography: partial.geography,
     barrierDown: partial.barrierDown,
     warCities: partial.warCities,
@@ -130,6 +132,51 @@ function move(id: string, dir: Dir, running: boolean, issuedAtMs = 0) {
 function bleed(expiresAtMs = 100_000): StatusInstance {
   return { id: 'bleed', expiresAtMs, sourceId: 'src' };
 }
+
+test('acid drains an exposed node and leaves a safe city untouched', () => {
+  const geography = {
+    nodes: [
+      {
+        id: 'fort_humans',
+        x: 0,
+        y: 0,
+        kind: 'city' as const,
+        safe: true,
+        side: 'light' as const,
+        regionId: 'plains',
+      },
+      {
+        id: 'plains_mine',
+        x: 0,
+        y: 10,
+        kind: 'resource' as const,
+        safe: false,
+        side: 'light' as const,
+        regionId: 'plains',
+      },
+    ],
+    edges: [],
+    barrierDown: false,
+  };
+  const sheltered = runTicks(
+    world({
+      weatherId: 'acid',
+      geography,
+      entities: [entity({ id: 'a', hp: 40, maxHp: 40, nodeId: 'fort_humans' })],
+    }),
+    10,
+  );
+  expect(sheltered.entities[0]?.hp).toBe(40);
+  const exposed = runTicks(
+    world({
+      weatherId: 'acid',
+      geography,
+      entities: [entity({ id: 'a', hp: 40, maxHp: 40, nodeId: 'plains_mine' })],
+    }),
+    10,
+  );
+  expect(exposed.entities[0]?.hp).toBe(39);
+});
 
 test('combat OD goes from 1 to 4 in one second at regen 3', () => {
   const done = runTicks(
