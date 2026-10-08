@@ -199,7 +199,6 @@ test('refine spends 3 ordinary resource and 10 gold from the live route', async 
   expect(dispatch.includes('refineResource(')).toBe(true);
   expect(app.includes('postRefine(')).toBe(true);
   const graph = compose({ nowMs: 0 });
-  graph.enterCharacter('account-lia', 'lia');
   graph.creditGold('lia', 25);
   await graph.creditMaterial('lia', 'metal', 7);
   const refined = await graph.act('refine', { characterId: 'lia', resourceId: 'metal' });
@@ -259,7 +258,7 @@ test('relicBonuses applies worn relic armor on the combat tick', async () => {
     composeSource.indexOf('async function hydrate'),
   );
   const stamp = composeSource.slice(
-    composeSource.indexOf('async function stampWornRelics'),
+    composeSource.indexOf('function stampWornRelics'),
     composeSource.indexOf('function relicReady'),
   );
   const combatant = tick.slice(tick.indexOf('function toCombatant'), tick.indexOf('function commitCombatant'));

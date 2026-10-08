@@ -32,6 +32,7 @@ import { openChest, type ChestTier } from '@rift/domain/loot';
 import { MAX_LEVEL, STAT_IDS, derive, emptyPoints, type StatBlock, type StatId } from '@rift/domain/stats';
 import { pvpXp, pvpXpAllowed } from '@rift/domain/progression';
 import type { Appearance, RaceId } from '@rift/domain/character';
+import type { CharacterRecord } from './modules/character/types';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { WebSocketServer } from 'ws';
 import { MemoryWorld } from './infra/db/memory';
@@ -347,6 +348,27 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const ancientPermutation = buildPermutation(options.jwtSecret ?? DEV_JWT_SECRET);
   const solvedAncient = new Map<string, Set<string>>();
   const repos = openRepositories(options.databaseUrl, clock, options.db);
+  const characterCache = new Map<string, CharacterRecord>();
+  const insertCharacter = repos.characters.insert.bind(repos.characters);
+  repos.characters.insert = async (record) => {
+    characterCache.set(record.id, record);
+    await insertCharacter(record);
+  };
+  const updateCharacter = repos.characters.update.bind(repos.characters);
+  repos.characters.update = async (record) => {
+    characterCache.set(record.id, record);
+    await updateCharacter(record);
+  };
+  const findCharacter = repos.characters.findById.bind(repos.characters);
+  repos.characters.findById = async (id) => {
+    const record = await findCharacter(id);
+    if (record === null) {
+      characterCache.delete(id);
+      return null;
+    }
+    characterCache.set(id, record);
+    return record;
+  };
   const openWars: StoredWar[] = [];
   const guildOf = new Map<string, string>();
   const portalGrants = new Map<string, Set<string>>();
@@ -2956,7 +2978,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
    * Artifact 4 §6.6. Worn relics add their bonuses in combat. A broken or silenced relic adds nothing.
    * Missing instance stats use the subtype's allowed stat so `relicBonuses` can run.
    */
-  async function stampWornRelics(): Promise<void> {
+  function stampWornRelics(): void {
     const now = clock.now();
     const entities: SimEntity[] = [];
     for (const entity of simWorld.entities) {
@@ -2970,7 +2992,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         });
         continue;
       }
-      const record = await repos.characters.findById(entity.id);
+      const record = characterCache.get(entity.id) ?? null;
       const level = record?.level ?? entity.progress?.level ?? 1;
       let relicArmor = 0;
       let relicAccuracy = 0;
@@ -3021,7 +3043,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
    * Equipped stacks keep their catalog bonuses. An unmet requirement is stored with the piece
    * so combat can halve that piece through `effectiveBonuses`.
    */
-  async function stampWornGear(): Promise<void> {
+  function stampWornGear(): void {
     const entities: SimEntity[] = [];
     for (const entity of simWorld.entities) {
       if (entity.monsterId !== undefined) {
@@ -3029,7 +3051,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         continue;
       }
       const state = carried.get(entity.id);
-      const record = await repos.characters.findById(entity.id);
+      const record = characterCache.get(entity.id) ?? null;
       const stats = record?.stats;
       const pieces: NonNullable<SimEntity['gearPieces']> = [];
       for (const stack of state?.stacks ?? []) {
@@ -3831,9 +3853,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   }
 
   async function languageUpy(characterId: string): Promise<number> {
-    const record = await repos.characters.findById(characterId);
+    const record = characterCache.get(characterId) ?? (await repos.characters.findById(characterId));
     if (record === null) {
-      return 0;
+      // enterWorld does not write a sheet. A sheetless player keeps the light starting UPY.
+      return 100;
     }
     return record.languages[nativeLanguage(record.raceId)] ?? 0;
   }
@@ -6019,8 +6042,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ...(simWorld.primordialOpened === true ? { primordialOpened: true } : {}),
     };
     stampGuildDoctrines();
-    await stampWornRelics();
-    await stampWornGear();
+    stampWornRelics();
+    stampWornGear();
     stampKeeperSilence();
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
     spawnNeutralGuards();
@@ -6938,7 +6961,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     cityService,
     snapshot,
     auth,
-    character,
+    character: Object.assign(character, { repository: repos.characters }),
     inventory,
     world,
     dungeon,
