@@ -53,6 +53,8 @@ export interface PrismaRepositories {
   social: SocialRepository;
   world: WorldRepository;
   ai: AiRepository;
+  /** Awaits every tracked write. A rejected write rejects this call. */
+  flush(): Promise<void>;
 }
 
 /** Subset of the generated Prisma client the repositories write. Tests pass a double. */
@@ -114,8 +116,49 @@ function dbFrom(env: PersistenceEnv, client?: RiftDb): RiftDb {
   return client ?? openPrismaClient(url);
 }
 
-function write(task: Promise<unknown>): void {
-  void task.catch(() => undefined);
+interface WriteTracker {
+  track(task: Promise<unknown>): void;
+  flush(): Promise<void>;
+}
+
+const trackers = new WeakMap<RiftDb, WriteTracker>();
+
+function createWriteTracker(): WriteTracker {
+  const pending: Promise<void>[] = [];
+  let failure: unknown = null;
+  return {
+    track(task) {
+      pending.push(
+        task.then(
+          () => undefined,
+          (error: unknown) => {
+            failure = error;
+          },
+        ),
+      );
+    },
+    async flush() {
+      const batch = pending.splice(0, pending.length);
+      await Promise.all(batch);
+      if (failure !== null) {
+        const error = failure;
+        failure = null;
+        throw error instanceof Error ? error : new Error(String(error));
+      }
+    },
+  };
+}
+
+/** Records a write. Callers must `flush()` so the promise is awaited and errors surface. */
+function write(db: RiftDb, task: Promise<unknown>): void {
+  const tracker = trackers.get(db);
+  if (tracker === undefined) {
+    void task.then(undefined, (error: unknown) => {
+      throw error;
+    });
+    return;
+  }
+  tracker.track(task);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -222,7 +265,6 @@ function toCharacter(row: Record<string, unknown>): CharacterRecord {
 }
 
 function bindAuth(db: RiftDb): AuthRepository {
-  const sessions = new Map<string, SessionRecord>();
   return {
     async findAccountByEmail(email) {
       const row = await db.account.findUnique({ where: { email } });
@@ -243,12 +285,25 @@ function bindAuth(db: RiftDb): AuthRepository {
       await db.account.update({ where: { id: account.id }, data: accountData(account) });
     },
     async saveSession(session) {
-      sessions.set(session.accountId, { ...session });
+      await db.storage.upsert({
+        where: { id: `session:${session.accountId}` },
+        create: {
+          id: `session:${session.accountId}`,
+          ownerId: session.accountId,
+          items: session,
+          gold: 0,
+          slots: 0,
+        },
+        update: { items: session },
+      });
     },
     async getSession(accountId, nowMs) {
-      const session = sessions.get(accountId);
-      if (session === undefined || session.expiresAtMs <= nowMs) {
-        sessions.delete(accountId);
+      const row = await db.storage.findUnique({ where: { id: `session:${accountId}` } });
+      if (row === null) {
+        return null;
+      }
+      const session = asRecord(row.items) as unknown as SessionRecord;
+      if (session.expiresAtMs <= nowMs) {
         return null;
       }
       return { ...session };
@@ -568,7 +623,7 @@ function bindEconomy(db: RiftDb): EconomyRepository {
     getCharacter: (id) => memory.getCharacter(id),
     saveCharacter(character) {
       memory.saveCharacter(character);
-      write(
+      write(db, 
         db.storage.upsert({
           where: { id: `wallet:${character.characterId}` },
           create: {
@@ -592,7 +647,7 @@ function bindEconomy(db: RiftDb): EconomyRepository {
     findTrade: (a, b) => memory.findTrade(a, b),
     saveTrade(session) {
       memory.saveTrade(session);
-      write(
+      write(db, 
         db.storage.upsert({
           where: { id: `trade:${session.tradeId}` },
           create: {
@@ -611,7 +666,7 @@ function bindEconomy(db: RiftDb): EconomyRepository {
     getLot: (id) => memory.getLot(id),
     saveLot(lot) {
       memory.saveLot(lot);
-      write(
+      write(db, 
         db.auction.upsert({
           where: { id: lot.id },
           create: {
@@ -637,7 +692,7 @@ function bindEconomy(db: RiftDb): EconomyRepository {
     },
     deleteLot(id) {
       memory.deleteLot(id);
-      write(db.auction.delete({ where: { id } }));
+      write(db, db.auction.delete({ where: { id } }));
     },
   };
 }
@@ -658,7 +713,7 @@ function bindSocial(db: RiftDb): SocialRepository {
     mailbox: (toId) => inner.mailbox(toId),
     addDelivery(listenerId, message) {
       inner.addDelivery(listenerId, message);
-      write(
+      write(db, 
         db.chatMessage.create({
           data: {
             channel: message.channel,
@@ -672,7 +727,7 @@ function bindSocial(db: RiftDb): SocialRepository {
     },
     saveMail(entry) {
       inner.saveMail(entry);
-      write(
+      write(db, 
         db.mail.create({
           data: {
             id: entry.id,
@@ -691,7 +746,7 @@ function bindSocial(db: RiftDb): SocialRepository {
     grantTitle(characterId, titleId) {
       const granted = inner.grantTitle(characterId, titleId);
       if (granted.ok) {
-        write(
+        write(db, 
           db.characterTitle.create({
             data: {
               id: `${characterId}:${titleId}`,
@@ -809,7 +864,7 @@ function bindInstances(db: RiftDb): InstanceRepository {
     list: () => memory.list(),
     insert(instance) {
       memory.insert(instance);
-      write(
+      write(db, 
         db.instanceRecord.upsert({
           where: { id: instance.id },
           create: {
@@ -826,7 +881,7 @@ function bindInstances(db: RiftDb): InstanceRepository {
     },
     update(instance) {
       memory.update(instance);
-      write(
+      write(db, 
         db.instanceRecord.upsert({
           where: { id: instance.id },
           create: {
@@ -843,7 +898,7 @@ function bindInstances(db: RiftDb): InstanceRepository {
     },
     delete(id) {
       memory.delete(id);
-      write(db.instanceRecord.delete({ where: { id } }));
+      write(db, db.instanceRecord.delete({ where: { id } }));
     },
     findLock: (characterId, nodeId, edgeId) => memory.findLock(characterId, nodeId, edgeId),
     saveLock: (lock) => memory.saveLock(lock),
@@ -855,7 +910,7 @@ function bindEvents(db: RiftDb): EventRepository {
   return {
     addWeather(plan) {
       memory.addWeather(plan);
-      write(
+      write(db, 
         db.weather.create({
           data: {
             id: `${plan.regionId}:${plan.weatherId}:${plan.startMs}`,
@@ -877,7 +932,7 @@ function bindAi(db: RiftDb): AiRepository {
   return {
     remember(characterId, entry) {
       memory.remember(characterId, entry);
-      write(
+      write(db, 
         db.memory.create({
           data: {
             id: `${characterId}:${entry.atMs}:${entry.text}`,
@@ -895,7 +950,33 @@ function bindAi(db: RiftDb): AiRepository {
   };
 }
 
+function bindWorld(db: RiftDb): WorldRepository {
+  const memory = memoryWorldRepository();
+  return {
+    load: () => memory.load(),
+    async saveSnapshot(payload) {
+      await db.storage.upsert({
+        where: { id: 'world:sim' },
+        create: {
+          id: 'world:sim',
+          ownerId: 'world',
+          items: payload,
+          gold: 0,
+          slots: 0,
+        },
+        update: { items: payload },
+      });
+    },
+    async loadSnapshot() {
+      const row = await db.storage.findUnique({ where: { id: 'world:sim' } });
+      return row === null ? null : row.items;
+    },
+  };
+}
+
 function bindAll(db: RiftDb): PrismaRepositories {
+  const tracker = createWriteTracker();
+  trackers.set(db, tracker);
   return {
     auth: bindAuth(db),
     characters: bindCharacters(db),
@@ -909,8 +990,9 @@ function bindAll(db: RiftDb): PrismaRepositories {
     inventory: bindInventory(db),
     quests: bindQuests(db),
     social: bindSocial(db),
-    world: memoryWorldRepository(),
+    world: bindWorld(db),
     ai: bindAi(db),
+    flush: () => tracker.flush(),
   };
 }
 
@@ -963,9 +1045,7 @@ export function createPrismaSocialRepository(env: PersistenceEnv, client?: RiftD
 }
 
 export function createPrismaWorldRepository(env: PersistenceEnv, client?: RiftDb): WorldRepository {
-  requireDatabaseUrl(env);
-  void client;
-  return memoryWorldRepository();
+  return bindWorld(dbFrom(env, client));
 }
 
 export function createPrismaAiRepository(env: PersistenceEnv, client?: RiftDb): AiRepository {

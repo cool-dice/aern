@@ -1,0 +1,226 @@
+import type { Appearance } from '@rift/domain/character';
+import { emptyPoints } from '@rift/domain/stats';
+import { expect, test } from 'vitest';
+import { buildApp, compose } from './compose';
+import { PROTOTYPE_MONSTERS } from './sim/bestiary';
+
+const appearance: Appearance = {
+  skin: 'fair',
+  hair: 'brown',
+  eyes: 'green',
+  horns: false,
+  ears: 'round',
+  tattoos: 'none',
+  scars: 'none',
+  heightCm: 180,
+  build: 'average',
+};
+
+test('character create enters the world and a command moves that entity', async () => {
+  const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  try {
+    const created = await built.app.inject({
+      method: 'POST',
+      url: '/characters',
+      payload: {
+        accountId: 'account-lia',
+        name: 'Lia',
+        clean: false,
+        points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+        appearance,
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    const { characterId } = created.json() as { characterId: string };
+    const before = await built.app.inject({ method: 'GET', url: '/state' });
+    const entered = before.json() as {
+      self: { id: string; cell: { x: number; y: number } } | null;
+      entities: { id: string; eliteId?: string | null; monsterId?: string | null }[];
+      keeper: { id: string; level: number; phases: number } | null;
+    };
+    expect(entered.self?.id).toBe(characterId);
+    expect(entered.self?.cell).toEqual({ x: 0, y: 0 });
+    for (const monster of PROTOTYPE_MONSTERS) {
+      expect(entered.entities.some((entity) => entity.monsterId === monster.id)).toBe(true);
+    }
+    expect(entered.entities.some((entity) => entity.monsterId === 'keeper_enhanced_prototype')).toBe(true);
+    expect(entered.entities.some((entity) => typeof entity.eliteId === 'string' && entity.eliteId.length > 0)).toBe(
+      true,
+    );
+    expect(entered.keeper).toMatchObject({ id: 'keeper_enhanced', level: 50, phases: 3 });
+
+    const moved = await built.app.inject({
+      method: 'POST',
+      url: '/command',
+      payload: {
+        commandId: 'move-1',
+        seq: 1,
+        issuedAtMs: 1_000,
+        action: 'step_e',
+        params: { entityId: characterId },
+      },
+    });
+    expect(moved.statusCode).toBe(200);
+    built.tickOnce();
+    const after = await built.app.inject({ method: 'GET', url: '/state' });
+    const next = after.json() as { self: { cell: { x: number; y: number }; hp: number } };
+    expect(next.self.cell.x).toBeGreaterThan(0);
+  } finally {
+    await built.close();
+  }
+});
+
+test('0 HP writes a corpse and respawnAtBind brings the player back', () => {
+  const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  graph.enterWorld('lia');
+  graph.submit({
+    commandId: 'hit-1',
+    seq: 1,
+    issuedAtMs: 1_000,
+    action: 'attack_ranged',
+    targetId: 'lia:spore_rat',
+    params: { entityId: 'lia', weaponDamage: 500, range: 8, odCost: 0 },
+  });
+  graph.tickOnce();
+  const killed = graph.state() as { corpses: { victimId: string }[] };
+  expect(killed.corpses.some((corpse) => corpse.victimId === 'lia:spore_rat')).toBe(true);
+  for (let step = 0; step < 8; step += 1) {
+    graph.tickOnce();
+  }
+  const fallen = graph.state() as {
+    nowMs: number;
+    corpses: { victimId: string }[];
+    self: { hp: number; phase: string } | null;
+  };
+  expect(fallen.corpses.some((corpse) => corpse.victimId === 'lia')).toBe(true);
+  expect(fallen.self?.phase).toBe('downed');
+  expect(fallen.self?.hp).toBeLessThanOrEqual(0);
+  graph.submit({
+    commandId: 'up',
+    seq: 2,
+    issuedAtMs: fallen.nowMs,
+    action: 'respawn',
+    params: { entityId: 'lia' },
+  });
+  graph.tickOnce();
+  const back = graph.state() as { self: { hp: number; phase: string } | null };
+  expect(back.self).toMatchObject({ phase: 'online', hp: 40 });
+});
+
+test('auction buyout records the 5% tax destination', async () => {
+  const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  try {
+    built.seedTrader({ characterId: 'seller', gold: 0, itemId: 'rusty_sword', qty: 2 });
+    built.seedTrader({ characterId: 'buyer', gold: 400 });
+    const guildLot = await built.app.inject({
+      method: 'POST',
+      url: '/auction',
+      payload: {
+        sellerId: 'seller',
+        itemId: 'rusty_sword',
+        qty: 1,
+        startPrice: 20,
+        buyout: 100,
+        guildCity: true,
+      },
+    });
+    expect(guildLot.statusCode).toBe(200);
+    const guildId = (guildLot.json() as { id: string }).id;
+    const guildBid = await built.app.inject({
+      method: 'POST',
+      url: '/auction/bid',
+      payload: { lotId: guildId, bidderId: 'buyer', bid: 100 },
+    });
+    expect(guildBid.statusCode).toBe(200);
+    expect(guildBid.json()).toMatchObject({ price: 100, buyout: true, taxSink: 'guild', guildTax: 5, sinkTax: 0 });
+    expect(built.economy.service.balance('seller')).toBe(95);
+    expect(built.economy.service.balance('buyer')).toBe(300);
+
+    const voidLot = await built.app.inject({
+      method: 'POST',
+      url: '/auction',
+      payload: {
+        sellerId: 'seller',
+        itemId: 'rusty_sword',
+        qty: 1,
+        startPrice: 20,
+        buyout: 100,
+        guildCity: false,
+      },
+    });
+    const voidId = (voidLot.json() as { id: string }).id;
+    const voidBid = await built.app.inject({
+      method: 'POST',
+      url: '/auction/bid',
+      payload: { lotId: voidId, bidderId: 'buyer', bid: 100 },
+    });
+    expect(voidBid.json()).toMatchObject({ taxSink: 'void', guildTax: 5, sinkTax: 5 });
+    expect(built.economy.service.balance('seller')).toBe(190);
+  } finally {
+    await built.close();
+  }
+});
+
+test('guild create debits character gold and rejects a short roster', async () => {
+  const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  try {
+    built.creditGold('m0', 10_000);
+    const short = await built.app.inject({
+      method: 'POST',
+      url: '/guild',
+      payload: {
+        name: 'Red Wolves',
+        tag: 'RW',
+        initiatorId: 'm0',
+        members: [
+          { id: 'm0', level: 5 },
+          { id: 'm1', level: 5 },
+          { id: 'm2', level: 5 },
+        ],
+        gold: 10_000,
+      },
+    });
+    expect(short.statusCode).toBe(400);
+    expect(built.economy.service.balance('m0')).toBe(10_000);
+
+    const created = await built.app.inject({
+      method: 'POST',
+      url: '/guild',
+      payload: {
+        name: 'Red Wolves',
+        tag: 'RW',
+        initiatorId: 'm0',
+        members: [
+          { id: 'm0', level: 5 },
+          { id: 'm1', level: 5 },
+          { id: 'm2', level: 5 },
+          { id: 'm3', level: 5 },
+        ],
+        gold: 10_000,
+      },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(built.economy.service.balance('m0')).toBe(0);
+
+    const again = await built.app.inject({
+      method: 'POST',
+      url: '/guild',
+      payload: {
+        name: 'Blue Wolves',
+        tag: 'BW',
+        initiatorId: 'm0',
+        members: [
+          { id: 'm0', level: 5 },
+          { id: 'a1', level: 5 },
+          { id: 'a2', level: 5 },
+          { id: 'a3', level: 5 },
+        ],
+        gold: 10_000,
+      },
+    });
+    expect(again.statusCode).toBe(400);
+    expect(again.json()).toMatchObject({ code: 'gold' });
+  } finally {
+    await built.close();
+  }
+});

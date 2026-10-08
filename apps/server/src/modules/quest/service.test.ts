@@ -327,6 +327,12 @@ test('catalog quests from @rift/content accept and pay the normal rat hunt', asy
     'gather_spores',
     'first_craft',
     'visit_hub',
+    'act1_light',
+    'act1_dark',
+    'act2_light',
+    'act2_dark',
+    'act3_light',
+    'act3_dark',
   ]);
   const { service, grants, completed, repository } = setup({
     quests: catalog.quests,

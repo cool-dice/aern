@@ -1,7 +1,9 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadCatalog, type Catalog } from '@rift/content';
-import type { ClientCommand } from '@rift/protocol';
+import type { NodeKind, WorldEdge, WorldNode } from '@rift/domain/world';
+import type { WorldRepository } from './modules/world/repository';
+import { parseClientCommand, type ClientCommand } from '@rift/protocol';
 import { mulberry32 } from '@rift/domain/rng';
 import { EQUIP_SLOTS, type EquipSlot } from '@rift/domain/items';
 import { STAT_IDS, type StatBlock } from '@rift/domain/stats';
@@ -30,16 +32,27 @@ import {
   type CatalogItem,
   type InventoryModule,
 } from './modules/inventory/index';
+import type { InventoryRepository } from './modules/inventory/repository';
+import type { InventoryState } from './modules/inventory/types';
 import { createQuestModule } from './modules/quest/index';
 import { createSocialModule, type SocialModule } from './modules/social/index';
 import { createWorldModule, type WorldModule } from './modules/world/index';
 import { createBus } from './shared/bus';
 import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
+import { OBSERVATION_LENGTH } from '@rift/domain/ai';
+import type { QuestObjectiveKind } from '@rift/domain/quests';
+import { newEconomyCharacter } from './modules/economy/repository';
+import { observeEntity } from './modules/ai/observe';
+import { SIDECAR_TIMEOUT_MS } from './modules/ai/types';
+import { broadcastState } from './infra/ws/gateway';
+import { isLiveAction, runLive, type LivePorts } from './runtime/dispatch';
 import { toSimCommand } from './sim/commands';
-import { onCraft, onGather, onVisit } from './sim/progress';
-import { prototypeEncounter } from './sim/population';
-import { stepTick, type SimCommand, type SimWorld } from './sim/tick';
+import { onObjective } from './sim/progress';
+import { prototypeEncounter, spawnNamed } from './sim/population';
+import { PROTOTYPE_MONSTERS } from './sim/bestiary';
+import { seasonSpawnCount } from './sim/weather';
+import { stepTick, type SimCommand, type SimEntity, type SimWorld } from './sim/tick';
 import { renderMetrics, type MetricsSnapshot } from './metrics';
 
 export { PRODUCTION_BCRYPT_COST };
@@ -83,6 +96,13 @@ export interface ServerComposition {
   event: EventModule;
   ai: AiModule;
   bindGateway: (server: WebSocketServer) => void;
+  enterCharacter: (accountId: string, characterId: string) => void;
+  resume: (accountId: string) => void;
+  act: (action: string, body: Record<string, unknown>) => Promise<{ ok: boolean; code?: string; value?: unknown }>;
+  state: () => Record<string, unknown>;
+  creditGold: (characterId: string, amount: number) => void;
+  seedTrader: (input: { characterId: string; gold: number; itemId?: string; qty?: number }) => void;
+  flush: () => Promise<void>;
 }
 
 export interface BuiltServer {
@@ -93,6 +113,8 @@ export interface BuiltServer {
   economy: EconomyModule;
   guild: GuildModule;
   social: SocialModule;
+  creditGold: (characterId: string, amount: number) => void;
+  seedTrader: (input: { characterId: string; gold: number; itemId?: string; qty?: number }) => void;
 }
 
 interface SessionCacheEntry {
@@ -116,9 +138,23 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     cost: PRODUCTION_BCRYPT_COST,
     now: () => clock.now(),
   });
+  const carried = new Map<string, InventoryState>();
+  const inventoryRepository: InventoryRepository = {
+    async load(characterId) {
+      const state = await repos.inventory.load(characterId);
+      if (state !== null) {
+        carried.set(characterId, state);
+      }
+      return state;
+    },
+    async save(state) {
+      carried.set(state.characterId, state);
+      await repos.inventory.save(state);
+    },
+  };
   const inventory = createInventoryModule({
     catalog: toInventoryCatalog(catalog),
-    repository: repos.inventory,
+    repository: inventoryRepository,
   });
   const character = createCharacterModule({
     granter: { grant: (characterId) => inventory.service.grantStarter(characterId) },
@@ -127,7 +163,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     repository: repos.characters,
     now: () => clock.now(),
   });
-  const world = createWorldModule(repos.world);
+  const world = createWorldModule(withGeography(repos.world, catalog));
   const dungeon = createDungeonModule(repos.instances);
   const craft = createCraftModule({
     bank: repos.materials,
@@ -138,18 +174,17 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   });
   const economy = createEconomyModule(repos.economy);
   const social = createSocialModule(repos.social);
-  const guildWallets = new Map<string, number>();
   const guild = createGuildModule({
     mode: 'live',
     repository: repos.guilds,
     gold: {
       async deduct(characterId, amount) {
-        const current = guildWallets.get(characterId) ?? 0;
-        if (current < amount) {
+        const current = repos.economy.getCharacter(characterId);
+        if (current === null || current.gold < amount) {
           return { ok: false, code: 'gold' };
         }
-        const next = current - amount;
-        guildWallets.set(characterId, next);
+        const next = current.gold - amount;
+        repos.economy.saveCharacter({ ...current, gold: next });
         return { ok: true, value: { gold: next } };
       },
     },
@@ -237,44 +272,354 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
 
   let simWorld = emptyWorld(clock.now());
 
-  function applyLife(characterId: string, kind: 'gather' | 'craft' | 'visit'): void {
+  function applyLife(characterId: string, kind: QuestObjectiveKind): void {
     simWorld = {
       ...simWorld,
       entities: simWorld.entities.map((entity) => {
         if (entity.id !== characterId || entity.progress === undefined || entity.quests === undefined) {
           return entity;
         }
-        const state = { progress: entity.progress, quests: entity.quests };
-        const next = kind === 'gather' ? onGather(state) : kind === 'craft' ? onCraft(state) : onVisit(state);
+        const next = onObjective({ progress: entity.progress, quests: entity.quests }, kind);
         return { ...entity, progress: next.progress, quests: next.quests };
       }),
     };
   }
 
+  async function reportKind(characterId: string, kind: QuestObjectiveKind): Promise<void> {
+    const rows = await repos.quests.list(characterId);
+    for (const row of rows) {
+      if (row.progress.status !== 'active') {
+        continue;
+      }
+      for (const objective of row.progress.objectives) {
+        if (objective.kind === kind && objective.current < objective.target) {
+          await quest.service.report(characterId, row.progress.questId, objective.id, 1);
+        }
+      }
+    }
+  }
+
+  async function note(characterId: string, kind: QuestObjectiveKind): Promise<void> {
+    applyLife(characterId, kind);
+    await reportKind(characterId, kind);
+  }
+
   bus.on('gather.completed', (event) => {
-    applyLife(event.characterId, 'gather');
+    void note(event.characterId, 'gather');
+    void note(event.characterId, 'collect');
   });
   bus.on('item.crafted', (event) => {
-    applyLife(event.characterId, 'craft');
+    void note(event.characterId, 'craft');
+  });
+  bus.on('hack.opened', (event) => {
+    void note(event.characterId, 'hack');
+    void note(event.characterId, 'sabotage');
+  });
+  bus.on('wiki.written', (event) => {
+    void note(event.authorId, 'lore');
+    void note(event.authorId, 'learn');
+    void note(event.authorId, 'investigate');
+  });
+  bus.on('build.installed', (event) => {
+    if (event.kind === 'path') {
+      void note(event.characterId, 'learn');
+    }
+    void note(event.characterId, 'craft');
+  });
+  bus.on('chat.message', (event) => {
+    void note(event.senderId, 'talk');
+  });
+  bus.on('combat.hit', (event) => {
+    void note(event.targetId, 'defend');
+    void note(event.attackerId, 'pvp');
   });
   const pending: ClientCommand[] = [];
   let rejectedTotal = 0;
+  let runtimeError: unknown = null;
   const rng = mulberry32(1);
+  const weatherRng = mulberry32(2);
+  const sockets = new Set<{ send(data: string): void }>();
+  const charactersByAccount = new Map<string, string[]>();
+  const parked = spawnNamed('keeper_enhanced', 'content:keeper_enhanced');
+
+  const livePorts: LivePorts = {
+    now: () => clock.now(),
+    gathering: gathering.service,
+    hack: hack.service,
+    wiki: wiki.service,
+    build: build.service,
+    dungeon: dungeon.service,
+    quest: quest.service,
+    guild: guild.service,
+    economy: economy.service,
+    social: social.service,
+    note,
+    setNeural(characterId, nn, nnLimit) {
+      simWorld = {
+        ...simWorld,
+        entities: simWorld.entities.map((entity) =>
+          entity.id === characterId ? { ...entity, nn, nnLimit } : entity,
+        ),
+      };
+    },
+    weatherSpeed() {
+      return simWorld.gatherSpeed ?? 1;
+    },
+    seasonBonus() {
+      return (simWorld.seasonSpawn ?? 1) > 1;
+    },
+    addEncounter(monsterId) {
+      const spawned = spawnNamed(monsterId, `${monsterId}:${String(simWorld.tick)}`);
+      if (spawned === null) {
+        return false;
+      }
+      simWorld = { ...simWorld, entities: [...simWorld.entities, spawned] };
+      return true;
+    },
+  };
+
+  function rememberCharacter(accountId: string, characterId: string): void {
+    const ids = charactersByAccount.get(accountId) ?? [];
+    if (!ids.includes(characterId)) {
+      ids.push(characterId);
+      charactersByAccount.set(accountId, ids);
+    }
+    enterWorld(characterId);
+  }
 
   function tickOnce(): void {
+    if (runtimeError !== null) {
+      throw runtimeError;
+    }
+    const snap = event.service.snapshot(clock.now(), 'plains', simWorld.safeZone === true);
+    event.service.planWeather('plains', clock.now(), weatherRng);
+    const seasonSpawn = snap.spawnTagMultiplier;
+    simWorld = {
+      ...simWorld,
+      seasonSpawn,
+      ...(snap.weatherId !== null ? { weatherId: snap.weatherId } : {}),
+    };
+    topUpSeasonSpawns(seasonSpawnCount(PROTOTYPE_MONSTERS.length));
     const commands: SimCommand[] = [];
     for (const command of pending.splice(0, pending.length)) {
       const simCommand = toSimCommand(command);
       if (simCommand !== null) {
         commands.push(simCommand);
+        continue;
+      }
+      if (isLiveAction(command.action)) {
+        void runLive(command.action, { ...command.params }, livePorts).catch((error: unknown) => {
+          runtimeError = error;
+        });
       }
     }
+    const beforeCorpses = new Set(simWorld.corpses.map((corpse) => corpse.victimId));
+    const beforeHp = new Map(simWorld.entities.map((entity) => [entity.id, entity.hp]));
     simWorld = stepTick(simWorld, commands, rng);
+    for (const corpse of simWorld.corpses) {
+      if (beforeCorpses.has(corpse.victimId)) {
+        continue;
+      }
+      const killer = simWorld.entities.find((entity) => entity.monsterId === undefined && entity.progress !== undefined);
+      if (killer !== undefined) {
+        void reportKind(killer.id, 'kill');
+        if (corpse.victimId.includes(':elite') || corpse.victimId.includes('keeper')) {
+          void note(killer.id, 'capture');
+        }
+      }
+    }
+    for (const entity of simWorld.entities) {
+      if (entity.monsterId !== undefined || entity.progress === undefined) {
+        continue;
+      }
+      const previous = beforeHp.get(entity.id);
+      if (previous !== undefined && entity.hp < previous && entity.hp > 0) {
+        void note(entity.id, 'survive');
+        void note(entity.id, 'defend');
+      }
+    }
+    for (const command of commands) {
+      const rejected = simWorld.rejections.some((row) => row.entityId === commandActor(command));
+      if (rejected) {
+        continue;
+      }
+      if (command.type === 'attack') {
+        const attacker = simWorld.entities.find((entity) => entity.id === command.attackerId);
+        const target = simWorld.entities.find((entity) => entity.id === command.targetId);
+        if (attacker?.monsterId === undefined && target?.monsterId === undefined && attacker !== undefined) {
+          void note(attacker.id, 'pvp');
+        }
+      } else if (command.type === 'loot') {
+        void note(command.entityId, 'collect');
+      } else if (command.type === 'respawn') {
+        void note(command.entityId, 'survive');
+      } else if (command.type === 'revive') {
+        void note(command.entityId, 'rescue');
+      }
+    }
     const delta = simWorld.nowMs - clock.now();
     if (delta !== 0) {
       clock.advance(delta);
     }
     rejectedTotal += simWorld.rejections.length;
+    observeAndSubmit();
+    publishState();
+    const saving = repos.world.saveSnapshot?.(statePayload());
+    if (saving !== undefined) {
+      void saving.catch((error: unknown) => {
+        runtimeError = error;
+      });
+    }
+    void repos.flush().catch((error: unknown) => {
+      runtimeError = error;
+    });
+  }
+
+  function topUpSeasonSpawns(budget: number): void {
+    const players = simWorld.entities.filter((entity) => entity.monsterId === undefined);
+    if (players.length === 0) {
+      return;
+    }
+    const living = simWorld.entities.filter((entity) => entity.monsterId !== undefined && entity.hp > 0).length;
+    if (living >= budget) {
+      return;
+    }
+    const template = PROTOTYPE_MONSTERS[living % PROTOTYPE_MONSTERS.length];
+    if (template === undefined) {
+      return;
+    }
+    const spawned = spawnNamed(template.id, `season:${template.id}:${String(simWorld.tick)}`);
+    if (spawned === null) {
+      return;
+    }
+    simWorld = { ...simWorld, entities: [...simWorld.entities, spawned] };
+  }
+
+  function observeAndSubmit(): void {
+    for (const player of simWorld.entities) {
+      if (player.monsterId !== undefined) {
+        continue;
+      }
+      const monsters = simWorld.entities.filter((entity) => entity.monsterId !== undefined);
+      const vector = observeEntity({
+        player: {
+          hp: player.hp,
+          maxHp: player.maxHp,
+          x: player.cell.x,
+          y: player.cell.y,
+        },
+        monsters: monsters.map((monster) => ({
+          hp: monster.hp,
+          maxHp: monster.maxHp,
+          x: monster.cell.x,
+          y: monster.cell.y,
+        })),
+      });
+      if (vector.length !== OBSERVATION_LENGTH) {
+        throw new Error(`observation length ${String(vector.length)}`);
+      }
+      let nearest: number | null = null;
+      for (const monster of monsters) {
+        const distance = Math.max(
+          Math.abs(monster.cell.x - player.cell.x),
+          Math.abs(monster.cell.y - player.cell.y),
+        );
+        if (nearest === null || distance < nearest) {
+          nearest = distance;
+        }
+      }
+      void ai.service
+        .submit({
+          characterId: player.id,
+          action: 'wait',
+          legal: ['wait', 'step_n', 'attack_melee'],
+          sidecarAtMs: simWorld.nowMs - SIDECAR_TIMEOUT_MS - 1,
+          nowMs: simWorld.nowMs,
+          hp: player.hp,
+          maxHp: player.maxHp,
+          od: player.od,
+          nearestEnemy: nearest,
+          weaponRange: 1,
+        })
+        .catch((error: unknown) => {
+          runtimeError = error;
+        });
+    }
+  }
+
+  function statePayload(): Record<string, unknown> {
+    const passwords: Record<string, unknown> = {};
+    let hackPassword: string | null = null;
+    const players = simWorld.entities.filter((entity) => entity.monsterId === undefined);
+    const focus = players[0];
+    for (const entity of players) {
+      const view = hack.service.view(entity.id);
+      if (view !== null) {
+        passwords[entity.id] = view;
+      }
+    }
+    if (focus !== undefined) {
+      const focused = hack.service.view(focus.id);
+      hackPassword = focused?.password ?? null;
+    }
+    const graph = world.service.graph();
+    return {
+      nowMs: simWorld.nowMs,
+      weatherId: simWorld.weatherId ?? null,
+      vision: simWorld.vision ?? 1,
+      gatherSpeed: simWorld.gatherSpeed ?? 1,
+      seasonSpawn: simWorld.seasonSpawn ?? 1,
+      self: focus === undefined ? null : entityView(focus, walletGold(focus.id)),
+      entities: simWorld.entities
+        .filter((entity) => entity.monsterId !== undefined)
+        .map((entity) => entityView(entity, 0)),
+      inventory: focus === undefined ? [] : inventoryRows(focus.id),
+      corpses: simWorld.corpses,
+      hack: passwords,
+      hackPassword,
+      quests: focus === undefined ? [] : questRows(focus),
+      mapNodes: graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
+      recipes: catalog.recipes.map((recipe) => ({ id: recipe.id })),
+      tax: economy.service.taxLedger(),
+      keeper: parked === null ? null : { id: parked.monsterId, level: parked.level, phases: parked.phaseCount },
+    };
+  }
+
+  function walletGold(characterId: string): number {
+    return carried.get(characterId)?.gold ?? repos.economy.getCharacter(characterId)?.gold ?? 0;
+  }
+
+  function inventoryRows(characterId: string): Record<string, unknown>[] {
+    const state = carried.get(characterId);
+    if (state === undefined) {
+      return [];
+    }
+    return state.stacks.map((stack) => ({
+      id: `${characterId}:${String(stack.slot)}`,
+      itemId: stack.itemId,
+      qty: stack.qty,
+      slot: stack.equipped ? (stack.equipSlots[0] ?? null) : null,
+    }));
+  }
+
+  function questRows(entity: SimEntity): Record<string, unknown>[] {
+    return (entity.quests ?? []).map((quest) => ({
+      id: quest.questId,
+      story: quest.story,
+      objectives: quest.objectives.map((objective) => ({
+        id: objective.id,
+        target: objective.target,
+        current: objective.current,
+      })),
+    }));
+  }
+
+  function publishState(): void {
+    const message = broadcastState(simWorld.tick, statePayload(), simWorld.nowMs);
+    const raw = JSON.stringify(message);
+    for (const socket of sockets) {
+      socket.send(raw);
+    }
   }
 
   function snapshot(): MetricsSnapshot {
@@ -306,7 +651,33 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ...simWorld,
       entities: [...simWorld.entities, ...arrived],
     };
-    applyLife(playerId, 'visit');
+    void note(playerId, 'visit');
+    void note(playerId, 'discover');
+  }
+
+  function creditGold(characterId: string, amount: number): void {
+    const current =
+      repos.economy.getCharacter(characterId) ??
+      newEconomyCharacter({ characterId, side: 'light', gold: 0 });
+    repos.economy.saveCharacter({ ...current, gold: current.gold + amount });
+  }
+
+  function seedTrader(input: { characterId: string; gold: number; itemId?: string; qty?: number }): void {
+    const current =
+      repos.economy.getCharacter(input.characterId) ??
+      newEconomyCharacter({ characterId: input.characterId, side: 'light', gold: 0 });
+    const items = { ...current.items };
+    if (input.itemId !== undefined) {
+      items[input.itemId] = {
+        itemId: input.itemId,
+        level: 1,
+        grade: 'common',
+        unique: false,
+        durability: 100,
+        qty: input.qty ?? 1,
+      };
+    }
+    repos.economy.saveCharacter({ ...current, gold: input.gold, items });
   }
 
   return {
@@ -314,9 +685,18 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     tickOnce,
     submit,
     enterWorld,
-    creditGuildGold(characterId, amount) {
-      guildWallets.set(characterId, (guildWallets.get(characterId) ?? 0) + amount);
+    creditGuildGold: creditGold,
+    enterCharacter: rememberCharacter,
+    resume(accountId: string) {
+      for (const id of charactersByAccount.get(accountId) ?? []) {
+        enterWorld(id);
+      }
     },
+    act: (action, body) => runLive(action, body, livePorts),
+    state: statePayload,
+    creditGold,
+    seedTrader,
+    flush: () => repos.flush(),
     snapshot,
     auth,
     character,
@@ -330,6 +710,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     ai,
     bindGateway(server) {
       server.on('connection', (socket) => {
+        sockets.add(socket);
+        socket.on('close', () => {
+          sockets.delete(socket);
+        });
         const seen = new Set<string>();
         const rateTimestamps: number[] = [];
         socket.on('message', (data) => {
@@ -373,6 +757,8 @@ export async function buildApp(options: ComposeOptions = {}): Promise<BuiltServe
       economy: composition.economy,
       guild: composition.guild,
       social: composition.social,
+      creditGold: composition.creditGold,
+      seedTrader: composition.seedTrader,
       close: async () => {
         await closeSockets(sockets);
         await app.close();
@@ -405,6 +791,29 @@ function registerHttp(app: FastifyInstance, composition: ServerComposition): voi
     if (!result.ok) {
       return reply.code(400).send({ code: result.code });
     }
+    const local = credentials.email.split('@')[0] ?? '';
+    const name = /^[\p{L}\p{Nd} ]+$/u.test(local) && [...local].length >= 3 ? [...local].slice(0, 24).join('') : 'Wanderer';
+    const spawned = await character.service.create({
+      accountId: result.value.accountId,
+      controller: 'player',
+      name,
+      clean: false,
+      points: { body: 10, reaction: 5, accuracy: 5, will: 0, perception: 0, technique: 0 },
+      appearance: {
+        skin: 'fair',
+        hair: 'brown',
+        eyes: 'green',
+        horns: false,
+        ears: 'round',
+        tattoos: 'none',
+        scars: 'none',
+        heightCm: 180,
+        build: 'average',
+      },
+    });
+    if (spawned.ok) {
+      composition.enterCharacter(result.value.accountId, spawned.value.characterId);
+    }
     return reply.send({ accountId: result.value.accountId });
   });
 
@@ -417,7 +826,14 @@ function registerHttp(app: FastifyInstance, composition: ServerComposition): voi
     if (!result.ok) {
       return reply.code(401).send({ code: result.code });
     }
-    return reply.send(result.value);
+    const access = auth.service.verifyAccess(result.value.accessToken);
+    if (access.ok) {
+      composition.resume(access.value.accountId);
+    }
+    return reply.send({
+      ...result.value,
+      accountId: access.ok ? access.value.accountId : null,
+    });
   });
 
   app.post('/characters', async (request, reply) => {
@@ -436,12 +852,48 @@ function registerHttp(app: FastifyInstance, composition: ServerComposition): voi
     if (!created.ok) {
       return reply.code(400).send({ code: created.code });
     }
+    composition.enterCharacter(body.accountId, created.value.characterId);
     return reply.send({ characterId: created.value.characterId });
   });
 
   app.get<{ Params: { id: string } }>('/characters/:id/inventory', async (request) => {
     return inventory.service.list(request.params.id);
   });
+
+  app.get('/state', async () => composition.state());
+
+  app.post('/command', async (request, reply) => {
+    const record = readRecord(request.body);
+    if (record === undefined || typeof record.action !== 'string') {
+      return reply.code(400).send({ code: 'invalid' });
+    }
+    if (isLiveAction(record.action)) {
+      const result = await composition.act(record.action, record);
+      await composition.flush();
+      if (!result.ok) {
+        return reply.code(400).send({ code: result.code, value: result.value ?? null });
+      }
+      return reply.send(result.value ?? { ok: true });
+    }
+    const command = parseClientCommand(record);
+    if (command === null) {
+      return reply.code(400).send({ code: 'invalid' });
+    }
+    composition.submit(command);
+    return reply.send({ queued: true });
+  });
+
+  for (const route of LIVE_ROUTES) {
+    app.post(route.path, async (request, reply) => {
+      const record = readRecord(request.body) ?? {};
+      const result = await composition.act(route.action, record);
+      await composition.flush();
+      if (!result.ok) {
+        return reply.code(400).send({ code: result.code, value: result.value ?? null });
+      }
+      return reply.send(result.value ?? { ok: true });
+    });
+  }
 
   app.post('/auction', async (request, reply) => {
     const body = readAuction(request.body);
@@ -477,6 +929,9 @@ function openRepositories(databaseUrl: string | undefined, clock: Clock): Prisma
     social: memory.social,
     world: memory.world,
     ai: memory.ai,
+    async flush() {
+      return undefined;
+    },
   };
 }
 
@@ -540,6 +995,84 @@ function isRaceId(id: string): id is RaceId {
 
 function isEquipSlot(slot: string): slot is EquipSlot {
   return (EQUIP_SLOTS as readonly string[]).includes(slot);
+}
+
+const LIVE_ROUTES: readonly { path: string; action: string }[] = [
+  { path: '/gather', action: 'gather' },
+  { path: '/hack/start', action: 'hack_start' },
+  { path: '/hack/guess', action: 'hack_guess' },
+  { path: '/wiki', action: 'wiki' },
+  { path: '/relic', action: 'relic_install' },
+  { path: '/echo', action: 'echo_install' },
+  { path: '/path', action: 'path_learn' },
+  { path: '/core', action: 'core_equip' },
+  { path: '/dungeon', action: 'dungeon_enter' },
+  { path: '/quest/accept', action: 'quest_accept' },
+  { path: '/quest/turnin', action: 'quest_turnin' },
+  { path: '/guild', action: 'guild_create' },
+  { path: '/auction/bid', action: 'auction_bid' },
+  { path: '/mail', action: 'mail' },
+  { path: '/titles', action: 'title_grant' },
+  { path: '/encounter', action: 'encounter' },
+];
+
+function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
+  return {
+    id: entity.id,
+    hp: entity.hp,
+    maxHp: entity.maxHp,
+    od: entity.od,
+    odLimit: entity.od,
+    cell: { x: entity.cell.x, y: entity.cell.y },
+    facing: 'e',
+    phase: entity.phase,
+    level: entity.progress?.level ?? entity.level ?? 1,
+    gold,
+    monsterId: entity.monsterId ?? null,
+    eliteId: entity.eliteId ?? null,
+  };
+}
+
+function commandActor(command: SimCommand): string {
+  return command.type === 'attack' ? command.attackerId : command.entityId;
+}
+
+function withGeography(inner: WorldRepository, catalog: Catalog): WorldRepository {
+  const sites = catalog.world.sites ?? [];
+  const links = catalog.world.siteEdges ?? [];
+  return {
+    load() {
+      const graph = inner.load();
+      const nodes: WorldNode[] = [
+        ...graph.nodes,
+        ...sites.map((site) => ({
+          id: site.id,
+          kind: asNodeKind(site.kind),
+          safe: site.safe,
+          side: site.side,
+          regionId: site.regionId,
+        })),
+      ];
+      const edges: WorldEdge[] = [...graph.edges, ...links];
+      return { nodes, edges };
+    },
+    saveSnapshot: inner.saveSnapshot?.bind(inner),
+    loadSnapshot: inner.loadSnapshot?.bind(inner),
+  };
+}
+
+function asNodeKind(kind: string): NodeKind {
+  if (
+    kind === 'city' ||
+    kind === 'hub' ||
+    kind === 'dungeon' ||
+    kind === 'resource' ||
+    kind === 'primordial' ||
+    kind === 'barrier'
+  ) {
+    return kind;
+  }
+  return 'hub';
 }
 
 function emptyWorld(nowMs: number): SimWorld {

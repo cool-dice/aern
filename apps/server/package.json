@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "dev": "tsx src/main.ts",
     "lint": "eslint src",
-    "build": "tsc --noEmit"
+    "build": "DATABASE_URL=${DATABASE_URL:-postgresql://rift@127.0.0.1:5432/rift} prisma generate && tsc --noEmit"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

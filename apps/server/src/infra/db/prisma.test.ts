@@ -283,4 +283,46 @@ test('repositories write account, character, inventory, quest progress, and guil
   });
   expect(repos.economy.getLot('lot-1')?.startPrice).toBe(10);
   expect(calls.some((call) => call.model === 'auction' && call.op === 'upsert')).toBe(true);
+  await repos.flush();
+});
+
+test('session and world snapshots round-trip, and a rejected write fails flush', async () => {
+  const { db } = doubleClient();
+  const repos = createPrismaRepositories({ DATABASE_URL: URL }, db);
+  await repos.auth.saveSession({
+    accountId: '22222222-2222-4222-8222-222222222222',
+    sessionKey: 'ab',
+    expiresAtMs: 9_000,
+  });
+  expect(await repos.auth.getSession('22222222-2222-4222-8222-222222222222', 1_000)).toMatchObject({
+    sessionKey: 'ab',
+  });
+  await repos.world.saveSnapshot?.({ tick: 4, entities: ['lia'] });
+  expect(await repos.world.loadSnapshot?.()).toEqual({ tick: 4, entities: ['lia'] });
+
+  db.auction.upsert = async () => {
+    throw new Error('disk');
+  };
+  db.mail.create = async () => {
+    throw new Error('disk');
+  };
+  repos.economy.saveLot({
+    id: 'lot-bad',
+    sellerId: 'lia',
+    itemId: 'rusty_sword',
+    qty: 1,
+    startPrice: 10,
+    currentBid: 0,
+    bidderId: null,
+    buyout: 50,
+    guildCity: false,
+  });
+  repos.social.saveMail({
+    id: 'mail-bad',
+    fromId: 'lia',
+    toId: 'kai',
+    subject: 'news',
+    body: 'hello',
+  });
+  await expect(repos.flush()).rejects.toThrow('disk');
 });
