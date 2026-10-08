@@ -5576,14 +5576,6 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
     stampGuildDoctrines();
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
-    for (const entity of simWorld.entities) {
-      if (entity.monsterId !== undefined) {
-        continue;
-      }
-      if (beforePhase.get(entity.id) === 'online' && entity.phase === 'downed') {
-        await awardPvpXp(entity.id);
-      }
-    }
     spawnNeutralGuards();
     captures = tickCaptures({
       holds: captures,
@@ -5648,6 +5640,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         if (corpse.victimId.includes(':elite') || corpse.victimId.includes('keeper')) {
           void note(killer.id, 'capture');
         }
+      }
+    }
+    for (const entity of simWorld.entities) {
+      if (entity.monsterId !== undefined) {
+        continue;
+      }
+      if (beforePhase.get(entity.id) === 'online' && entity.phase === 'downed') {
+        await awardPvpXp(entity.id);
       }
     }
     for (const entity of simWorld.entities) {
