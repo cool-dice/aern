@@ -1,4 +1,4 @@
-import { nnUsed, type Program, type BuildState } from '@rift/domain/build';
+import { nnUsed, unequipCore, type Program, type BuildState } from '@rift/domain/build';
 import { sellerProceeds } from '@rift/domain/economy';
 import { doctrineMultiplier, WAR_GOLD } from '@rift/domain/guild';
 import type { DoctrineId } from '@rift/domain/guild';
@@ -203,6 +203,7 @@ const LIVE_ACTIONS = new Set([
   'echo_install',
   'path_learn',
   'core_equip',
+  'core_unequip',
   'dungeon_enter',
   'dungeon_leave',
   'craft_start',
@@ -294,6 +295,8 @@ export async function runLive(
       return path(body, ports);
     case 'core_equip':
       return core(body, ports);
+    case 'core_unequip':
+      return coreUnequip(body, ports);
     case 'dungeon_enter':
       return dungeon(body, ports);
     case 'dungeon_leave':
@@ -680,6 +683,27 @@ async function core(body: Record<string, unknown>, ports: LivePorts): Promise<Li
     echoIdsOf(equipped.value),
   );
   return { ok: true, value: { cores: equipped.value.cores.length } };
+}
+
+/** Drops the only core. City or hub, and not in combat. */
+async function coreUnequip(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  if (characterId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  const state = await ports.loadBuild(characterId);
+  const dropped = unequipCore(state);
+  if (!dropped.ok) {
+    return { ok: false, code: dropped.code };
+  }
+  rememberNeural(characterId, dropped.value, ports);
+  await ports.saveBuild(
+    characterId,
+    dropped.value,
+    await ports.relicGrade(characterId),
+    echoIdsOf(dropped.value),
+  );
+  return { ok: true, value: { cores: dropped.value.cores.length } };
 }
 
 async function dungeon(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

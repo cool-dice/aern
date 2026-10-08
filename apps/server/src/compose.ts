@@ -6492,6 +6492,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/language/teach', action: 'language_teach' },
   { path: '/path/use', action: 'path_use' },
   { path: '/path/recover', action: 'path_recover' },
+  { path: '/core/unequip', action: 'core_unequip' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

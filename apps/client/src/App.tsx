@@ -38,6 +38,7 @@ import {
   postTeach,
   postPathUse,
   postRecoverPath,
+  postUnequipCore,
   readBankLog,
   registerContender,
   renewPact,
@@ -771,6 +772,17 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onUnequipCore={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postUnequipCore({
+                server: SERVER,
+                characterId,
                 store: plan.store,
               });
             }}

@@ -84,6 +84,7 @@ export function PlayPanels({
   onTeach,
   onPathUse,
   onRecoverPath,
+  onUnequipCore,
   onVote,
   onChoice,
   onEmblem,
@@ -125,6 +126,7 @@ export function PlayPanels({
   onTeach?: () => void;
   onPathUse?: () => void;
   onRecoverPath?: () => void;
+  onUnequipCore?: () => void;
   onVote?: () => void;
   onChoice?: () => void;
   onEmblem?: () => void;
@@ -254,6 +256,9 @@ export function PlayPanels({
         </button>
         <button type="button" data-coalition="read" onClick={() => onCoalitionRead?.()}>
           read
+        </button>
+        <button type="button" data-core="unequip" onClick={() => onUnequipCore?.()}>
+          drop core
         </button>
         <button type="button" data-path="use" onClick={() => onPathUse?.()}>
           use path

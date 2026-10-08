@@ -576,6 +576,23 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/core/unequip`. A worn core comes off in a city, outside combat. */
+export async function postUnequipCore(input: {
+  server: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/core/unequip',
+    body: { characterId: input.characterId },
+    store: input.store,
+    log: 'core-unequip',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/path/use`. Using a path clears its idle timer. */
 export async function postPathUse(input: {
   server: string;

@@ -422,3 +422,42 @@ test('two online hours forget a path, use clears the idle, and recovery spends 5
   const readyAtMs = (recovered.value as { readyAtMs: number }).readyAtMs;
   expect(readyAtMs - (2 * 60 * 60 * 1000 - 100 + 100 + 2 * 60 * 60 * 1000)).toBe(30 * 60 * 1000);
 });
+
+test('unequipCore runs from the live route', () => {
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const unequip = dispatch.slice(dispatch.indexOf('async function coreUnequip'), dispatch.indexOf('async function dungeon'));
+  expect(unequip.includes('unequipCore(')).toBe(true);
+  expect(dispatch.includes("case 'core_unequip'")).toBe(true);
+  expect(app.includes('postUnequipCore(')).toBe(true);
+});
+
+test('a worn core comes off on the live route before another can be equipped', async () => {
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-core',
+    controller: 'player',
+    name: 'Core',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  expect(await graph.act('core_equip', { characterId, templateId: 'heart' })).toMatchObject({
+    ok: true,
+    value: { cores: 1 },
+  });
+  expect(await graph.act('core_equip', { characterId, templateId: 'spare' })).toMatchObject({
+    ok: false,
+    code: 'core_taken',
+  });
+  expect(await graph.act('core_unequip', { characterId })).toMatchObject({ ok: true, value: { cores: 0 } });
+  expect(await graph.act('core_equip', { characterId, templateId: 'spare' })).toMatchObject({
+    ok: true,
+    value: { cores: 1 },
+  });
+});
