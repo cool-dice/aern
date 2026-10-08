@@ -1,5 +1,7 @@
 import { nnUsed, type Program, type BuildState } from '@rift/domain/build';
+import { sellerProceeds } from '@rift/domain/economy';
 import { NODE_IDS, type NodeId, type ToolId, type ToolKind } from '@rift/domain/gathering';
+import type { GuildRank } from '@rift/domain/guild';
 import type { KeeperKind } from '@rift/domain/hack';
 import type { GradeId } from '@rift/domain/items';
 import type { RelicState, RelicSubtype } from '@rift/domain/relics';
@@ -60,9 +62,28 @@ export interface LivePorts {
   resourceTax(characterId: string): number;
   resourceAccess(characterId: string): { ok: true } | { ok: false; code: string };
   addNodeChest(characterId: string, amount: number): number;
-  setResourceTax(guildId: string, nodeId: string, taxPercent: number): LiveResult;
+  setResourceTax(guildId: string, nodeId: string, taxPercent: number, characterId: string): LiveResult;
   setResourceAccess(guildId: string, nodeId: string, access: string): LiveResult;
   grantResource(guildId: string, nodeId: string, characterId: string): LiveResult;
+  creditGuildBank(guildId: string, amount: number): Promise<void>;
+  auctionLot(lotId: string): { cityId?: string | null } | null;
+  cityOwner(cityId: string): string | null;
+  characterNode(characterId: string): string | undefined;
+  cityService(characterId: string, cityId: string, service: string): LiveResult;
+  rentStorage(characterId: string, cityId: string, slots: number, days: number): Promise<LiveResult>;
+  useLibrary(characterId: string, cityId: string): Promise<LiveResult>;
+  bindCity(characterId: string, cityId: string): Promise<LiveResult>;
+  grantService(guildId: string, cityId: string, service: string, characterId: string): LiveResult;
+  postPact(body: Record<string, unknown>): Promise<LiveResult>;
+  noticePact(body: Record<string, unknown>): Promise<LiveResult>;
+  renewPact(body: Record<string, unknown>): Promise<LiveResult>;
+  registerContender(body: Record<string, unknown>): Promise<LiveResult>;
+  postMercenaryContract(body: Record<string, unknown>): Promise<LiveResult>;
+  postPatrol(body: Record<string, unknown>): Promise<LiveResult>;
+  memberRank(guildId: string, characterId: string): GuildRank | null;
+  vassalMayWar(guildId: string, suzerainConsent: boolean): LiveResult;
+  seatFounders(guildId: string, leaderId: string, memberIds: readonly string[]): void;
+  seatMember(guildId: string, actorId: string, memberId: string, rank: string): LiveResult;
   placeQuest(characterId: string, questId: string): Promise<void>;
   loadBuild(characterId: string): Promise<BuildState>;
   relicGrade(characterId: string): Promise<GradeId>;
@@ -113,6 +134,19 @@ const LIVE_ACTIONS = new Set([
   'node_tax',
   'node_access',
   'node_grant',
+  'storage',
+  'library',
+  'bind',
+  'service_grant',
+  'pact',
+  'pact_notice',
+  'pact_renew',
+  'war_contend',
+  'mercenary',
+  'patrol',
+  'guild_war',
+  'guild_withdraw',
+  'guild_rank',
 ]);
 
 export function isLiveAction(action: string): boolean {
@@ -187,6 +221,32 @@ export async function runLive(
       return nodeAccess(body, ports);
     case 'node_grant':
       return nodeGrant(body, ports);
+    case 'storage':
+      return storage(body, ports);
+    case 'library':
+      return library(body, ports);
+    case 'bind':
+      return bindCity(body, ports);
+    case 'service_grant':
+      return serviceGrant(body, ports);
+    case 'pact':
+      return ports.postPact(body);
+    case 'pact_notice':
+      return ports.noticePact(body);
+    case 'pact_renew':
+      return ports.renewPact(body);
+    case 'war_contend':
+      return ports.registerContender(body);
+    case 'mercenary':
+      return ports.postMercenaryContract(body);
+    case 'patrol':
+      return ports.postPatrol(body);
+    case 'guild_war':
+      return guildWar(body, ports);
+    case 'guild_withdraw':
+      return guildWithdraw(body, ports);
+    case 'guild_rank':
+      return guildRank(body, ports);
     default:
       return { ok: false, code: 'unknown' };
   }
@@ -229,7 +289,11 @@ async function nodeTax(body: Record<string, unknown>, ports: LivePorts): Promise
   if (guildId === undefined || nodeId === undefined || typeof body.taxPercent !== 'number') {
     return { ok: false, code: 'invalid' };
   }
-  return ports.setResourceTax(guildId, nodeId, body.taxPercent);
+  const characterId = text(body, 'characterId');
+  if (characterId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.setResourceTax(guildId, nodeId, body.taxPercent, characterId);
 }
 
 async function nodeAccess(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
@@ -598,6 +662,19 @@ async function guildCreate(body: Record<string, unknown>, ports: LivePorts): Pro
     }
   }
   const initiator = text(body, 'initiatorId');
+  const leaderId = text(body, 'leaderId') ?? initiator;
+  const memberIds = Array.isArray(body.members)
+    ? body.members.flatMap((member) => {
+        if (typeof member !== 'object' || member === null || !('id' in member)) {
+          return [];
+        }
+        const id = (member as { id?: unknown }).id;
+        return typeof id === 'string' && id.length > 0 ? [id] : [];
+      })
+    : [];
+  if (leaderId !== undefined && memberIds.length > 0) {
+    ports.seatFounders(created.value.guildId, leaderId, memberIds);
+  }
   if (initiator !== undefined) {
     await ports.note(initiator, 'capture');
   }
@@ -610,22 +687,37 @@ async function auctionBid(body: Record<string, unknown>, ports: LivePorts): Prom
   if (lotId === undefined || bidderId === undefined || typeof body.bid !== 'number') {
     return { ok: false, code: 'invalid' };
   }
-  const before = ports.economy.taxLedger();
+  const lot = ports.auctionLot(lotId);
+  const cityId = lot?.cityId ?? ports.characterNode(bidderId) ?? null;
+  if (cityId !== null) {
+    const access = ports.cityService(bidderId, cityId, 'auction');
+    if (!access.ok && access.code !== 'missing') {
+      return access;
+    }
+  }
   const bid = ports.economy.bidAuction({ lotId, bidderId, bid: body.bid });
   if (!bid.ok) {
     return { ok: false, code: bid.code };
   }
-  const after = ports.economy.taxLedger();
-  const taxSink = after.guild > before.guild ? 'guild' : after.void > before.void ? 'void' : null;
-  if (taxSink === 'guild') {
-    await ports.guild.creditTax(after.guild - before.guild);
-  }
+  let taxSink: 'guild' | 'void' | null = null;
+  let guildTax = 0;
+  let sinkTax = 0;
   if (bid.value.buyout) {
+    const paid = sellerProceeds(bid.value.price);
+    const owner = cityId === null ? null : ports.cityOwner(cityId);
+    if (owner !== null && paid.tax > 0) {
+      await ports.creditGuildBank(owner, paid.tax);
+      taxSink = 'guild';
+      guildTax = paid.tax;
+    } else if (paid.tax > 0) {
+      taxSink = 'void';
+      sinkTax = paid.tax;
+    }
     await ports.note(bidderId, 'trade');
   }
   return {
     ok: true,
-    value: { ...bid.value, taxSink, guildTax: after.guild, sinkTax: after.void },
+    value: { ...bid.value, taxSink, guildTax, sinkTax },
   };
 }
 
@@ -689,6 +781,13 @@ async function repair(body: Record<string, unknown>, ports: LivePorts): Promise<
   if (characterId === undefined || itemId === undefined) {
     return { ok: false, code: 'invalid' };
   }
+  const cityId = ports.characterNode(characterId);
+  if (cityId !== undefined) {
+    const access = ports.cityService(characterId, cityId, 'repair');
+    if (!access.ok) {
+      return access;
+    }
+  }
   const before = ports.walletGold(characterId);
   const repaired = await ports.economy.repair(characterId, itemId);
   if (!repaired.ok) {
@@ -734,6 +833,121 @@ async function portalGrant(body: Record<string, unknown>, ports: LivePorts): Pro
     return { ok: false, code: 'invalid' };
   }
   return ports.grantPortal(guildId, cityId, characterId);
+}
+
+async function storage(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const cityId = text(body, 'cityId') ?? (characterId === undefined ? undefined : ports.characterNode(characterId));
+  if (characterId === undefined || cityId === undefined || typeof body.slots !== 'number' || typeof body.days !== 'number') {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.rentStorage(characterId, cityId, body.slots, body.days);
+}
+
+async function library(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const cityId = text(body, 'cityId') ?? (characterId === undefined ? undefined : ports.characterNode(characterId));
+  if (characterId === undefined || cityId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.useLibrary(characterId, cityId);
+}
+
+async function bindCity(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const cityId = text(body, 'cityId') ?? (characterId === undefined ? undefined : ports.characterNode(characterId));
+  if (characterId === undefined || cityId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.bindCity(characterId, cityId);
+}
+
+async function serviceGrant(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const guildId = text(body, 'guildId');
+  const cityId = text(body, 'cityId');
+  const service = text(body, 'service');
+  const characterId = text(body, 'characterId');
+  if (guildId === undefined || cityId === undefined || service === undefined || characterId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.grantService(guildId, cityId, service, characterId);
+}
+
+async function guildWar(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const attackerGuildId = text(body, 'attackerGuildId') ?? text(body, 'guildId');
+  const cityId = text(body, 'cityId');
+  if (attackerGuildId === undefined || cityId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  const vassal = ports.vassalMayWar(attackerGuildId, body.suzerainConsent === true);
+  if (!vassal.ok) {
+    return vassal;
+  }
+  const declared = await ports.guild.declareWar({
+    attackerGuildId,
+    cityId,
+    ...(typeof body.gold === 'number' ? { gold: body.gold } : {}),
+    ...(typeof body.resources === 'number' ? { resources: body.resources } : {}),
+    ...(typeof body.leaderAbsent === 'boolean' ? { leaderAbsent: body.leaderAbsent } : {}),
+    ...(typeof body.leaderConsent === 'boolean' ? { leaderConsent: body.leaderConsent } : {}),
+    ...(typeof body.councilConsents === 'number' ? { councilConsents: body.councilConsents } : {}),
+    ...(typeof body.cityCapturedAtMs === 'number' ? { cityCapturedAtMs: body.cityCapturedAtMs } : {}),
+    ...(typeof body.drawEndedAtMs === 'number' ? { drawEndedAtMs: body.drawEndedAtMs } : {}),
+    ...(typeof body.lastDeclaredAtMs === 'number' ? { lastDeclaredAtMs: body.lastDeclaredAtMs } : {}),
+  });
+  if (!declared.ok) {
+    return { ok: false, code: declared.code };
+  }
+  return { ok: true, value: declared.value };
+}
+
+async function guildWithdraw(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const guildId = text(body, 'guildId');
+  const characterId = text(body, 'characterId');
+  if (guildId === undefined || typeof body.amount !== 'number') {
+    return { ok: false, code: 'invalid' };
+  }
+  const stored = characterId === undefined ? null : ports.memberRank(guildId, characterId);
+  const rank = stored ?? rankOf(text(body, 'rank'));
+  if (rank === null) {
+    return { ok: false, code: 'rank' };
+  }
+  const taken = await ports.guild.withdraw({
+    guildId,
+    rank,
+    amount: body.amount,
+    ...(typeof body.leaderConfirm === 'boolean' ? { leaderConfirm: body.leaderConfirm } : {}),
+    ...(typeof body.councilConfirms === 'number' ? { councilConfirms: body.councilConfirms } : {}),
+    ...(typeof body.councilVote === 'boolean' ? { councilVote: body.councilVote } : {}),
+  });
+  if (!taken.ok) {
+    return { ok: false, code: taken.code };
+  }
+  return { ok: true, value: taken.value };
+}
+
+async function guildRank(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const guildId = text(body, 'guildId');
+  const actorId = text(body, 'actorId') ?? text(body, 'characterId');
+  const memberId = text(body, 'memberId');
+  const rank = text(body, 'rank');
+  if (guildId === undefined || actorId === undefined || memberId === undefined || rank === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.seatMember(guildId, actorId, memberId, rank);
+}
+
+function rankOf(value: string | undefined): GuildRank | null {
+  if (
+    value === 'leader' ||
+    value === 'council' ||
+    value === 'officer' ||
+    value === 'veteran' ||
+    value === 'novice'
+  ) {
+    return value;
+  }
+  return null;
 }
 
 async function encounterEnter(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

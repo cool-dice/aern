@@ -45,20 +45,52 @@ import { NODES } from '@rift/domain/gathering';
 import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import { nnUsed, type BuildState } from '@rift/domain/build';
 import { RACES } from '@rift/domain/character';
-import { askHostilePortal, ownedCrossingFee, serviceCut, setCityFee, type PortalStance } from '@rift/domain/economy';
 import {
+  askHostilePortal,
+  isCityService,
+  ownedCrossingFee,
+  rentStorage,
+  serviceCut,
+  setCityFee,
+  type CityService,
+  type PortalStance,
+} from '@rift/domain/economy';
+import {
+  allianceFriendlyFire,
+  applyVassalTithe,
+  breachNonAggression,
   depositBank,
   depositNodeChest,
+  formPact,
+  founderRanks,
   freshResourceNode,
   GUILD_CREATE_GOLD,
+  napBetween,
+  noticeAllianceBreak,
+  noticeVassalRelease,
+  PATROL_QUEST_GOLD,
+  PATROL_QUEST_MS,
+  pactAlly,
+  postMercenary,
+  postPatrolQuest,
+  registerContender,
+  renewPact,
+  seatRank,
   setNodeAccess,
   setNodeTax,
+  tickContract,
+  titheDays,
+  vassalMayDeclare,
   warPhase,
+  type ContractStatus,
+  type GuildPact,
+  type GuildRank,
+  type MercenaryKind,
   type ResourceNode,
 } from '@rift/domain/guild';
 import { DIRS, type Dir } from '@rift/domain/movement';
 import { SIM_TICK_MS } from '@rift/domain/time';
-import { canPortal } from '@rift/domain/world';
+import { canBind, canPortal } from '@rift/domain/world';
 import { newEconomyCharacter } from './modules/economy/repository';
 import type { EconomyCharacter } from './modules/economy/types';
 import type { StoredWar } from './modules/guild/types';
@@ -138,6 +170,14 @@ export interface ServerComposition {
   flush: () => Promise<void>;
   hydrate: () => Promise<void>;
   noteSidecar: (input: { atMs: number; characterId: string; action: string }) => void;
+  /** Jump the manual clock and the node/capture timers by `ms` without looping ticks. */
+  skipMs: (ms: number) => Promise<void>;
+  characterNode: (characterId: string) => string | undefined;
+  cityService: (
+    characterId: string,
+    cityId: string,
+    service: string,
+  ) => { ok: boolean; code?: string; value?: unknown };
 }
 
 export interface BuiltServer {
@@ -165,6 +205,37 @@ interface SessionCacheEntry {
   expiresAtMs: number;
 }
 
+interface StoredPact extends GuildPact {
+  id: string;
+}
+
+interface StoredMercenary {
+  id: string;
+  guildId: string;
+  mercenaryId: string;
+  kind: MercenaryKind;
+  rewardGold: number;
+  nodeId: string;
+  postedAtMs: number;
+  untilMs: number;
+  durationMs: number;
+  presentMs: number;
+  status: ContractStatus;
+}
+
+interface StoredPatrol {
+  id: string;
+  guildId: string;
+  nodeId: string;
+  rewardGold: number;
+  postedAtMs: number;
+  untilMs: number;
+  durationMs: number;
+  assigneeId: string | null;
+  presentMs: number;
+  status: ContractStatus;
+}
+
 /**
  * Build the module graph. This does not listen and does not open a port.
  * Callers advance time with `tickOnce`. The clock is manual.
@@ -177,9 +248,17 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const openWars: StoredWar[] = [];
   const guildOf = new Map<string, string>();
   const portalGrants = new Map<string, Set<string>>();
+  const serviceGrants = new Map<string, Map<CityService, Set<string>>>();
   const nodeGrants = new Map<string, Set<string>>();
+  const guildRanks = new Map<string, Map<string, GuildRank>>();
   let captures: CaptureHold[] = [];
   let resourceNodes: ResourceNode[] = [];
+  let pacts: StoredPact[] = [];
+  let mercenaries: StoredMercenary[] = [];
+  let patrols: StoredPatrol[] = [];
+  let contenders: { warId: string; guildId: string }[] = [];
+  const guildVaults = new Map<string, number>();
+  let diplomacySeq = 0;
   const saveWar = repos.guilds.saveWar.bind(repos.guilds);
   repos.guilds.saveWar = async (war) => {
     const copy = { ...war };
@@ -613,6 +692,38 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     setResourceTax,
     setResourceAccess,
     grantResource,
+    creditGuildBank,
+    auctionLot(lotId) {
+      return economy.service.auctionLot(lotId);
+    },
+    cityOwner,
+    characterNode,
+    cityService,
+    rentStorage: rentCityStorage,
+    useLibrary,
+    bindCity,
+    grantService,
+    postPact,
+    noticePact: noticeStoredPact,
+    renewPact: renewStoredPact,
+    registerContender: registerWarContender,
+    postMercenaryContract,
+    postPatrol,
+    memberRank,
+    vassalMayWar(guildId, suzerainConsent) {
+      const allowed = vassalMayDeclare({
+        pacts,
+        guildId,
+        nowMs: clock.now(),
+        suzerainConsent,
+      });
+      if (!allowed.ok) {
+        return { ok: false, code: allowed.code };
+      }
+      return { ok: true, value: true };
+    },
+    seatFounders,
+    seatMember,
     async loadBuild(characterId) {
       return buildOf(characterId);
     },
@@ -811,15 +922,26 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (entity.guildId === owner) {
       return 'member';
     }
+    if (entity.guildId !== undefined && pactAlly(pacts, entity.guildId, owner, clock.now())) {
+      return 'ally';
+    }
     if (entity.guildId !== undefined) {
       return 'enemy';
     }
     return 'neutral';
   }
 
-  function portalAccess(
+  function serviceGranted(cityId: string, service: CityService, characterId: string): boolean {
+    if (service === 'portal' && portalGrants.get(cityId)?.has(characterId) === true) {
+      return true;
+    }
+    return serviceGrants.get(cityId)?.get(service)?.has(characterId) === true;
+  }
+
+  function cityServiceAccess(
     entity: SimEntity,
     cityId: string,
+    service: CityService,
   ): { ok: true; value: 'enter' } | { ok: false; code: string } {
     const hold = captures.find((row) => row.cityId === cityId && row.won && row.guildId !== null);
     if (hold?.guildId === undefined || hold.guildId === null) {
@@ -833,17 +955,23 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         warPhase(Math.max(0, now - war.startsAtMs)) !== 'closed',
     );
     const blockedForMs = hold.wonAtMs === undefined ? 0 : Math.max(0, now - hold.wonAtMs);
-    const granted = portalGrants.get(cityId)?.has(entity.id) === true;
     const asked = askHostilePortal({
       stance: portalStance(entity, hold.guildId),
       warActive,
       blockedForMs,
-      granted,
+      granted: serviceGranted(cityId, service, entity.id),
     });
     if (!asked.ok) {
       return { ok: false, code: asked.code };
     }
     return { ok: true, value: 'enter' };
+  }
+
+  function portalAccess(
+    entity: SimEntity,
+    cityId: string,
+  ): { ok: true; value: 'enter' } | { ok: false; code: string } {
+    return cityServiceAccess(entity, cityId, 'portal');
   }
 
   async function askPortal(
@@ -990,12 +1118,17 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     guildId: string,
     nodeId: string,
     taxPercent: number,
+    characterId: string,
   ): { ok: boolean; code?: string; value?: unknown } {
     const node = resourceAt(nodeId);
     if (node === undefined || node.guildId !== guildId) {
       return { ok: false, code: 'owner' };
     }
-    const priced = setNodeTax({ next: taxPercent, nowMs: clock.now(), taxSetAtMs: node.taxSetAtMs });
+    const rank = memberRank(guildId, characterId);
+    if (rank === null) {
+      return { ok: false, code: 'rank' };
+    }
+    const priced = setNodeTax({ next: taxPercent, nowMs: clock.now(), taxSetAtMs: node.taxSetAtMs, rank });
     if (!priced.ok) {
       return { ok: false, code: priced.code };
     }
@@ -1035,6 +1168,596 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     granted.add(characterId);
     nodeGrants.set(nodeId, granted);
     return { ok: true, value: { nodeId, characterId, granted: true } };
+  }
+
+  function memberRank(guildId: string, characterId: string): GuildRank | null {
+    return guildRanks.get(guildId)?.get(characterId) ?? null;
+  }
+
+  function seatMember(
+    guildId: string,
+    actorId: string,
+    memberId: string,
+    rank: string,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const actor = memberRank(guildId, actorId);
+    if (actor !== 'leader' && actor !== 'council') {
+      return { ok: false, code: 'rank' };
+    }
+    if (
+      rank !== 'leader' &&
+      rank !== 'council' &&
+      rank !== 'officer' &&
+      rank !== 'veteran' &&
+      rank !== 'novice'
+    ) {
+      return { ok: false, code: 'rank' };
+    }
+    const table = guildRanks.get(guildId);
+    if (table === undefined || !table.has(memberId)) {
+      return { ok: false, code: 'member' };
+    }
+    const counts = { leader: 0, council: 0, officer: 0 };
+    for (const [id, held] of table) {
+      if (id === memberId) {
+        continue;
+      }
+      if (held === 'leader' || held === 'council' || held === 'officer') {
+        counts[held] += 1;
+      }
+    }
+    const seated = seatRank({
+      rank,
+      from: table.get(memberId) ?? null,
+      counts,
+      joinedAtMs: 0,
+      nowMs: clock.now(),
+    });
+    if (!seated.ok) {
+      return { ok: false, code: seated.code };
+    }
+    table.set(memberId, seated.value.rank);
+    return { ok: true, value: { guildId, memberId, rank: seated.value.rank } };
+  }
+
+  function seatFounders(guildId: string, leaderId: string, memberIds: readonly string[]): void {
+    const table = new Map<string, GuildRank>();
+    for (const row of founderRanks(leaderId, memberIds)) {
+      table.set(row.id, row.rank);
+    }
+    guildRanks.set(guildId, table);
+  }
+
+  function nextDiplomacyId(prefix: string): string {
+    diplomacySeq += 1;
+    return `${prefix}-${String(diplomacySeq)}`;
+  }
+
+  function creditGuildVault(guildId: string, amount: number): number {
+    const next = depositNodeChest(guildVaults.get(guildId) ?? 0, amount);
+    guildVaults.set(guildId, next);
+    return next;
+  }
+
+  function characterNode(characterId: string): string | undefined {
+    return simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined)?.nodeId;
+  }
+
+  function cityOwner(cityId: string): string | null {
+    return captures.find((row) => row.cityId === cityId && row.won && row.guildId !== null)?.guildId ?? null;
+  }
+
+  function cityService(
+    characterId: string,
+    cityId: string,
+    service: string,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    if (!isCityService(service)) {
+      return { ok: false, code: 'service' };
+    }
+    const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
+    if (entity === undefined) {
+      return { ok: false, code: 'missing' };
+    }
+    const access = cityServiceAccess(entity, cityId, service);
+    if (!access.ok) {
+      return { ok: false, code: access.code };
+    }
+    return { ok: true, value: 'enter' };
+  }
+
+  async function rentCityStorage(
+    characterId: string,
+    cityId: string,
+    slots: number,
+    days: number,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const access = cityService(characterId, cityId, 'storage');
+    if (!access.ok) {
+      return access;
+    }
+    const wallet = repos.economy.getCharacter(characterId);
+    if (wallet === null) {
+      return { ok: false, code: 'missing' };
+    }
+    const priced = rentStorage({ wallet: wallet.gold, slots, days });
+    if (!priced.ok) {
+      return { ok: false, code: priced.code };
+    }
+    repos.economy.saveCharacter({ ...wallet, gold: priced.value.gold });
+    const owner = cityOwner(cityId);
+    if (owner !== null) {
+      await creditGuildBank(owner, priced.value.cost);
+    }
+    return {
+      ok: true,
+      value: {
+        cityId,
+        slots: priced.value.slots,
+        days: priced.value.days,
+        cost: priced.value.cost,
+        gold: priced.value.gold,
+        guildId: owner,
+      },
+    };
+  }
+
+  async function useLibrary(
+    characterId: string,
+    cityId: string,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const access = cityService(characterId, cityId, 'library');
+    if (!access.ok) {
+      return access;
+    }
+    return { ok: true, value: { cityId, service: 'library' } };
+  }
+
+  async function bindCity(
+    characterId: string,
+    cityId: string,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const access = cityService(characterId, cityId, 'bind');
+    if (!access.ok) {
+      return access;
+    }
+    const node = simWorld.geography?.nodes.find((row) => row.id === cityId);
+    if (node === undefined) {
+      return { ok: false, code: 'unknown' };
+    }
+    const bound = canBind(
+      { id: node.id, kind: node.kind, safe: node.safe, side: node.side, regionId: node.regionId },
+      false,
+    );
+    if (!bound.ok) {
+      return { ok: false, code: bound.code };
+    }
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((row) =>
+        row.id === characterId ? { ...row, bindNodeId: cityId, bindCell: { x: node.x, y: node.y } } : row,
+      ),
+    };
+    return { ok: true, value: { cityId, service: 'bind' } };
+  }
+
+  function grantService(
+    guildId: string,
+    cityId: string,
+    service: string,
+    characterId: string,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    if (!isCityService(service)) {
+      return { ok: false, code: 'service' };
+    }
+    const hold = captures.find((row) => row.cityId === cityId && row.won && row.guildId === guildId);
+    if (hold === undefined) {
+      return { ok: false, code: 'owner' };
+    }
+    const byService = serviceGrants.get(cityId) ?? new Map<CityService, Set<string>>();
+    const granted = byService.get(service) ?? new Set<string>();
+    granted.add(characterId);
+    byService.set(service, granted);
+    serviceGrants.set(cityId, byService);
+    if (service === 'portal') {
+      const portal = portalGrants.get(cityId) ?? new Set<string>();
+      portal.add(characterId);
+      portalGrants.set(cityId, portal);
+    }
+    return { ok: true, value: { cityId, service, characterId, granted: true } };
+  }
+
+  async function postPact(body: Record<string, unknown>): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const kind = typeof body.kind === 'string' ? body.kind : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const guildIds = Array.isArray(body.guildIds)
+      ? body.guildIds.filter((id): id is string => typeof id === 'string')
+      : [];
+    const diplomat = guildIds.some((guildId) => {
+      const rank = memberRank(guildId, characterId);
+      return rank === 'leader' || rank === 'council';
+    });
+    if (!diplomat) {
+      return { ok: false, code: 'rank' };
+    }
+    const formed = formPact({
+      kind,
+      guildIds,
+      nowMs: clock.now(),
+      ...(typeof body.taxPercent === 'number' ? { taxPercent: body.taxPercent } : {}),
+      ...(typeof body.targetGuildId === 'string' ? { targetGuildId: body.targetGuildId } : {}),
+      ...(typeof body.suzerainId === 'string' ? { suzerainId: body.suzerainId } : {}),
+      ...(typeof body.vassalId === 'string' ? { vassalId: body.vassalId } : {}),
+    });
+    if (!formed.ok) {
+      return { ok: false, code: formed.code };
+    }
+    const stored: StoredPact = { ...formed.value, id: nextDiplomacyId('pact') };
+    pacts = [...pacts, stored];
+    return { ok: true, value: stored };
+  }
+
+  function pactDiplomat(guildIds: readonly string[], characterId: string): boolean {
+    return guildIds.some((guildId) => {
+      const rank = memberRank(guildId, characterId);
+      return rank === 'leader' || rank === 'council';
+    });
+  }
+
+  async function noticeStoredPact(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const pactId = typeof body.pactId === 'string' ? body.pactId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const pact = pacts.find((row) => row.id === pactId);
+    if (pact === undefined) {
+      return { ok: false, code: 'closed' };
+    }
+    if (!pactDiplomat(pact.guildIds, characterId)) {
+      return { ok: false, code: 'rank' };
+    }
+    const noticed =
+      pact.kind === 'vassal'
+        ? noticeVassalRelease(pact, clock.now())
+        : noticeAllianceBreak(pact, clock.now());
+    if (!noticed.ok) {
+      return { ok: false, code: noticed.code };
+    }
+    pacts = pacts.map((row) => (row.id === pactId ? { ...row, ...noticed.value } : row));
+    return { ok: true, value: pacts.find((row) => row.id === pactId) };
+  }
+
+  async function renewStoredPact(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const pactId = typeof body.pactId === 'string' ? body.pactId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const pact = pacts.find((row) => row.id === pactId);
+    if (pact === undefined) {
+      return { ok: false, code: 'closed' };
+    }
+    if (!pactDiplomat(pact.guildIds, characterId)) {
+      return { ok: false, code: 'rank' };
+    }
+    const renewed = renewPact(pact, clock.now());
+    if (!renewed.ok) {
+      return { ok: false, code: renewed.code };
+    }
+    pacts = pacts.map((row) => (row.id === pactId ? { ...row, ...renewed.value } : row));
+    return { ok: true, value: pacts.find((row) => row.id === pactId) };
+  }
+
+  async function registerWarContender(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const warId = typeof body.warId === 'string' ? body.warId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const rank = memberRank(guildId, characterId);
+    if (rank !== 'leader' && rank !== 'council') {
+      return { ok: false, code: 'rank' };
+    }
+    const wars = await repos.guilds.listWars();
+    const war = wars.find((row) => row.id === warId);
+    if (war === undefined) {
+      return { ok: false, code: 'war' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null) {
+      return { ok: false, code: 'member' };
+    }
+    const registered = registerContender({
+      guildId,
+      gold: guild.bank,
+      nowMs: clock.now(),
+      startsAtMs: war.startsAtMs,
+    });
+    if (!registered.ok) {
+      return { ok: false, code: registered.code };
+    }
+    await repos.guilds.saveGuild({ ...guild, bank: registered.value.gold });
+    contenders = [
+      ...contenders.filter((row) => row.warId !== warId || row.guildId !== guildId),
+      { warId, guildId },
+    ];
+    return { ok: true, value: { warId, guildId, gold: registered.value.gold } };
+  }
+
+  async function postMercenaryContract(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const mercenaryId = typeof body.mercenaryId === 'string' ? body.mercenaryId : '';
+    const nodeId = typeof body.nodeId === 'string' ? body.nodeId : '';
+    const kind = typeof body.kind === 'string' ? body.kind : '';
+    const rewardGold = typeof body.rewardGold === 'number' ? body.rewardGold : 0;
+    const durationMs = typeof body.durationMs === 'number' ? body.durationMs : PATROL_QUEST_MS;
+    const rank = memberRank(guildId, characterId);
+    if (rank === null) {
+      return { ok: false, code: 'rank' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null) {
+      return { ok: false, code: 'member' };
+    }
+    const posted = postMercenary({
+      rank,
+      kind,
+      rewardGold,
+      bank: guild.bank,
+      mercenaryId,
+      memberIds: guild.memberIds,
+      nowMs: clock.now(),
+      durationMs,
+      nodeId,
+    });
+    if (!posted.ok) {
+      return { ok: false, code: posted.code };
+    }
+    const stored: StoredMercenary = {
+      id: nextDiplomacyId('merc'),
+      guildId,
+      mercenaryId: posted.value.mercenaryId,
+      kind: posted.value.kind,
+      rewardGold: posted.value.rewardGold,
+      nodeId: posted.value.nodeId,
+      postedAtMs: clock.now(),
+      untilMs: posted.value.untilMs,
+      durationMs: posted.value.durationMs,
+      presentMs: 0,
+      status: 'open',
+    };
+    mercenaries = [...mercenaries, stored];
+    return { ok: true, value: stored };
+  }
+
+  async function postPatrol(body: Record<string, unknown>): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const nodeId = typeof body.nodeId === 'string' ? body.nodeId : '';
+    const rewardGold = typeof body.rewardGold === 'number' ? body.rewardGold : PATROL_QUEST_GOLD;
+    const durationMs = typeof body.durationMs === 'number' ? body.durationMs : PATROL_QUEST_MS;
+    const assigneeId = typeof body.assigneeId === 'string' ? body.assigneeId : null;
+    const rank = memberRank(guildId, characterId);
+    if (rank === null) {
+      return { ok: false, code: 'rank' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null) {
+      return { ok: false, code: 'member' };
+    }
+    if (assigneeId !== null && !guild.memberIds.includes(assigneeId)) {
+      return { ok: false, code: 'member' };
+    }
+    const posted = postPatrolQuest({
+      rank,
+      rewardGold,
+      bank: guild.bank,
+      nodeId,
+      nowMs: clock.now(),
+      durationMs,
+    });
+    if (!posted.ok) {
+      return { ok: false, code: posted.code };
+    }
+    const stored: StoredPatrol = {
+      id: nextDiplomacyId('patrol'),
+      guildId,
+      nodeId: posted.value.nodeId,
+      rewardGold: posted.value.rewardGold,
+      postedAtMs: clock.now(),
+      untilMs: posted.value.untilMs,
+      durationMs: posted.value.durationMs,
+      assigneeId,
+      presentMs: 0,
+      status: 'open',
+    };
+    patrols = [...patrols, stored];
+    return { ok: true, value: stored };
+  }
+
+  function standingAt(characterId: string, nodeId: string): boolean {
+    const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
+    return entity !== undefined && entity.phase === 'online' && entity.hp > 0 && entity.nodeId === nodeId;
+  }
+
+  async function tickContracts(deltaMs: number): Promise<void> {
+    const now = clock.now();
+    const nextMerc: StoredMercenary[] = [];
+    for (const contract of mercenaries) {
+      const ticked = tickContract({
+        status: contract.status,
+        presentMs: contract.presentMs,
+        durationMs: contract.durationMs,
+        untilMs: contract.untilMs,
+        deltaMs,
+        present: standingAt(contract.mercenaryId, contract.nodeId),
+        nowMs: now,
+        bank: (await repos.guilds.findGuild(contract.guildId))?.bank ?? 0,
+        rewardGold: contract.rewardGold,
+      });
+      if (ticked.pay > 0) {
+        const guild = await repos.guilds.findGuild(contract.guildId);
+        if (guild !== null) {
+          await repos.guilds.saveGuild({ ...guild, bank: guild.bank - ticked.pay });
+        }
+        const wallet = repos.economy.getCharacter(contract.mercenaryId);
+        if (wallet !== null) {
+          repos.economy.saveCharacter({ ...wallet, gold: wallet.gold + ticked.pay });
+        }
+      }
+      nextMerc.push({ ...contract, presentMs: ticked.presentMs, status: ticked.status });
+    }
+    mercenaries = nextMerc;
+    const nextPatrol: StoredPatrol[] = [];
+    for (const quest of patrols) {
+      const present =
+        quest.assigneeId !== null && standingAt(quest.assigneeId, quest.nodeId);
+      const ticked = tickContract({
+        status: quest.status,
+        presentMs: quest.presentMs,
+        durationMs: quest.durationMs,
+        untilMs: quest.untilMs,
+        deltaMs,
+        present,
+        nowMs: now,
+        bank: (await repos.guilds.findGuild(quest.guildId))?.bank ?? 0,
+        rewardGold: quest.rewardGold,
+      });
+      if (ticked.pay > 0 && quest.assigneeId !== null) {
+        const guild = await repos.guilds.findGuild(quest.guildId);
+        if (guild !== null) {
+          await repos.guilds.saveGuild({ ...guild, bank: guild.bank - ticked.pay });
+        }
+        const wallet = repos.economy.getCharacter(quest.assigneeId);
+        if (wallet !== null) {
+          repos.economy.saveCharacter({ ...wallet, gold: wallet.gold + ticked.pay });
+        }
+      }
+      nextPatrol.push({ ...quest, presentMs: ticked.presentMs, status: ticked.status });
+    }
+    patrols = nextPatrol;
+  }
+
+  async function tickVassalTithes(): Promise<void> {
+    const now = clock.now();
+    const next: StoredPact[] = [];
+    for (const pact of pacts) {
+      if (pact.kind !== 'vassal' || pact.vassalId === null || pact.suzerainId === null || pact.taxPercent === null) {
+        next.push(pact);
+        continue;
+      }
+      const days = titheDays({ lastTitheAtMs: pact.lastTitheAtMs, startedAtMs: pact.startedAtMs, nowMs: now });
+      if (days <= 0) {
+        next.push(pact);
+        continue;
+      }
+      const vassal = await repos.guilds.findGuild(pact.vassalId);
+      if (vassal === null) {
+        next.push(pact);
+        continue;
+      }
+      const tithe = applyVassalTithe({ bank: vassal.bank, taxPercent: pact.taxPercent, days });
+      if (!tithe.ok) {
+        next.push(pact);
+        continue;
+      }
+      await repos.guilds.saveGuild({ ...vassal, bank: tithe.value.bank });
+      await creditGuildBank(pact.suzerainId, tithe.value.tithe);
+      next.push({ ...pact, lastTitheAtMs: now });
+    }
+    pacts = next;
+  }
+
+  function applyNodeSeizure(seized: readonly { guildId: string; amount: number }[]): void {
+    for (const row of seized) {
+      creditGuildVault(row.guildId, row.amount);
+    }
+  }
+
+  async function skipMs(ms: number): Promise<void> {
+    if (!Number.isInteger(ms) || ms < 0) {
+      throw new RangeError(`skipMs must be an integer >= 0, got ${String(ms)}`);
+    }
+    clock.advance(ms);
+    simWorld = { ...simWorld, nowMs: clock.now() };
+    captures = tickCaptures({
+      holds: captures,
+      wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs })),
+      nowMs: simWorld.nowMs,
+      deltaMs: ms,
+      present: presentGuilds(),
+    });
+    applyOwnedCityFees();
+    const ticked = tickResourceNodes({
+      nodes: resourceNodes,
+      present: presentNodes(),
+      deltaMs: ms,
+    });
+    resourceNodes = ticked.nodes;
+    applyNodeSeizure(ticked.seized);
+    await tickContracts(ms);
+    await tickVassalTithes();
+  }
+
+  function guardAllies(command: SimCommand): SimCommand {
+    if (command.type !== 'attack') {
+      return command;
+    }
+    const attacker = simWorld.entities.find((row) => row.id === command.attackerId);
+    const target = simWorld.entities.find((row) => row.id === command.targetId);
+    if (attacker?.guildId === undefined || target?.guildId === undefined) {
+      return command;
+    }
+    const now = clock.now();
+    if (allianceFriendlyFire(pacts, attacker.guildId, target.guildId, now)) {
+      return { ...command, sameGroup: true, friendlyFire: false };
+    }
+    const nap = napBetween(pacts, attacker.guildId, target.guildId, now);
+    if (nap !== undefined) {
+      void breachNap(attacker.guildId);
+    }
+    return command;
+  }
+
+  async function breachNap(guildId: string): Promise<void> {
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null) {
+      return;
+    }
+    const breached = breachNonAggression({ bank: guild.bank, nowMs: clock.now() });
+    await repos.guilds.saveGuild({ ...guild, bank: breached.bank });
+  }
+
+  function presentGuilds(): { cityId: string; guildId: string }[] {
+    return simWorld.entities.flatMap((entity) => {
+      if (
+        entity.monsterId !== undefined ||
+        entity.phase !== 'online' ||
+        entity.hp <= 0 ||
+        entity.guildId === undefined ||
+        entity.nodeId === undefined
+      ) {
+        return [];
+      }
+      return [{ cityId: entity.nodeId, guildId: entity.guildId }];
+    });
+  }
+
+  function presentNodes(): { nodeId: string; guildId: string }[] {
+    return simWorld.entities.flatMap((entity) => {
+      if (
+        entity.monsterId !== undefined ||
+        entity.phase !== 'online' ||
+        entity.hp <= 0 ||
+        entity.guildId === undefined ||
+        entity.nodeId === undefined
+      ) {
+        return [];
+      }
+      return [{ nodeId: entity.nodeId, guildId: entity.guildId }];
+    });
   }
 
   function rememberCharacter(_accountId: string, characterId: string): void {
@@ -1190,7 +1913,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
       const simCommand = toSimCommand(command);
       if (simCommand !== null) {
-        commands.push(simCommand);
+        commands.push(guardAllies(simCommand));
         continue;
       }
       if (isLiveAction(command.action)) {
@@ -1235,36 +1958,18 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs })),
       nowMs: simWorld.nowMs,
       deltaMs: SIM_TICK_MS,
-      present: simWorld.entities.flatMap((entity) => {
-        if (
-          entity.monsterId !== undefined ||
-          entity.phase !== 'online' ||
-          entity.hp <= 0 ||
-          entity.guildId === undefined ||
-          entity.nodeId === undefined
-        ) {
-          return [];
-        }
-        return [{ cityId: entity.nodeId, guildId: entity.guildId }];
-      }),
+      present: presentGuilds(),
     });
     applyOwnedCityFees();
-    resourceNodes = tickResourceNodes({
+    const tickedNodes = tickResourceNodes({
       nodes: resourceNodes,
-      present: simWorld.entities.flatMap((entity) => {
-        if (
-          entity.monsterId !== undefined ||
-          entity.phase !== 'online' ||
-          entity.hp <= 0 ||
-          entity.guildId === undefined ||
-          entity.nodeId === undefined
-        ) {
-          return [];
-        }
-        return [{ nodeId: entity.nodeId, guildId: entity.guildId }];
-      }),
+      present: presentNodes(),
       deltaMs: SIM_TICK_MS,
     });
+    resourceNodes = tickedNodes.nodes;
+    applyNodeSeizure(tickedNodes.seized);
+    void tickContracts(SIM_TICK_MS);
+    void tickVassalTithes();
     for (const entity of simWorld.entities) {
       if (entity.monsterId !== undefined || entity.nodeId === undefined) {
         continue;
@@ -1357,7 +2062,18 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     });
   }
 
-  function simSnapshot(): { kind: 'rift-sim'; world: SimWorld; wallets: EconomyCharacter[]; captures: CaptureHold[] } {
+  function simSnapshot(): {
+    kind: 'rift-sim';
+    world: SimWorld;
+    wallets: EconomyCharacter[];
+    captures: CaptureHold[];
+    resourceNodes: ResourceNode[];
+    pacts: StoredPact[];
+    mercenaries: StoredMercenary[];
+    patrols: StoredPatrol[];
+    contenders: { warId: string; guildId: string }[];
+    guildVaults: { guildId: string; amount: number }[];
+  } {
     const wallets: EconomyCharacter[] = [];
     for (const characterId of walletIds) {
       const wallet = repos.economy.getCharacter(characterId);
@@ -1374,6 +2090,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       },
       wallets,
       captures,
+      resourceNodes,
+      pacts,
+      mercenaries,
+      patrols,
+      contenders,
+      guildVaults: [...guildVaults.entries()].map(([guildId, amount]) => ({ guildId, amount })),
     });
   }
 
@@ -1396,6 +2118,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         }
       }
       captures = readCaptures(loaded);
+      restoreDiplomacy(loaded);
       applyOwnedCityFees();
     }
     for (const wallet of stored.wallets) {
@@ -1413,12 +2136,67 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await restoreGuilds();
   }
 
+  function restoreDiplomacy(loaded: object): void {
+    if (!('resourceNodes' in loaded) || !Array.isArray(loaded.resourceNodes)) {
+      return;
+    }
+    const nodes: ResourceNode[] = [];
+    for (const row of loaded.resourceNodes) {
+      if (typeof row !== 'object' || row === null || !('nodeId' in row)) {
+        continue;
+      }
+      const node = row as ResourceNode;
+      if (typeof node.nodeId === 'string') {
+        nodes.push(node);
+      }
+    }
+    if (nodes.length > 0) {
+      resourceNodes = nodes;
+    }
+    if ('pacts' in loaded && Array.isArray(loaded.pacts)) {
+      pacts = loaded.pacts as StoredPact[];
+    }
+    if ('mercenaries' in loaded && Array.isArray(loaded.mercenaries)) {
+      mercenaries = loaded.mercenaries as StoredMercenary[];
+    }
+    if ('patrols' in loaded && Array.isArray(loaded.patrols)) {
+      patrols = loaded.patrols as StoredPatrol[];
+    }
+    if ('contenders' in loaded && Array.isArray(loaded.contenders)) {
+      contenders = loaded.contenders.flatMap((row) => {
+        if (typeof row !== 'object' || row === null) {
+          return [];
+        }
+        const stored = row as { warId?: unknown; guildId?: unknown };
+        if (typeof stored.warId === 'string' && typeof stored.guildId === 'string') {
+          return [{ warId: stored.warId, guildId: stored.guildId }];
+        }
+        return [];
+      });
+    }
+    if ('guildVaults' in loaded && Array.isArray(loaded.guildVaults)) {
+      guildVaults.clear();
+      for (const row of loaded.guildVaults) {
+        if (typeof row !== 'object' || row === null) {
+          continue;
+        }
+        const vault = row as { guildId?: unknown; amount?: unknown };
+        if (typeof vault.guildId === 'string' && typeof vault.amount === 'number') {
+          guildVaults.set(vault.guildId, vault.amount);
+        }
+      }
+    }
+  }
+
   async function restoreGuilds(): Promise<void> {
     const guilds = await repos.guilds.listGuilds();
     const memberGuild = new Map<string, string>();
     for (const guild of guilds) {
       for (const memberId of guild.memberIds) {
         memberGuild.set(memberId, guild.id);
+      }
+      if (!guildRanks.has(guild.id)) {
+        seatFounders(guild.id, guild.leaderId, guild.memberIds);
       }
     }
     guildOf.clear();
@@ -1643,6 +2421,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       keeper: parked === null ? null : { id: parked.monsterId, level: parked.level, phases: parked.phaseCount },
       captures,
       resourceNodes,
+      guildVaults: [...guildVaults.entries()].map(([guildId, amount]) => ({ guildId, amount })),
+      pacts,
+      mercenaries,
+      patrols,
+      contenders,
       reputation: focus?.reputation ?? {},
     };
   }
@@ -1870,6 +2653,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     },
     hydrate,
     noteSidecar,
+    skipMs,
+    characterNode,
+    cityService,
     snapshot,
     auth,
     character,
@@ -2105,7 +2891,18 @@ function registerHttp(app: FastifyInstance, composition: ServerComposition): voi
       const listed = economy.service.listAuction();
       return reply.send({ lots: listed.ok ? listed.value : [] });
     }
-    const offered = economy.service.offerAuction(body);
+    const standing = composition.characterNode(body.sellerId);
+    const cityId = body.cityId ?? standing ?? null;
+    if (cityId !== null) {
+      const access = composition.cityService(body.sellerId, cityId, 'auction');
+      if (!access.ok && access.code !== 'missing') {
+        return reply.code(400).send({ code: access.code });
+      }
+    }
+    const offered = economy.service.offerAuction({
+      ...body,
+      cityId,
+    });
     if (!offered.ok) {
       return reply.code(400).send({ code: offered.code });
     }
@@ -2237,6 +3034,19 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/node/tax', action: 'node_tax' },
   { path: '/node/access', action: 'node_access' },
   { path: '/node/grant', action: 'node_grant' },
+  { path: '/storage', action: 'storage' },
+  { path: '/library', action: 'library' },
+  { path: '/bind', action: 'bind' },
+  { path: '/service/grant', action: 'service_grant' },
+  { path: '/pact', action: 'pact' },
+  { path: '/pact/notice', action: 'pact_notice' },
+  { path: '/pact/renew', action: 'pact_renew' },
+  { path: '/war/contend', action: 'war_contend' },
+  { path: '/mercenary', action: 'mercenary' },
+  { path: '/patrol', action: 'patrol' },
+  { path: '/war', action: 'guild_war' },
+  { path: '/guild/withdraw', action: 'guild_withdraw' },
+  { path: '/guild/rank', action: 'guild_rank' },
 ];
 
 function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
@@ -2467,6 +3277,7 @@ function readAuction(body: unknown):
       startPrice: number;
       buyout: number | null;
       guildCity: boolean;
+      cityId: string | null;
     }
   | undefined {
   if (typeof body !== 'object' || body === null) {
@@ -2486,6 +3297,7 @@ function readAuction(body: unknown):
     startPrice: record.startPrice,
     buyout: typeof record.buyout === 'number' ? record.buyout : null,
     guildCity: record.guildCity === true,
+    cityId: typeof record.cityId === 'string' && record.cityId.length > 0 ? record.cityId : null,
   };
 }
 

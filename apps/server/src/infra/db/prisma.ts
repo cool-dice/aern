@@ -686,13 +686,13 @@ function bindEconomy(db: RiftDb): EconomyRepository {
             bidderId: lot.bidderId,
             cityNodeId: lot.guildCity ? 'guild-city' : 'wild',
             expiresAt: stamp(0),
-            status: JSON.stringify({ open: true, qty: lot.qty }),
+            status: JSON.stringify({ open: true, qty: lot.qty, cityId: lot.cityId ?? null }),
             createdAt: stamp(0),
           },
           update: {
             currentBid: lot.currentBid,
             bidderId: lot.bidderId,
-            status: JSON.stringify({ open: true, qty: lot.qty }),
+            status: JSON.stringify({ open: true, qty: lot.qty, cityId: lot.cityId ?? null }),
           },
         }),
       );
@@ -714,10 +714,14 @@ function bindEconomy(db: RiftDb): EconomyRepository {
       const lots: AuctionLot[] = [];
       for (const row of listed) {
         let qty = 1;
+        let cityId: string | null = null;
         if (typeof row.status === 'string' && row.status.startsWith('{')) {
-          const parsed = JSON.parse(row.status) as { qty?: unknown };
+          const parsed = JSON.parse(row.status) as { qty?: unknown; cityId?: unknown };
           if (typeof parsed.qty === 'number' && Number.isInteger(parsed.qty) && parsed.qty > 0) {
             qty = parsed.qty;
+          }
+          if (typeof parsed.cityId === 'string' && parsed.cityId.length > 0) {
+            cityId = parsed.cityId;
           }
         }
         lots.push({
@@ -730,6 +734,7 @@ function bindEconomy(db: RiftDb): EconomyRepository {
           bidderId: row.bidderId === null || row.bidderId === undefined ? null : String(row.bidderId),
           buyout: Number(row.buyoutPrice),
           guildCity: String(row.cityNodeId) === 'guild-city',
+          cityId,
         });
       }
       return { wallets, lots };

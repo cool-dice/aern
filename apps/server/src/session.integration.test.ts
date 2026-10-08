@@ -707,7 +707,7 @@ test('auction buyout records the 5% tax destination', async () => {
       payload: { lotId: guildId, bidderId: 'buyer', bid: 100 },
     });
     expect(guildBid.statusCode).toBe(200);
-    expect(guildBid.json()).toMatchObject({ price: 100, buyout: true, taxSink: 'guild', guildTax: 5, sinkTax: 0 });
+    expect(guildBid.json()).toMatchObject({ price: 100, buyout: true, taxSink: 'void', guildTax: 0, sinkTax: 5 });
     expect(built.economy.service.balance('seller')).toBe(95);
     expect(built.economy.service.balance('buyer')).toBe(300);
 
@@ -729,7 +729,7 @@ test('auction buyout records the 5% tax destination', async () => {
       url: '/auction/bid',
       payload: { lotId: voidId, bidderId: 'buyer', bid: 100 },
     });
-    expect(voidBid.json()).toMatchObject({ taxSink: 'void', guildTax: 5, sinkTax: 5 });
+    expect(voidBid.json()).toMatchObject({ taxSink: 'void', guildTax: 0, sinkTax: 5 });
     expect(built.economy.service.balance('seller')).toBe(190);
   } finally {
     await built.close();

@@ -58,6 +58,8 @@ export interface AuctionLot {
   bidderId: string | null;
   buyout: number | null;
   guildCity: boolean;
+  /** City the lot was listed in. Ownership is read from live captures, not `guildCity`. */
+  cityId?: string | null;
 }
 
 export interface TradeSession {
@@ -99,12 +101,14 @@ export interface EconomyService {
     startPrice: number;
     buyout: number | null;
     guildCity: boolean;
+    cityId?: string | null;
   }): Result<{ id: string }, string>;
   bidAuction(input: {
     lotId: string;
     bidderId: string;
     bid: number;
   }): Result<{ price: number; buyout: boolean }, string>;
+  auctionLot(lotId: string): AuctionLot | null;
   /** Gold already sent to the guild bank or the neutral sink. */
   taxLedger(): { guild: number; void: number };
   /** Character wallet. Guild create and auction settlement debit this gold. */

@@ -246,6 +246,7 @@ export function createEconomyService(repository: EconomyRepository): EconomyServ
         bidderId: null,
         buyout: input.buyout,
         guildCity: input.guildCity,
+        cityId: input.cityId ?? null,
       });
       return ok({ id });
     },
@@ -319,6 +320,10 @@ export function createEconomyService(repository: EconomyRepository): EconomyServ
         tax.void += paid.tax;
       }
       return ok({ price: placed.value.price, buyout: true });
+    },
+
+    auctionLot(lotId) {
+      return repository.getLot(lotId);
     },
 
     taxLedger() {
