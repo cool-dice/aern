@@ -239,6 +239,8 @@ export interface QuestObjective {
   itemId?: string;
   side?: 'light' | 'dark';
   hub?: string;
+  /** Geography node the player must walk into. Rings use this, not a visit count. */
+  place?: string;
   /** Named beat. Story acts require it; errands omit it. */
   scene?: string;
 }
@@ -408,6 +410,7 @@ export function assertRefs(catalog: Catalog): void {
   const recipeIds = new Set(catalog.recipes.map((recipe) => recipe.id));
   const regionIds = new Set(catalog.world.regions.map((region) => region.id));
   const nodeIds = new Set(catalog.world.nodes.map((node) => node.id));
+  const siteIds = new Set((catalog.world.sites ?? []).map((site) => site.id));
 
   if (catalog.races.length !== RACES.length) {
     throw new Error('race count');
@@ -623,6 +626,9 @@ export function assertRefs(catalog: Catalog): void {
       }
       if (objective.itemId !== undefined && !itemIds.has(objective.itemId)) {
         throw new Error(`unknown itemId: ${objective.itemId}`);
+      }
+      if (objective.place !== undefined && !nodeIds.has(objective.place) && !siteIds.has(objective.place)) {
+        throw new Error(`unknown place: ${objective.place}`);
       }
     }
   }

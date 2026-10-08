@@ -175,7 +175,7 @@ test('accepted quests publish on /state and kill credit follows the attacker', a
   };
   const alphaPlayed = played.players.find((player) => player.id === 'alpha');
   expect(alphaPlayed?.quests.find((quest) => quest.id === 'gather_metal')?.objectives[0]?.current).toBe(1);
-  expect(alphaPlayed?.quests.find((quest) => quest.id === 'visit_hub')?.objectives[0]?.current).toBe(1);
+  expect(alphaPlayed?.quests.find((quest) => quest.id === 'visit_hub')?.objectives[0]?.current).toBe(0);
 });
 
 test('0 HP writes a corpse and respawnAtBind brings the player back', () => {
@@ -481,21 +481,35 @@ test('story acts publish artifact scenes and live events advance them', async ()
   const fallen = graph.state() as { barrierDown: boolean };
   expect(fallen.barrierDown).toBe(true);
 
-  expect(await graph.act('dungeon_enter', { characterId: 'lia' })).toMatchObject({ ok: true });
+  const chosen = await graph.act('dialogue', {
+    characterId: 'lia',
+    questId: 'act1_light',
+    choiceId: 'question',
+  });
+  expect(chosen).toMatchObject({ ok: true, value: { choiceId: 'question' } });
+  const branched = graph.state() as {
+    barrierDown: boolean;
+    players: { quests: { id: string; choiceId: string | null; objectives: { id: string; scene?: string; current: number }[] }[] }[];
+  };
+  expect(branched.barrierDown).toBe(true);
+  const koval = branched.players[0]?.quests
+    .find((quest) => quest.id === 'act1_light')
+    ?.objectives.find((objective) => objective.id === 'koval');
+  expect(koval?.scene).toContain('questioned the council');
+  expect(branched.players[0]?.quests.find((quest) => quest.id === 'act1_light')?.choiceId).toBe('question');
+
   expect(await graph.act('dungeon_enter', { characterId: 'lia' })).toMatchObject({ ok: true });
   const rings = graph.state() as {
     primordialOpened: boolean;
-    self: { nodeId: string | null; cell: { x: number; y: number }; roomId: number | null } | null;
+    self: { nodeId: string | null; roomId: number | null } | null;
     players: { quests: { id: string; objectives: { id: string; current: number }[] }[] }[];
   };
-  expect(rings.primordialOpened).toBe(true);
-  expect(rings.self?.nodeId).toBe('primordial_outer');
-  expect(rings.self?.cell).toEqual({ x: 60, y: 0 });
-  expect(rings.self?.roomId).toBeNull();
-  const outer = rings.players[0]?.quests
-    .find((quest) => quest.id === 'act3_light')
-    ?.objectives.find((objective) => objective.id === 'outer_ring');
-  expect(outer?.current).toBe(2);
+  expect(rings.primordialOpened).toBe(false);
+  expect(rings.self?.nodeId).toBeNull();
+  const act3 = rings.players[0]?.quests.find((quest) => quest.id === 'act3_light');
+  expect(act3?.objectives.find((objective) => objective.id === 'outer_ring')?.current).toBe(0);
+  expect(act3?.objectives.find((objective) => objective.id === 'middle_ring')?.current).toBe(0);
+  expect(act3?.objectives.find((objective) => objective.id === 'archive')?.current).toBe(1);
 });
 
 test('utility runs after 200ms of sidecar silence and the action is played', async () => {

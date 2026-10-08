@@ -57,6 +57,8 @@ export interface QuestObjective {
   current: number;
   /** Named story beat from artifact 20.6. Errand objectives omit it. */
   scene?: string;
+  /** Monster, item, or place this objective asked for. Omitted means any of `kind`. */
+  subject?: string;
 }
 
 export interface QuestProgress {
@@ -95,6 +97,7 @@ function copyObjective(objective: QuestObjective): QuestObjective {
     target: objective.target,
     current: objective.current,
     ...(objective.scene !== undefined ? { scene: objective.scene } : {}),
+    ...(objective.subject !== undefined ? { subject: objective.subject } : {}),
   };
 }
 
@@ -257,6 +260,26 @@ export function recordChoice(progress: QuestProgress, choiceId: string): QuestPr
   const next = copyProgress(progress);
   next.choiceId = choiceId;
   return next;
+}
+
+/**
+ * Later scenes read the stored personal choice.
+ * A quest with no choice keeps the catalog line. World flags are not an input.
+ */
+export function branchScene(progress: QuestProgress, objective: QuestObjective): string | undefined {
+  if (objective.scene === undefined) {
+    return undefined;
+  }
+  if (progress.choiceId === 'question' && objective.id === 'koval') {
+    return 'Master Koval. You questioned the council, so the forge lesson is private.';
+  }
+  if (progress.choiceId === 'serve' && objective.id === 'koval') {
+    return 'Master Koval. You took the council errand, so the armory opens.';
+  }
+  if (progress.choiceId === 'question' && objective.id === 'mechanic') {
+    return 'The Goblin Mechanic. You questioned the council, so the bench is a back room.';
+  }
+  return objective.scene;
 }
 
 /**

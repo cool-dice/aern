@@ -227,7 +227,9 @@ test('upy 40 marks the quest garbled and still tracks the same objectives', asyn
   expect((await service.accept('c1', 'kill_rats', 0)).ok).toBe(true);
   const row = (await repository.list('c1')).find((item) => item.progress.questId === 'kill_rats');
   expect(row?.progress.garbled).toBe(true);
-  expect(row?.progress.objectives).toEqual([{ id: 'kill', kind: 'kill', target: 5, current: 0 }]);
+  expect(row?.progress.objectives).toEqual([
+    { id: 'kill', kind: 'kill', target: 5, current: 0, subject: 'spore_rat' },
+  ]);
 });
 
 test('a daily at both caps is refused as daily', async () => {

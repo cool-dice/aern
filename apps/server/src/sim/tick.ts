@@ -748,6 +748,7 @@ function grantKill(entities: readonly SimEntity[], victim: SimEntity): void {
     { progress: hero.progress, quests: hero.quests },
     victim.level ?? 1,
     victim.monsterKind ?? (victim.eliteId != null && victim.eliteId !== '' ? 'elite' : 'normal'),
+    victim.monsterId,
   );
   hero.progress = next.progress;
   hero.quests = next.quests;

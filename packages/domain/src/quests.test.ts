@@ -11,6 +11,7 @@ import {
   failExpired,
   questReward,
   recordChoice,
+  branchScene,
   setWorldFlagOnce,
   turnIn,
   utcDayStartMs,
@@ -650,6 +651,15 @@ test('choice is personal and world flags are set once', () => {
   expect(chosen.choiceId).toBe('path_b');
   expect(chosen).not.toBe(quest);
   expect(quest.choiceId).toBeUndefined();
+  const koval = {
+    id: 'koval',
+    kind: 'craft' as const,
+    target: 1,
+    current: 0,
+    scene: 'Master Koval. Buy gear and learn the forge.',
+  };
+  expect(branchScene(chosen, koval)).toBe(koval.scene);
+  expect(branchScene(recordChoice(quest, 'question'), koval)).toContain('questioned the council');
   expect(flags).toEqual({ barrierDown: false, primordialOpened: false });
 
   const barrier = setWorldFlagOnce(flags, 'barrierDown');

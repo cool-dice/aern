@@ -35,13 +35,17 @@ function templateOf(offer: QuestOffer): QuestProgress {
     daily: offer.daily,
     repeatable: offer.repeatable,
     status: 'active',
-    objectives: offer.objectives.map((objective) => ({
-      id: objective.id,
-      kind: objective.kind as QuestObjectiveKind,
-      target: objective.target,
-      current: 0,
-      ...(objective.scene !== undefined ? { scene: objective.scene } : {}),
-    })),
+    objectives: offer.objectives.map((objective) => {
+      const subject = objective.monsterId ?? objective.itemId ?? objective.place;
+      return {
+        id: objective.id,
+        kind: objective.kind as QuestObjectiveKind,
+        target: objective.target,
+        current: 0,
+        ...(objective.scene !== undefined ? { scene: objective.scene } : {}),
+        ...(subject !== undefined ? { subject } : {}),
+      };
+    }),
     itemIds: offer.itemIds ? offer.itemIds.slice() : [],
     garbled: false,
   };

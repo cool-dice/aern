@@ -137,7 +137,8 @@
         "id": "visit",
         "kind": "visit",
         "target": 1,
-        "hub": "own"
+        "hub": "own",
+        "place": "cross_light"
       }
     ]
   },
@@ -197,7 +198,7 @@
       { "id": "fragments", "kind": "collect", "target": 3, "scene": "Gather the lore fragments of the First Ones." },
       { "id": "archivists", "kind": "learn", "target": 1, "scene": "The Archivists decode the first fragments." },
       { "id": "primordial", "kind": "discover", "target": 1, "scene": "The Primordial City stands at the center of the continent." },
-      { "id": "approach", "kind": "visit", "target": 1, "scene": "The approaches to the Primordial City." },
+      { "id": "approach", "kind": "visit", "target": 1, "place": "approach_light", "scene": "The approaches to the Primordial City." },
       { "id": "keepers", "kind": "capture", "target": 1, "scene": "Fight the high Keepers on the approaches." },
       { "id": "access_mark", "kind": "deliver", "target": 1, "scene": "Carry the access mark into the approaches." },
       { "id": "other_side_rumor", "kind": "investigate", "target": 1, "scene": "Records of the other side, not yet understood." },
@@ -219,7 +220,7 @@
       { "id": "fragments", "kind": "collect", "target": 3, "scene": "Gather the lore fragments of the First Ones." },
       { "id": "ash_keepers", "kind": "learn", "target": 1, "scene": "The Ash Keepers decode the first fragments." },
       { "id": "primordial", "kind": "discover", "target": 1, "scene": "The Primordial City stands at the center of the continent." },
-      { "id": "approach", "kind": "visit", "target": 1, "scene": "The approaches to the Primordial City." },
+      { "id": "approach", "kind": "visit", "target": 1, "place": "approach_dark", "scene": "The approaches to the Primordial City." },
       { "id": "keepers", "kind": "capture", "target": 1, "scene": "Fight the high Keepers on the approaches." },
       { "id": "access_mark", "kind": "hack", "target": 1, "scene": "Take the access mark from a Keeper lock." },
       { "id": "other_side_rumor", "kind": "investigate", "target": 1, "scene": "Records of the other side, not yet understood." }
@@ -236,10 +237,10 @@
     "levelMax": 50,
     "hub": "fort_humans",
     "objectives": [
-      { "id": "enter_city", "kind": "visit", "target": 1, "scene": "Enter the Primordial City." },
-      { "id": "outer_ring", "kind": "visit", "target": 2, "scene": "The outer ring of the Primordial City." },
-      { "id": "middle_ring", "kind": "visit", "target": 3, "scene": "The middle ring of the Primordial City." },
-      { "id": "inner_ring", "kind": "visit", "target": 4, "scene": "The inner ring of the Primordial City." },
+      { "id": "enter_city", "kind": "visit", "target": 1, "place": "primordial_city", "scene": "Enter the Primordial City." },
+      { "id": "outer_ring", "kind": "visit", "target": 1, "place": "primordial_outer", "scene": "The outer ring of the Primordial City." },
+      { "id": "middle_ring", "kind": "visit", "target": 1, "place": "primordial_middle", "scene": "The middle ring of the Primordial City." },
+      { "id": "inner_ring", "kind": "visit", "target": 1, "place": "primordial_inner", "scene": "The inner ring of the Primordial City." },
       { "id": "archive", "kind": "lore", "target": 1, "scene": "The Archive. Read the records of the First Ones." },
       { "id": "shutdown", "kind": "hack", "target": 1, "scene": "Shutdown. Start the mechanism that drops the Barrier." },
       { "id": "other_side", "kind": "talk", "target": 1, "scene": "The other side. The dark side is not a myth." },
@@ -258,10 +259,10 @@
     "levelMax": 50,
     "hub": "obsidian_tower",
     "objectives": [
-      { "id": "enter_city", "kind": "visit", "target": 1, "scene": "Enter the Primordial City." },
-      { "id": "outer_ring", "kind": "visit", "target": 2, "scene": "The outer ring of the Primordial City." },
-      { "id": "middle_ring", "kind": "visit", "target": 3, "scene": "The middle ring of the Primordial City." },
-      { "id": "inner_ring", "kind": "visit", "target": 4, "scene": "The inner ring of the Primordial City." },
+      { "id": "enter_city", "kind": "visit", "target": 1, "place": "primordial_city", "scene": "Enter the Primordial City." },
+      { "id": "outer_ring", "kind": "visit", "target": 1, "place": "primordial_outer", "scene": "The outer ring of the Primordial City." },
+      { "id": "middle_ring", "kind": "visit", "target": 1, "place": "primordial_middle", "scene": "The middle ring of the Primordial City." },
+      { "id": "inner_ring", "kind": "visit", "target": 1, "place": "primordial_inner", "scene": "The inner ring of the Primordial City." },
       { "id": "archive", "kind": "lore", "target": 1, "scene": "The Archive. Read the records of the First Ones." },
       { "id": "shutdown", "kind": "hack", "target": 1, "scene": "Shutdown. Start the mechanism that drops the Barrier." },
       { "id": "other_side", "kind": "talk", "target": 1, "scene": "The other side. The light side is not a myth." },

@@ -47,7 +47,8 @@ export interface LivePorts {
     },
   ): void;
   leaveDungeon(characterId: string): void;
-  note(characterId: string, kind: QuestObjectiveKind): Promise<void>;
+  note(characterId: string, kind: QuestObjectiveKind, subject?: string): Promise<void>;
+  applyChoice(characterId: string, questId: string | undefined, choiceId: string): Promise<boolean>;
   placeQuest(characterId: string, questId: string): Promise<void>;
   loadBuild(characterId: string): Promise<BuildState>;
   relicGrade(characterId: string): Promise<GradeId>;
@@ -87,6 +88,7 @@ const LIVE_ACTIONS = new Set([
   'mail',
   'title_grant',
   'encounter',
+  'dialogue',
 ]);
 
 export function isLiveAction(action: string): boolean {
@@ -141,6 +143,8 @@ export async function runLive(
       return title(body, ports);
     case 'encounter':
       return encounter(body, ports);
+    case 'dialogue':
+      return dialogue(body, ports);
     default:
       return { ok: false, code: 'unknown' };
   }
@@ -564,6 +568,19 @@ async function title(body: Record<string, unknown>, ports: LivePorts): Promise<L
     return { ok: false, code: granted.code };
   }
   return { ok: true, value: granted.value };
+}
+
+async function dialogue(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const choiceId = text(body, 'choiceId');
+  if (characterId === undefined || choiceId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  const stored = await ports.applyChoice(characterId, text(body, 'questId'), choiceId);
+  if (!stored) {
+    return { ok: false, code: 'inactive' };
+  }
+  return { ok: true, value: { choiceId, questId: text(body, 'questId') ?? null } };
 }
 
 async function encounter(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

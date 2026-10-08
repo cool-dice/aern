@@ -261,6 +261,15 @@ describe('loadCatalog', () => {
       levelMax: 50,
       hub: 'obsidian_tower',
     });
+    const rings = catalog.quests
+      .find((quest) => quest.id === 'act3_light')
+      ?.objectives.filter((objective) => objective.kind === 'visit');
+    expect(rings?.map((objective) => [objective.id, objective.place, objective.target])).toEqual([
+      ['enter_city', 'primordial_city', 1],
+      ['outer_ring', 'primordial_outer', 1],
+      ['middle_ring', 'primordial_middle', 1],
+      ['inner_ring', 'primordial_inner', 1],
+    ]);
     const scenes = catalog.quests.flatMap((quest) => quest.objectives.map((objective) => objective.scene ?? ''));
     for (const phrase of [
       'Barrier',

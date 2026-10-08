@@ -255,6 +255,7 @@ export {
   abandon,
   failExpired,
   recordChoice,
+  branchScene,
   setWorldFlagOnce,
 } from './quests';
 export type {

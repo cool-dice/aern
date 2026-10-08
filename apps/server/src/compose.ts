@@ -41,7 +41,8 @@ import { createBus } from './shared/bus';
 import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
 import { OBSERVATION_LENGTH, utilityAction } from '@rift/domain/ai';
-import { setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
+import { NODES } from '@rift/domain/gathering';
+import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import { nnUsed, type BuildState } from '@rift/domain/build';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { newEconomyCharacter } from './modules/economy/repository';
@@ -284,7 +285,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
 
   let simWorld = emptyWorld(clock.now());
 
-  function applyLife(characterId: string, kind: QuestObjectiveKind): void {
+  function applyLife(characterId: string, kind: QuestObjectiveKind, subject?: string): void {
     let barrierDown = simWorld.barrierDown === true;
     let primordialOpened = simWorld.primordialOpened === true;
     const entities = simWorld.entities.map((entity) => {
@@ -292,7 +293,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         return entity;
       }
       const before = entity.quests;
-      const next = onObjective({ progress: entity.progress, quests: entity.quests }, kind);
+      const next = onObjective({ progress: entity.progress, quests: entity.quests }, kind, subject);
       const settled = settleStoryBeats({ ...entity, progress: next.progress, quests: next.quests }, before);
       barrierDown = barrierDown || settled.barrierDown;
       primordialOpened = primordialOpened || settled.primordialOpened;
@@ -327,47 +328,80 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (finished.has('outer_ring')) {
       flags = setWorldFlagOnce(flags, 'primordialOpened');
     }
-    if (!flags.primordialOpened) {
-      return { entity, barrierDown: flags.barrierDown, primordialOpened: flags.primordialOpened };
-    }
-    const site = catalog.world.sites?.find((row) => row.id === 'primordial_outer');
-    const placed: SimEntity = {
-      ...entity,
-      nodeId: 'primordial_outer',
-      ...(site !== undefined ? { cell: { x: site.x, y: site.y } } : {}),
-    };
-    delete placed.dungeonId;
-    delete placed.roomId;
-    delete placed.dungeonRooms;
-    delete placed.dungeonEdges;
-    return { entity: placed, barrierDown: flags.barrierDown, primordialOpened: flags.primordialOpened };
+    return { entity, barrierDown: flags.barrierDown, primordialOpened: flags.primordialOpened };
   }
 
-  async function reportKind(characterId: string, kind: QuestObjectiveKind): Promise<void> {
+  async function reportKind(characterId: string, kind: QuestObjectiveKind, subject?: string): Promise<void> {
     const rows = await repos.quests.list(characterId);
     for (const row of rows) {
       if (row.progress.status !== 'active') {
         continue;
       }
       for (const objective of row.progress.objectives) {
-        if (objective.kind === kind && objective.current < objective.target) {
-          await quest.service.report(characterId, row.progress.questId, objective.id, 1);
+        if (objective.kind !== kind || objective.current >= objective.target) {
+          continue;
         }
+        if (objective.subject !== undefined && objective.subject !== subject) {
+          continue;
+        }
+        await quest.service.report(characterId, row.progress.questId, objective.id, 1);
       }
     }
   }
 
-  async function note(characterId: string, kind: QuestObjectiveKind): Promise<void> {
-    applyLife(characterId, kind);
-    await reportKind(characterId, kind);
+  async function note(characterId: string, kind: QuestObjectiveKind, subject?: string): Promise<void> {
+    applyLife(characterId, kind, subject);
+    await reportKind(characterId, kind, subject);
+  }
+
+  async function applyChoice(characterId: string, questId: string | undefined, choiceId: string): Promise<boolean> {
+    let found = false;
+    const entities = simWorld.entities.map((entity) => {
+      if (entity.id !== characterId || entity.quests === undefined) {
+        return entity;
+      }
+      const quests = entity.quests.map((quest) => {
+        if (quest.status !== 'active') {
+          return quest;
+        }
+        if (questId !== undefined && quest.questId !== questId) {
+          return quest;
+        }
+        if (questId === undefined && !quest.story) {
+          return quest;
+        }
+        found = true;
+        return recordChoice(quest, choiceId);
+      });
+      return { ...entity, quests };
+    });
+    if (!found) {
+      return false;
+    }
+    simWorld = { ...simWorld, entities };
+    const rows = await repos.quests.list(characterId);
+    for (const row of rows) {
+      if (row.progress.status !== 'active') {
+        continue;
+      }
+      if (questId !== undefined && row.progress.questId !== questId) {
+        continue;
+      }
+      if (questId === undefined && !row.progress.story) {
+        continue;
+      }
+      await repos.quests.save({ ...row, progress: recordChoice(row.progress, choiceId) });
+    }
+    return true;
   }
 
   bus.on('gather.completed', (event) => {
-    void note(event.characterId, 'gather');
-    void note(event.characterId, 'collect');
+    const gathered = event.nodeId in NODES ? NODES[event.nodeId as keyof typeof NODES].resource : null;
+    void note(event.characterId, 'gather', gathered ?? event.nodeId);
+    void note(event.characterId, 'collect', gathered ?? event.nodeId);
   });
   bus.on('item.crafted', (event) => {
-    void note(event.characterId, 'craft');
+    void note(event.characterId, 'craft', event.itemId);
   });
   bus.on('hack.opened', (event) => {
     void note(event.characterId, 'hack');
@@ -458,6 +492,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       };
     },
     note,
+    applyChoice,
     async loadBuild(characterId) {
       return buildOf(characterId);
     },
@@ -616,6 +651,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
     const beforeCorpses = new Set(simWorld.corpses.map((corpse) => corpse.victimId));
     const beforeHp = new Map(simWorld.entities.map((entity) => [entity.id, entity.hp]));
+    const monsterOf = new Map(
+      simWorld.entities.flatMap((entity) =>
+        entity.monsterId === undefined ? [] : [[entity.id, entity.monsterId] as const],
+      ),
+    );
     const eventFields = {
       seasonSpawn: simWorld.seasonSpawn,
       holidayCraft: simWorld.holidayCraft,
@@ -634,7 +674,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       clearDroppedKit(corpse.victimId);
       const killer = simWorld.entities.find((entity) => entity.id === corpse.killerId);
       if (killer !== undefined && killer.monsterId === undefined) {
-        void reportKind(killer.id, 'kill');
+        void reportKind(killer.id, 'kill', monsterOf.get(corpse.victimId));
         if (corpse.victimId.includes(':elite') || corpse.victimId.includes('keeper')) {
           void note(killer.id, 'capture');
         }
@@ -969,12 +1009,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return (entity.quests ?? []).map((quest) => ({
       id: quest.questId,
       story: quest.story,
+      choiceId: quest.choiceId ?? null,
       objectives: quest.objectives.map((objective) => ({
         id: objective.id,
         kind: objective.kind,
         target: objective.target,
         current: objective.current,
-        ...(objective.scene !== undefined ? { scene: objective.scene } : {}),
+        ...(objective.subject !== undefined ? { subject: objective.subject } : {}),
+        ...(branchScene(quest, objective) !== undefined ? { scene: branchScene(quest, objective) } : {}),
       })),
     }));
   }
@@ -1462,6 +1504,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/mail', action: 'mail' },
   { path: '/titles', action: 'title_grant' },
   { path: '/encounter', action: 'encounter' },
+  { path: '/dialogue', action: 'dialogue' },
 ];
 
 function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
