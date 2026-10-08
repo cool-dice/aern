@@ -323,6 +323,17 @@ export function createEconomyService(repository: EconomyRepository): EconomyServ
       return { guild: tax.guild, void: tax.void };
     },
 
+    recordAuctionTax(input) {
+      if (!Number.isInteger(input.amount) || input.amount <= 0) {
+        return;
+      }
+      if (input.sink === 'guild') {
+        tax.guild += input.amount;
+        return;
+      }
+      tax.void += input.amount;
+    },
+
     balance(characterId) {
       return repository.getCharacter(characterId)?.gold ?? null;
     },

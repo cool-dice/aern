@@ -111,6 +111,8 @@ export interface EconomyService {
   auctionLot(lotId: string): AuctionLot | null;
   /** Gold already sent to the guild bank or the neutral sink. */
   taxLedger(): { guild: number; void: number };
+  /** Record the 5% from a live buyout. The guild bank credit is separate. */
+  recordAuctionTax(input: { amount: number; sink: 'guild' | 'void' }): void;
   /** Character wallet. Guild create and auction settlement debit this gold. */
   balance(characterId: string): number | null;
 }
