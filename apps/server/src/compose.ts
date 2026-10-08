@@ -37,6 +37,7 @@ import { createBus } from './shared/bus';
 import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
 import { toSimCommand } from './sim/commands';
+import { onCraft, onGather, onVisit } from './sim/progress';
 import { prototypeEncounter } from './sim/population';
 import { stepTick, type SimCommand, type SimWorld } from './sim/tick';
 import { renderMetrics, type MetricsSnapshot } from './metrics';
@@ -235,6 +236,27 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   }
 
   let simWorld = emptyWorld(clock.now());
+
+  function applyLife(characterId: string, kind: 'gather' | 'craft' | 'visit'): void {
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) => {
+        if (entity.id !== characterId || entity.progress === undefined || entity.quests === undefined) {
+          return entity;
+        }
+        const state = { progress: entity.progress, quests: entity.quests };
+        const next = kind === 'gather' ? onGather(state) : kind === 'craft' ? onCraft(state) : onVisit(state);
+        return { ...entity, progress: next.progress, quests: next.quests };
+      }),
+    };
+  }
+
+  bus.on('gather.completed', (event) => {
+    applyLife(event.characterId, 'gather');
+  });
+  bus.on('item.crafted', (event) => {
+    applyLife(event.characterId, 'craft');
+  });
   const pending: ClientCommand[] = [];
   let rejectedTotal = 0;
   const rng = mulberry32(1);
@@ -284,6 +306,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ...simWorld,
       entities: [...simWorld.entities, ...arrived],
     };
+    applyLife(playerId, 'visit');
   }
 
   return {
