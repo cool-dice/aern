@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import type { Appearance } from '@rift/domain/character';
 import { DAY_MS, EPOCH_MS, seasonAt, seasonSpawnTag, spawnMultiplier } from '@rift/domain/events';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
@@ -1033,4 +1034,63 @@ test('cities block attacks until war or an invasion wave, and disconnect removes
   expect(left.self).toMatchObject({ id: 'lia', phase: 'offline' });
   expect(left.corpses.some((corpse) => corpse.victimId === 'lia')).toBe(false);
   expect(graph.social.repository.character('lia')).toBeNull();
+});
+
+test('boot restores guild membership from the guild table and the hold uses it', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  expect(composeSource.includes('restoreGuilds(')).toBe(true);
+  expect(composeSource.includes('listGuilds(')).toBe(true);
+  const db = memoryDb();
+  const url = 'postgresql://rift@127.0.0.1:5432/rift';
+  const first = compose({ nowMs: 0, jwtSecret: 'test-secret', databaseUrl: url, db });
+  await first.hydrate();
+  first.enterCharacter('account-lia', 'lia');
+  const created = await first.act('guild_create', {
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'lia', level: 5 },
+      { id: 'm1', level: 5 },
+      { id: 'm2', level: 5 },
+      { id: 'm3', level: 5 },
+    ],
+  });
+  expect(created.ok).toBe(true);
+  const guildId = (created.value as { guildId: string }).guildId;
+  first.tickOnce();
+  await first.flush();
+
+  const snap = await db.storage.findUnique({ where: { id: 'world:sim' } });
+  const blob = snap?.items as { world?: { entities?: { id: string; guildId?: string; monsterId?: string }[] } };
+  const lia = blob.world?.entities?.find((entity) => entity.id === 'lia');
+  expect(lia?.guildId).toBe(guildId);
+  if (lia !== undefined) {
+    lia.guildId = 'stale';
+  }
+  await db.storage.upsert({
+    where: { id: 'world:sim' },
+    create: { id: 'world:sim', ownerId: 'world', items: blob, gold: 0, slots: 0 },
+    update: { items: blob },
+  });
+
+  const second = compose({ nowMs: 0, jwtSecret: 'test-secret', databaseUrl: url, db });
+  await second.hydrate();
+  const restored = second.state() as { players: { id: string; guildId: string | null }[] };
+  expect(restored.players.find((player) => player.id === 'lia')?.guildId).toBe(guildId);
+  second.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  await second.guild.repository.saveWar({
+    id: 'war-fort',
+    attackerGuildId: guildId,
+    cityId: 'fort_humans',
+    startsAtMs: 0,
+    gold: 0,
+    resources: 0,
+  });
+  second.tickOnce();
+  second.tickOnce();
+  const held = second.state() as { captures: { cityId: string; guildId: string | null; heldMs: number }[] };
+  expect(held.captures[0]).toMatchObject({ cityId: 'fort_humans', guildId, heldMs: 100 });
 });

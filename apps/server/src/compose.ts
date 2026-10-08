@@ -1410,6 +1410,39 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     for (const war of wars) {
       openWars.push(war);
     }
+    await restoreGuilds();
+  }
+
+  async function restoreGuilds(): Promise<void> {
+    const guilds = await repos.guilds.listGuilds();
+    const memberGuild = new Map<string, string>();
+    for (const guild of guilds) {
+      for (const memberId of guild.memberIds) {
+        memberGuild.set(memberId, guild.id);
+      }
+    }
+    guildOf.clear();
+    for (const [memberId, guildId] of memberGuild) {
+      guildOf.set(memberId, guildId);
+    }
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) => {
+        if (entity.monsterId !== undefined) {
+          return entity;
+        }
+        const guildId = memberGuild.get(entity.id);
+        if (guildId === undefined) {
+          if (entity.guildId === undefined) {
+            return entity;
+          }
+          const next = { ...entity };
+          delete next.guildId;
+          return next;
+        }
+        return { ...entity, guildId };
+      }),
+    };
   }
 
   function topUpSeasonSpawns(budget: number, tag: string): void {
