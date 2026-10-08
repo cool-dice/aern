@@ -415,6 +415,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const cheatStrikes = new Map<string, number[]>();
   const cheatRepeat = new Set<string>();
   const purifyingIds = new Set<string>();
+  /** Deposits and reads posted to a coalition. There is still no shared balance. */
+  const coalitionLedger = new Map<
+    string,
+    { op: 'deposit' | 'read'; characterId: string; guildId: string; amount: number | null; atMs: number }[]
+  >();
   const accountByCharacter = new Map<string, string>();
   let playerReports: {
     id: string;
@@ -3258,8 +3263,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   }
 
   /**
-   * Artifact 17 §9.2. A coalition has no shared bank. Members may post a deposit
-   * or a read; `coalitionBank` refuses both.
+   * Artifact 17 §9.2. A coalition has no shared bank, so `coalitionBank` stays `bank`
+   * and there is no balance to return. Members still post a deposit or a read.
+   * Those posts are the ledger. A read returns the rows.
    */
   function useCoalitionBank(
     body: Record<string, unknown>,
@@ -3277,11 +3283,33 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (pact === null) {
       return { ok: false, code: 'member' };
     }
+    const postedAmount = body.amount;
+    const amount =
+      op === 'deposit' &&
+      typeof postedAmount === 'number' &&
+      Number.isInteger(postedAmount) &&
+      postedAmount >= 0
+        ? postedAmount
+        : null;
+    const key = [...pact.guildIds].sort().join('|');
+    const rows = [
+      ...(coalitionLedger.get(key) ?? []),
+      { op, characterId, guildId, amount, atMs: clock.now() },
+    ];
+    coalitionLedger.set(key, rows);
     const bank = coalitionBank();
     if (!bank.ok) {
-      return { ok: false, code: bank.code, value: { op, guildId } };
+      return {
+        ok: false,
+        code: bank.code,
+        value: op === 'read' ? { op, guildId, rows } : { op, guildId },
+      };
     }
-    return { ok: false, code: 'bank', value: { op, guildId } };
+    return {
+      ok: false,
+      code: 'bank',
+      value: op === 'read' ? { op, guildId, rows } : { op, guildId },
+    };
   }
 
   function noteWarRoster(): void {
