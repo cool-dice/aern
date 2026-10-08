@@ -5,8 +5,8 @@ import type { NodeKind, WorldEdge, WorldNode } from '@rift/domain/world';
 import type { WorldRepository } from './modules/world/repository';
 import { parseClientCommand, type ClientCommand } from '@rift/protocol';
 import { mulberry32 } from '@rift/domain/rng';
-import { EQUIP_SLOTS, type EquipSlot } from '@rift/domain/items';
-import { STAT_IDS, type StatBlock } from '@rift/domain/stats';
+import { EQUIP_SLOTS, type EquipSlot, type GradeId } from '@rift/domain/items';
+import { STAT_IDS, derive, emptyPoints, type StatBlock } from '@rift/domain/stats';
 import type { Appearance, RaceId } from '@rift/domain/character';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { WebSocketServer } from 'ws';
@@ -42,6 +42,7 @@ import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
 import { OBSERVATION_LENGTH } from '@rift/domain/ai';
 import type { QuestObjectiveKind } from '@rift/domain/quests';
+import { nnUsed, type BuildState } from '@rift/domain/build';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { newEconomyCharacter } from './modules/economy/repository';
 import { observeEntity } from './modules/ai/observe';
@@ -353,6 +354,40 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     economy: economy.service,
     social: social.service,
     note,
+    async loadBuild(characterId) {
+      return buildOf(characterId);
+    },
+    async relicGrade(characterId) {
+      const record = await repos.characters.findById(characterId);
+      return record?.build?.relicGrade ?? 'common';
+    },
+    async saveBuild(characterId, state, relicGrade, echoIds) {
+      const record = await repos.characters.findById(characterId);
+      if (record === null) {
+        return;
+      }
+      await repos.characters.update({
+        ...record,
+        build: {
+          programs: state.programs.map((program) => ({ ...program })),
+          cores: state.cores.map((core) => ({ ...core })),
+          relicSocketFree: state.relicSocketFree,
+          relicGrade,
+          purifyingUntilMs: state.purifyingUntilMs,
+          echoIds: [...echoIds],
+        },
+      });
+    },
+    walletGold(characterId) {
+      return repos.economy.getCharacter(characterId)?.gold ?? 0;
+    },
+    setGold(characterId, gold) {
+      const current = repos.economy.getCharacter(characterId);
+      if (current === null) {
+        return;
+      }
+      repos.economy.saveCharacter({ ...current, gold });
+    },
     async placeQuest(characterId, questId) {
       const rows = await repos.quests.list(characterId);
       const row = rows.find(
@@ -615,6 +650,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         id: entity.id,
         xp: entity.progress?.xp ?? 0,
         level: entity.progress?.level ?? 1,
+        nn: entity.nn ?? 0,
+        nnLimit: entity.nnLimit ?? 0,
         quests: questRows(entity),
       })),
       mapNodes: graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
@@ -718,8 +755,46 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ...simWorld,
       entities: [...simWorld.entities, ...arrived],
     };
+    void applyStoredNeural(playerId);
     void note(playerId, 'visit');
     void note(playerId, 'discover');
+  }
+
+  async function buildOf(characterId: string): Promise<BuildState> {
+    const record = await repos.characters.findById(characterId);
+    const entity = simWorld.entities.find((row) => row.id === characterId);
+    const stored = record?.build ?? null;
+    return {
+      clean: record?.clean ?? false,
+      purifyingUntilMs: stored?.purifyingUntilMs ?? null,
+      level: Math.max(1, record?.level ?? entity?.progress?.level ?? 1),
+      will: record?.stats.will ?? 0,
+      programs: stored?.programs.map((program) => ({ ...program })) ?? [],
+      cores: stored?.cores.map((core) => ({ ...core })) ?? [],
+      relicSocketFree: stored?.relicSocketFree ?? 0,
+      inCityOrHub: true,
+      inCombat: entity?.inCombat === true,
+    };
+  }
+
+  function limitOf(state: BuildState): number {
+    const stats = emptyPoints();
+    stats.will = state.will;
+    return derive({ stats, level: state.level, totalWeightKg: 0 }).nnLimit;
+  }
+
+  async function applyStoredNeural(characterId: string): Promise<void> {
+    const record = await repos.characters.findById(characterId);
+    if (record?.build === undefined || record.build === null || record.build.programs.length === 0) {
+      return;
+    }
+    const state = await buildOf(characterId);
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) =>
+        entity.id === characterId ? { ...entity, nn: nnUsed(state), nnLimit: limitOf(state) } : entity,
+      ),
+    };
   }
 
   function creditGold(characterId: string, amount: number): void {

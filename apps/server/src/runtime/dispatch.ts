@@ -1,8 +1,11 @@
-import type { Program, BuildState } from '@rift/domain/build';
+import { nnUsed, type Program, type BuildState } from '@rift/domain/build';
 import { NODE_IDS, type NodeId, type ToolId, type ToolKind } from '@rift/domain/gathering';
 import type { KeeperKind } from '@rift/domain/hack';
+import type { GradeId } from '@rift/domain/items';
 import type { RelicState, RelicSubtype } from '@rift/domain/relics';
+import { socketCount } from '@rift/domain/relics';
 import type { QuestObjectiveKind } from '@rift/domain/quests';
+import { derive, emptyPoints } from '@rift/domain/stats';
 import { weatheredGatherSeconds } from '../sim/weather';
 import type { BuildService } from '../modules/build/service';
 import type { DungeonService } from '../modules/dungeon/types';
@@ -33,7 +36,12 @@ export interface LivePorts {
   social: SocialService;
   note(characterId: string, kind: QuestObjectiveKind): Promise<void>;
   placeQuest(characterId: string, questId: string): Promise<void>;
+  loadBuild(characterId: string): Promise<BuildState>;
+  relicGrade(characterId: string): Promise<GradeId>;
+  saveBuild(characterId: string, state: BuildState, relicGrade: GradeId, echoIds: string[]): Promise<void>;
   setNeural(characterId: string, nn: number, nnLimit: number): void;
+  walletGold(characterId: string): number;
+  setGold(characterId: string, gold: number): void;
   weatherSpeed(): number;
   seasonBonus(): boolean;
   addEncounter(monsterId: string): boolean;
@@ -190,20 +198,29 @@ async function relic(body: Record<string, unknown>, ports: LivePorts): Promise<L
     return { ok: false, code: 'invalid' };
   }
   const subtype = enumOf(text(body, 'subtype'), RELICS) ?? 'spore';
+  const grade = enumOf(text(body, 'grade'), GRADES) ?? 'common';
+  const state = await ports.loadBuild(characterId);
   const installed = ports.build.installRelic({
     characterId,
-    clean: body.clean === true,
-    inCombat: false,
-    inCityOrHub: true,
-    gold: numberOf(body.gold, 0),
+    clean: state.clean,
+    inCombat: state.inCombat,
+    inCityOrHub: state.inCityOrHub,
+    gold: ports.walletGold(characterId),
     subtype,
     nowMs: ports.now(),
-    relic: relicOf(subtype),
+    relic: relicOf(subtype, grade),
   });
   if (!installed.ok) {
     return { ok: false, code: installed.code };
   }
-  return { ok: true, value: { gold: installed.value.gold, readyAtMs: installed.value.readyAtMs } };
+  const echoes = state.programs.filter((program) => program.kind === 'echo').length;
+  const next = { ...state, relicSocketFree: Math.max(0, socketCount(grade) - echoes) };
+  ports.setGold(characterId, installed.value.gold);
+  await ports.saveBuild(characterId, next, grade, installed.value.relic.echoIds);
+  return {
+    ok: true,
+    value: { gold: installed.value.gold, readyAtMs: installed.value.readyAtMs, sockets: next.relicSocketFree },
+  };
 }
 
 async function echo(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
@@ -211,18 +228,30 @@ async function echo(body: Record<string, unknown>, ports: LivePorts): Promise<Li
   if (characterId === undefined) {
     return { ok: false, code: 'invalid' };
   }
+  const state = await ports.loadBuild(characterId);
   const installed = ports.build.installEcho({
     characterId,
-    state: buildState(body),
-    program: programOf('echo', text(body, 'templateId') ?? 'memory'),
+    state,
+    program: programOf('echo', text(body, 'templateId') ?? 'memory', gradeOf(body)),
   });
   if (!installed.ok) {
     return { ok: false, code: installed.code };
   }
-  if (installed.value.neuroshock) {
-    ports.setNeural(characterId, 11, 10);
-  }
-  return { ok: true, value: { neuroshock: installed.value.neuroshock } };
+  rememberNeural(characterId, installed.value.state, ports);
+  await ports.saveBuild(
+    characterId,
+    installed.value.state,
+    await ports.relicGrade(characterId),
+    echoIdsOf(installed.value.state),
+  );
+  return {
+    ok: true,
+    value: {
+      neuroshock: installed.value.neuroshock,
+      programs: installed.value.state.programs.length,
+      sockets: installed.value.state.relicSocketFree,
+    },
+  };
 }
 
 async function path(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
@@ -230,17 +259,33 @@ async function path(body: Record<string, unknown>, ports: LivePorts): Promise<Li
   if (characterId === undefined) {
     return { ok: false, code: 'invalid' };
   }
+  const state = await ports.loadBuild(characterId);
   const learned = ports.build.learnPath({
     characterId,
-    state: buildState(body),
-    program: programOf('path', text(body, 'templateId') ?? 'ward'),
-    gold: numberOf(body.gold, 100),
+    state,
+    program: programOf('path', text(body, 'templateId') ?? 'ward', gradeOf(body)),
+    gold: ports.walletGold(characterId),
     nowMs: ports.now(),
   });
   if (!learned.ok) {
     return { ok: false, code: learned.code };
   }
-  return { ok: true, value: { gold: learned.value.gold, readyAtMs: learned.value.readyAtMs } };
+  ports.setGold(characterId, learned.value.gold);
+  rememberNeural(characterId, learned.value.state, ports);
+  await ports.saveBuild(
+    characterId,
+    learned.value.state,
+    await ports.relicGrade(characterId),
+    echoIdsOf(learned.value.state),
+  );
+  return {
+    ok: true,
+    value: {
+      gold: learned.value.gold,
+      readyAtMs: learned.value.readyAtMs,
+      programs: learned.value.state.programs.length,
+    },
+  };
 }
 
 async function core(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
@@ -248,15 +293,27 @@ async function core(body: Record<string, unknown>, ports: LivePorts): Promise<Li
   if (characterId === undefined) {
     return { ok: false, code: 'invalid' };
   }
+  const state = await ports.loadBuild(characterId);
   const equipped = ports.build.equipCore({
     characterId,
-    state: buildState({ ...body, withCore: false }),
-    core: { templateId: text(body, 'templateId') ?? 'heart', grade: 1, implant: false },
-    gold: numberOf(body.gold, 0),
+    state,
+    core: {
+      templateId: text(body, 'templateId') ?? 'heart',
+      grade: coreGrade(body),
+      implant: body.implant === true,
+    },
+    gold: ports.walletGold(characterId),
   });
   if (!equipped.ok) {
     return { ok: false, code: equipped.code };
   }
+  rememberNeural(characterId, equipped.value, ports);
+  await ports.saveBuild(
+    characterId,
+    equipped.value,
+    await ports.relicGrade(characterId),
+    echoIdsOf(equipped.value),
+  );
   return { ok: true, value: { cores: equipped.value.cores.length } };
 }
 
@@ -397,10 +454,12 @@ async function encounter(body: Record<string, unknown>, ports: LivePorts): Promi
   return { ok: true, value: { monsterId } };
 }
 
-function relicOf(subtype: RelicSubtype): RelicState {
+const GRADES = ['common', 'rare', 'epic', 'unique'] as const;
+
+function relicOf(subtype: RelicSubtype, grade: GradeId): RelicState {
   return {
     subtype,
-    grade: 'common',
+    grade,
     durability: 100,
     fed: true,
     onlineWornMs: 0,
@@ -409,23 +468,38 @@ function relicOf(subtype: RelicSubtype): RelicState {
   };
 }
 
-function programOf(kind: 'echo' | 'path', templateId: string): Program {
-  return { templateId, grade: 1, kind, forgetting: 0, idleMs: 0 };
+function programOf(kind: 'echo' | 'path', templateId: string, grade: 1 | 2 | 3): Program {
+  return { templateId, grade, kind, forgetting: 0, idleMs: 0 };
 }
 
-function buildState(body: Record<string, unknown>): BuildState {
-  const withCore = body.withCore !== false;
-  return {
-    clean: body.clean === true,
-    purifyingUntilMs: null,
-    level: numberOf(body.level, 1),
-    will: numberOf(body.will, 10),
-    programs: [],
-    cores: withCore ? [] : [],
-    relicSocketFree: 1,
-    inCityOrHub: true,
-    inCombat: false,
-  };
+function gradeOf(body: Record<string, unknown>): 1 | 2 | 3 {
+  const grade = numberOf(body.grade, 1);
+  if (grade === 2 || grade === 3) {
+    return grade;
+  }
+  return 1;
+}
+
+function coreGrade(body: Record<string, unknown>): 1 | 2 | 3 | 4 | 5 {
+  const grade = numberOf(body.grade, 1);
+  if (grade === 2 || grade === 3 || grade === 4 || grade === 5) {
+    return grade;
+  }
+  return 1;
+}
+
+function echoIdsOf(state: BuildState): string[] {
+  return state.programs.filter((program) => program.kind === 'echo').map((program) => program.templateId);
+}
+
+function neuralLimit(state: BuildState): number {
+  const stats = emptyPoints();
+  stats.will = state.will;
+  return derive({ stats, level: state.level, totalWeightKg: 0 }).nnLimit;
+}
+
+function rememberNeural(characterId: string, state: BuildState, ports: LivePorts): void {
+  ports.setNeural(characterId, nnUsed(state), neuralLimit(state));
 }
 
 function text(body: Record<string, unknown>, key: string): string | undefined {

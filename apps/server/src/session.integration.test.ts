@@ -284,6 +284,65 @@ test('death drops the inventory kit and the client respawn command restores the 
   }
 });
 
+test('relic sockets and echo slots persist, and path load can shock the character', async () => {
+  const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  const created = await graph.character.service.create({
+    accountId: 'account-nia',
+    controller: 'player',
+    name: 'Nia',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  await graph.character.service.grantXp(characterId, 200_000);
+  graph.enterCharacter('account-nia', characterId);
+  const relic = await graph.act('relic_install', {
+    characterId,
+    subtype: 'culture',
+    grade: 'rare',
+  });
+  expect(relic).toMatchObject({ ok: true, value: { sockets: 2 } });
+  const first = await graph.act('echo_install', { characterId, templateId: 'memory', grade: 1 });
+  const second = await graph.act('echo_install', { characterId, templateId: 'second', grade: 1 });
+  const third = await graph.act('echo_install', { characterId, templateId: 'third', grade: 1 });
+  expect(first.ok).toBe(true);
+  expect(second.ok).toBe(true);
+  expect(third).toMatchObject({ ok: false, code: 'sockets' });
+
+  const clean = await graph.character.service.create({
+    accountId: 'account-cara',
+    controller: 'player',
+    name: 'Cara',
+    clean: true,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(clean.ok).toBe(true);
+  if (!clean.ok) {
+    return;
+  }
+  await graph.character.service.grantXp(clean.value.characterId, 200_000);
+  graph.enterCharacter('account-cara', clean.value.characterId);
+  for (const templateId of ['ward', 'step', 'veil', 'mark', 'oath']) {
+    const learned = await graph.act('path_learn', {
+      characterId: clean.value.characterId,
+      templateId,
+      grade: 3,
+    });
+    expect(learned.ok).toBe(true);
+  }
+  const viewed = graph.state() as {
+    players: { id: string; nn: number; nnLimit: number }[];
+  };
+  const cara = viewed.players.find((player) => player.id === clean.value.characterId);
+  expect(cara?.nn).toBeGreaterThan(cara?.nnLimit ?? 0);
+});
+
 test('season spawns use the live snapshot multiplier and tag', () => {
   const nowMs = EPOCH_MS + 84 * DAY_MS;
   const season = seasonAt(nowMs);
