@@ -182,6 +182,7 @@ export interface LivePorts {
   recoverPath(body: Record<string, unknown>): Promise<LiveResult>;
   breakPurity(body: Record<string, unknown>): Promise<LiveResult>;
   openLiveChest(body: Record<string, unknown>): LiveResult;
+  buyNpc(body: Record<string, unknown>): LiveResult;
   setNeural(characterId: string, nn: number, nnLimit: number): void;
   walletGold(characterId: string): number;
   setGold(characterId: string, gold: number): void;
@@ -269,6 +270,7 @@ const LIVE_ACTIONS = new Set([
   'path_recover',
   'purity_break',
   'chest_open',
+  'npc_buy',
   'node_strike',
   'coalition_say',
 ]);
@@ -427,6 +429,8 @@ export async function runLive(
       return ports.breakPurity(body);
     case 'chest_open':
       return ports.openLiveChest(body);
+    case 'npc_buy':
+      return ports.buyNpc(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':

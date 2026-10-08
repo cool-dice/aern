@@ -41,6 +41,7 @@ import {
   postUnequipCore,
   postBreakClean,
   postOpenChest,
+  postBuyNpc,
   readBankLog,
   registerContender,
   renewPact,
@@ -774,6 +775,18 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onBuyNpc={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postBuyNpc({
+                server: SERVER,
+                characterId,
+                itemId: 'rusty_sword',
                 store: plan.store,
               });
             }}

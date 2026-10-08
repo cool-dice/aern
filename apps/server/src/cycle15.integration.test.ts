@@ -577,3 +577,49 @@ test('a rare chest spends one key and an epic chest spends two', async () => {
   expect(epicValue.stacks).toContainEqual({ itemId: 'unique_component', qty: 1 });
   expect(graph.heldItemQty(characterId, 'unique_component')).toBe(1);
 });
+
+test('buyFromNpc runs from the live route', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const buy = composeSource.slice(composeSource.indexOf('function buyNpc'), composeSource.indexOf('function regionLevelOf'));
+  expect(buy.includes('buyFromNpc(')).toBe(true);
+  expect(dispatch.includes('buyNpc(')).toBe(true);
+  expect(app.includes('postBuyNpc(')).toBe(true);
+});
+
+test('an npc sale uses the catalog grade and refuses a unique', async () => {
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-buyer',
+    controller: 'player',
+    name: 'Buyer',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  graph.seedTrader({ characterId, gold: 1 });
+  expect(await graph.act('npc_buy', { characterId, itemId: 'rusty_sword', price: 1, level: 50 })).toMatchObject({
+    ok: false,
+    code: 'gold',
+  });
+  expect(graph.economy.service.balance(characterId)).toBe(1);
+  graph.creditGold(characterId, 1);
+  expect(await graph.act('npc_buy', { characterId, itemId: 'rusty_sword', price: 1 })).toMatchObject({
+    ok: true,
+    value: { gold: 0, price: 2, itemId: 'rusty_sword' },
+  });
+  expect(graph.heldItemQty(characterId, 'rusty_sword')).toBe(1);
+  graph.creditGold(characterId, 100);
+  expect(await graph.act('npc_buy', { characterId, itemId: 'rift_blade' })).toMatchObject({
+    ok: false,
+    code: 'unique',
+  });
+  expect(graph.economy.service.balance(characterId)).toBe(100);
+  expect(graph.heldItemQty(characterId, 'rift_blade')).toBe(0);
+});

@@ -576,6 +576,24 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/npc/buy`. The server prices the catalog row; the request carries no price. */
+export async function postBuyNpc(input: {
+  server: string;
+  characterId: string;
+  itemId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/npc/buy',
+    body: { characterId: input.characterId, itemId: input.itemId },
+    store: input.store,
+    log: 'npc-buy',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/chest`. Common needs no key, rare needs one, epic needs two. */
 export async function postOpenChest(input: {
   server: string;

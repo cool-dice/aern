@@ -87,6 +87,7 @@ export function PlayPanels({
   onUnequipCore,
   onBreakClean,
   onOpenChest,
+  onBuyNpc,
   onVote,
   onChoice,
   onEmblem,
@@ -131,6 +132,7 @@ export function PlayPanels({
   onUnequipCore?: () => void;
   onBreakClean?: () => void;
   onOpenChest?: () => void;
+  onBuyNpc?: () => void;
   onVote?: () => void;
   onChoice?: () => void;
   onEmblem?: () => void;
@@ -260,6 +262,9 @@ export function PlayPanels({
         </button>
         <button type="button" data-coalition="read" onClick={() => onCoalitionRead?.()}>
           read
+        </button>
+        <button type="button" data-npc="buy" onClick={() => onBuyNpc?.()}>
+          buy
         </button>
         <button type="button" data-chest="open" onClick={() => onOpenChest?.()}>
           chest

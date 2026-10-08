@@ -75,6 +75,7 @@ import {
   askHostilePortal,
   isCityService,
   ownedCrossingFee,
+  buyFromNpc,
   deposit,
   rentStorage,
   serviceCut,
@@ -959,6 +960,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     recoverPath,
     breakPurity,
     openLiveChest,
+    buyNpc,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -3909,6 +3911,50 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return hash >>> 0;
   }
 
+  /**
+   * Artifact 13. NPC price is 3/2 of the catalog base. A unique is refused.
+   * Catalog rows name a grade and no item level, so the level passed here is 1.
+   * A price on the request is ignored.
+   */
+  function buyNpc(body: Record<string, unknown>): { ok: boolean; code?: string; value?: unknown } {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const itemId = typeof body.itemId === 'string' ? body.itemId : '';
+    if (characterId.length === 0 || itemId.length === 0) {
+      return { ok: false, code: 'item' };
+    }
+    const item = catalog.items.find((row) => row.id === itemId);
+    if (item?.grade === undefined) {
+      return { ok: false, code: 'item' };
+    }
+    const unique = item.grade === 'unique' || item.uniqueProfile !== undefined;
+    const quoted = buyFromNpc(1, item.grade, unique);
+    if (!quoted.ok) {
+      return { ok: false, code: quoted.code };
+    }
+    const wallet =
+      repos.economy.getCharacter(characterId) ??
+      newEconomyCharacter({ characterId, side: 'light', gold: 0 });
+    if (wallet.gold < quoted.value) {
+      return { ok: false, code: 'gold' };
+    }
+    const items = { ...wallet.items };
+    const existing = items[itemId];
+    items[itemId] =
+      existing === undefined
+        ? {
+            itemId,
+            level: 1,
+            grade: item.grade,
+            unique,
+            durability: STARTING_DURABILITY,
+            qty: 1,
+          }
+        : { ...existing, qty: existing.qty + 1 };
+    const gold = wallet.gold - quoted.value;
+    repos.economy.saveCharacter({ ...wallet, gold, items });
+    return { ok: true, value: { gold, price: quoted.value, itemId } };
+  }
+
   function regionLevelOf(characterId: string): number {
     const entity = simWorld.entities.find((row) => row.id === characterId);
     const nodeId = entity?.nodeId ?? entity?.bindNodeId;
@@ -6631,6 +6677,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/core/unequip', action: 'core_unequip' },
   { path: '/purity/break', action: 'purity_break' },
   { path: '/chest', action: 'chest_open' },
+  { path: '/npc/buy', action: 'npc_buy' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 
