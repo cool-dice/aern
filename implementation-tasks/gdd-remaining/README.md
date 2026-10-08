@@ -6,7 +6,7 @@
 
 | id | Файл | Статус |
 |---|---|---|
-| 101 | [101-sim-commands.md](101-sim-commands.md) | pending |
+| 101 | [101-sim-commands.md](101-sim-commands.md) | done |
 | 102 | [102-populated-world.md](102-populated-world.md) | pending |
 | 103 | [103-death-corpse.md](103-death-corpse.md) | pending |
 | 104 | [104-bestiary-fights.md](104-bestiary-fights.md) | pending |

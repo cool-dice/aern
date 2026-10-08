@@ -1,7 +1,6 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadCatalog, type Catalog } from '@rift/content';
-import { DIRS, type Dir } from '@rift/domain/movement';
 import type { ClientCommand } from '@rift/protocol';
 import { mulberry32 } from '@rift/domain/rng';
 import { EQUIP_SLOTS, type EquipSlot } from '@rift/domain/items';
@@ -33,6 +32,7 @@ import { createWorldModule, type WorldModule } from './modules/world/index';
 import { createBus } from './shared/bus';
 import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
+import { toSimCommand } from './sim/commands';
 import { stepTick, type SimCommand, type SimWorld } from './sim/tick';
 import { renderMetrics, type MetricsSnapshot } from './metrics';
 
@@ -472,28 +472,6 @@ function emptyWorld(nowMs: number): SimWorld {
     obstacles: [],
     history: [],
   };
-}
-
-function toSimCommand(command: ClientCommand): SimCommand | null {
-  if (command.action !== 'move') {
-    return null;
-  }
-  const entityId = command.params.entityId;
-  const dir = command.params.dir;
-  if (typeof entityId !== 'string' || typeof dir !== 'string' || !isDir(dir)) {
-    return null;
-  }
-  return {
-    type: 'move',
-    entityId,
-    dir,
-    running: command.params.running === true,
-    issuedAtMs: command.issuedAtMs,
-  };
-}
-
-function isDir(value: string): value is Dir {
-  return (DIRS as readonly string[]).includes(value);
 }
 
 function requireContext(ctx: ModuleContext, name: string): void {

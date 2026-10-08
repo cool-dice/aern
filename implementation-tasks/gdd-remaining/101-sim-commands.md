@@ -1,6 +1,6 @@
 # 101. Команды каталога доходят до тика
 
-status: pending
+status: done
 
 ## Правило GDD
 
