@@ -1,5 +1,6 @@
 import { nnUsed, type Program, type BuildState } from '@rift/domain/build';
 import { sellerProceeds } from '@rift/domain/economy';
+import { WAR_GOLD } from '@rift/domain/guild';
 import { NODE_IDS, type NodeId, type ToolId, type ToolKind } from '@rift/domain/gathering';
 import type { GuildRank } from '@rift/domain/guild';
 import type { KeeperKind } from '@rift/domain/hack';
@@ -94,7 +95,25 @@ export interface LivePorts {
   previousOffice(characterId: string): number | null;
   reviewDeclaredWar(attackerGuildId: string, cityId: string): Promise<{ ok: boolean; code?: string }>;
   rewardsFrozen(guildId: string): boolean;
+  carrierBlocked(guildId: string): Promise<boolean>;
+  noteDeclaredWar(): void;
+  noteTurnover(amount: number): void;
+  sampleBalance(): Promise<void>;
   logWithdrawal(guildId: string, characterId: string, amount: number): void;
+  holdWithdrawal(input: {
+    guildId: string;
+    characterId: string;
+    rank: GuildRank;
+    amount: number;
+    leaderConfirm: boolean;
+    councilConfirms: number;
+    councilVote: boolean;
+  }): Promise<LiveResult>;
+  openLeaderPoll(guildId: string): void;
+  castLeaderBallot(body: Record<string, unknown>): Promise<LiveResult>;
+  dissolveGuild(body: Record<string, unknown>): Promise<LiveResult>;
+  depositGuild(body: Record<string, unknown>): Promise<LiveResult>;
+  strikeNode(body: Record<string, unknown>): LiveResult;
   postCoalition(body: Record<string, unknown>): LiveResult;
   seatFounders(guildId: string, leaderId: string, memberIds: readonly string[]): void;
   seatMember(guildId: string, actorId: string, memberId: string, rank: string): LiveResult;
@@ -162,6 +181,10 @@ const LIVE_ACTIONS = new Set([
   'guild_war',
   'guild_withdraw',
   'guild_rank',
+  'guild_vote',
+  'guild_dissolve',
+  'guild_deposit',
+  'node_strike',
   'coalition_say',
 ]);
 
@@ -265,6 +288,14 @@ export async function runLive(
       return guildWithdraw(body, ports);
     case 'guild_rank':
       return guildRank(body, ports);
+    case 'guild_vote':
+      return ports.castLeaderBallot(body);
+    case 'guild_dissolve':
+      return ports.dissolveGuild(body);
+    case 'guild_deposit':
+      return ports.depositGuild(body);
+    case 'node_strike':
+      return ports.strikeNode(body);
     case 'coalition_say':
       return ports.postCoalition(body);
     default:
@@ -706,6 +737,7 @@ async function guildCreate(body: Record<string, unknown>, ports: LivePorts): Pro
   if (initiator !== undefined) {
     await ports.note(initiator, 'capture');
   }
+  ports.openLeaderPoll(created.value.guildId);
   return { ok: true, value: created.value };
 }
 
@@ -912,6 +944,9 @@ async function guildWar(body: Record<string, unknown>, ports: LivePorts): Promis
   if (!vassal.ok) {
     return vassal;
   }
+  if (await ports.carrierBlocked(attackerGuildId)) {
+    return { ok: false, code: 'carrier' };
+  }
   if (ports.cityOwner(cityId) === null) {
     const neutral = await ports.declareNeutralCity(body);
     return neutral;
@@ -934,6 +969,11 @@ async function guildWar(body: Record<string, unknown>, ports: LivePorts): Promis
   if (!declared.ok) {
     return { ok: false, code: declared.code };
   }
+  if (typeof body.gold !== 'number') {
+    ports.noteTurnover(WAR_GOLD);
+  }
+  ports.noteDeclaredWar();
+  await ports.sampleBalance();
   ports.rememberDeclaration(attackerGuildId);
   const warId = declared.value.warId;
   const defenders = ports.rememberDefense(cityId, warId);
@@ -955,17 +995,30 @@ async function guildWithdraw(body: Record<string, unknown>, ports: LivePorts): P
   if (rank === null) {
     return { ok: false, code: 'rank' };
   }
+  const confirms = {
+    leaderConfirm: body.leaderConfirm === true,
+    councilConfirms: typeof body.councilConfirms === 'number' ? body.councilConfirms : 0,
+    councilVote: body.councilVote === true,
+  };
+  if (ports.rewardsFrozen(guildId)) {
+    return ports.holdWithdrawal({
+      guildId,
+      characterId: characterId ?? '',
+      rank,
+      amount: body.amount,
+      ...confirms,
+    });
+  }
   const taken = await ports.guild.withdraw({
     guildId,
     rank,
     amount: body.amount,
-    ...(typeof body.leaderConfirm === 'boolean' ? { leaderConfirm: body.leaderConfirm } : {}),
-    ...(typeof body.councilConfirms === 'number' ? { councilConfirms: body.councilConfirms } : {}),
-    ...(typeof body.councilVote === 'boolean' ? { councilVote: body.councilVote } : {}),
+    ...confirms,
   });
   if (!taken.ok) {
     return { ok: false, code: taken.code };
   }
+  ports.noteTurnover(body.amount);
   if (characterId !== undefined) {
     ports.logWithdrawal(guildId, characterId, body.amount);
   }

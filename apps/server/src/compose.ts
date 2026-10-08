@@ -59,6 +59,8 @@ import {
   allianceFriendlyFire,
   applyVassalTithe,
   breakAlliance,
+  canDissolve,
+  castLeaderVote,
   escortArrived,
   failSuzerainDefense,
   releaseVassal,
@@ -66,10 +68,13 @@ import {
   declareNeutralCapture,
   depositBank,
   depositNodeChest,
+  dissolveShares,
   formPact,
+  withdraw,
   founderRanks,
   freshResourceNode,
   GUILD_CREATE_GOLD,
+  measureSection12,
   NEUTRAL_GUARD_COUNT,
   coalitionChannel,
   napBetween,
@@ -82,9 +87,14 @@ import {
   postPatrolQuest,
   registerContender,
   renewPact,
+  REVOTE_MS,
   reviewSection11,
+  rewardFreezeEnds,
+  type Section12Report,
   type WarStamp,
   seatRank,
+  strikeNodeFlag,
+  voteQuorum,
   nodeAccessAllows,
   nodeAccessCategory,
   setNodeAccess,
@@ -281,6 +291,37 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const warBlows = new Map<string, number>();
   const warRosters = new Map<string, Set<string>>();
   const frozenGuilds = new Set<string>();
+  let rewardFreezes: { guildId: string; atMs: number }[] = [];
+  let heldWithdrawals: {
+    guildId: string;
+    characterId: string;
+    amount: number;
+    rank: GuildRank;
+    leaderConfirm: boolean;
+    councilConfirms: number;
+    councilVote: boolean;
+  }[] = [];
+  const leaderPolls = new Map<
+    string,
+    {
+      guildId: string;
+      openedAtMs: number;
+      ballots: { voterId: string; candidateId: string }[];
+      tieAtMs: number | null;
+      revoteUsed: boolean;
+      closed: boolean;
+    }
+  >();
+  const voteRng = mulberry32(3);
+  const dissolvePolls = new Map<string, { leaderConsent: boolean; councilIds: Set<string> }>();
+  const contributions = new Map<string, Map<string, number>>();
+  let dissolutionVoid = 0;
+  const declaredEvents: number[] = [];
+  const settledEvents: { atMs: number; elapsedMs: number; participants: number; result: 'win' | 'draw' }[] = [];
+  const captureEvents: number[] = [];
+  const turnoverEvents: { atMs: number; amount: number }[] = [];
+  let balanceReport: Section12Report | null = null;
+  const BALANCE_DAY_MS = 24 * 60 * 60 * 1000;
   const settledReviewed = new Set<string>();
   const officeHeldAt = new Map<string, { atMs: number; guildId: string }>();
   const bankLog: { guildId: string; characterId: string; amount: number; atMs: number }[] = [];
@@ -755,7 +796,17 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     rewardsFrozen(guildId: string) {
       return frozenGuilds.has(guildId);
     },
+    carrierBlocked,
+    noteDeclaredWar,
+    noteTurnover,
+    sampleBalance,
     logWithdrawal,
+    holdWithdrawal,
+    openLeaderPoll,
+    castLeaderBallot,
+    dissolveGuild,
+    depositGuild,
+    strikeNode,
     postCoalition,
     registerContender: registerWarContender,
     postMercenaryContract,
@@ -1023,6 +1074,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       warActive,
       blockedForMs,
       granted: serviceGranted(cityId, service, entity.id),
+      lifted: abuse.portalsLifted.includes(cityId),
     });
     if (!asked.ok) {
       return { ok: false, code: asked.code };
@@ -1080,6 +1132,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     const deposited = depositBank(guild.bank, amount);
     await repos.guilds.saveGuild({ ...guild, bank: deposited.bank });
+    noteTurnover(amount);
   }
 
   function applyOwnedCityFees(): void {
@@ -1874,12 +1927,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       guardsRemaining: guardRows(),
     });
     applyOwnedCityFees();
+    const ownersBeforeSkip = new Map(resourceNodes.map((node) => [node.nodeId, node.guildId] as const));
     const ticked = tickResourceNodes({
       nodes: resourceNodes,
       present: presentNodes(),
       deltaMs: ms,
     });
     resourceNodes = ticked.nodes;
+    noteNodeCaptures(ownersBeforeSkip);
     applyNodeSeizure(ticked.seized);
     await tickContracts(ms);
     await tickVassalTithes();
@@ -2050,6 +2105,89 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     simWorld = { ...simWorld, entities: [...simWorld.entities, ...extras] };
   }
 
+  function noteDeclaredWar(): void {
+    declaredEvents.push(clock.now());
+  }
+
+  function noteTurnover(amount: number): void {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return;
+    }
+    turnoverEvents.push({ atMs: clock.now(), amount });
+  }
+
+  function noteNodeCaptures(before: ReadonlyMap<string, string | null>): void {
+    for (const node of resourceNodes) {
+      if ((before.get(node.nodeId) ?? null) === null && node.guildId !== null) {
+        captureEvents.push(clock.now());
+      }
+    }
+  }
+
+  function withinDay(atMs: number): boolean {
+    return atMs > clock.now() - BALANCE_DAY_MS && atMs <= clock.now();
+  }
+
+  async function sampleBalance(): Promise<void> {
+    const guilds = await repos.guilds.listGuilds();
+    const people = simWorld.entities.filter((entity) => entity.monsterId === undefined);
+    const online = people.filter((entity) => entity.phase === 'online' && entity.hp > 0).length;
+    const memberIds = new Set(guilds.flatMap((guild) => guild.memberIds));
+    const counted = new Set<string>([...memberIds, ...people.map((entity) => entity.id)]);
+    let ai = 0;
+    let aiInGuilds = 0;
+    for (const id of counted) {
+      const record = await repos.characters.findById(id);
+      if (record?.controller !== 'bot') {
+        continue;
+      }
+      ai += 1;
+      if (memberIds.has(id)) {
+        aiInGuilds += 1;
+      }
+    }
+    const botIds = new Set<string>();
+    for (const id of counted) {
+      const record = await repos.characters.findById(id);
+      if (record?.controller === 'bot') {
+        botIds.add(id);
+      }
+    }
+    const playerIds = [...counted].filter((id) => !botIds.has(id));
+    let taxPercentSum = 0;
+    let taxedNodes = 0;
+    for (const node of resourceNodes) {
+      if (node.guildId === null) {
+        continue;
+      }
+      taxPercentSum += node.taxPercent;
+      taxedNodes += 1;
+    }
+    const latest = settledEvents.length === 0 ? undefined : settledEvents[settledEvents.length - 1];
+    const sieges = settledEvents.filter((row) => withinDay(row.atMs));
+    balanceReport = measureSection12({
+      online,
+      guilds: guilds.length,
+      members: guilds.reduce((total, guild) => total + guild.memberIds.length, 0),
+      players: playerIds.length,
+      playersInGuilds: playerIds.filter((id) => memberIds.has(id)).length,
+      ai,
+      aiInGuilds,
+      warsToday: declaredEvents.filter((atMs) => withinDay(atMs)).length,
+      warParticipants: latest?.participants ?? null,
+      warDurationMs: latest?.elapsedMs ?? null,
+      sieges: sieges.length,
+      siegeWins: sieges.filter((row) => row.result === 'win').length,
+      draws: sieges.filter((row) => row.result === 'draw').length,
+      taxPercentSum,
+      taxedNodes,
+      capturesToday: captureEvents.filter((atMs) => withinDay(atMs)).length,
+      turnoverToday: turnoverEvents
+        .filter((row) => withinDay(row.atMs))
+        .reduce((total, row) => total + row.amount, 0),
+    });
+  }
+
   async function declareNeutralCity(
     body: Record<string, unknown>,
   ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
@@ -2058,6 +2196,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const guild = await repos.guilds.findGuild(attackerGuildId);
     if (guild === null) {
       return { ok: false, code: 'member' };
+    }
+    if (await carrierBlocked(attackerGuildId)) {
+      return { ok: false, code: 'carrier' };
     }
     const limits = {
       cityCapturedAtMs: captures.find((row) => row.cityId === cityId)?.wonAtMs ?? null,
@@ -2094,7 +2235,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     });
     neutralCities.add(cityId);
     declaredAtMs.set(attackerGuildId, clock.now());
+    noteDeclaredWar();
+    noteTurnover(Math.max(0, guild.bank - declared.value.gold));
     rememberDefense(cityId, warId);
+    await sampleBalance();
     const reviewed = await reviewDeclaredWar(attackerGuildId, cityId);
     if (!reviewed.ok) {
       return { ok: false, code: reviewed.code };
@@ -2293,6 +2437,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
     if (reviewed.freezeRewards && next !== null) {
       frozenGuilds.add(next.attackerGuildId);
+      const existing = rewardFreezes.find((row) => row.guildId === next.attackerGuildId);
+      if (existing === undefined) {
+        rewardFreezes.push({ guildId: next.attackerGuildId, atMs: now });
+      } else {
+        existing.atMs = now;
+      }
       abuse = { ...abuse, frozen: [...frozenGuilds] };
     }
     return reviewed;
@@ -2314,9 +2464,43 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const reviewed = await section11For(attackerGuildId, stamp);
     warHistory = [...warHistory, stamp];
     if (reviewed.multibox === 'carrier') {
-      return { ok: false, code: 'carrier' };
+      abuse = { ...abuse, multibox: 'carrier' };
     }
     return { ok: true };
+  }
+
+  async function guildCarriers(guildId: string): Promise<{ carrierId: string; botIds: string[] }[]> {
+    const guild = await repos.guilds.findGuild(guildId);
+    const carriers = new Map<string, string[]>();
+    for (const memberId of guild?.memberIds ?? []) {
+      const record = await repos.characters.findById(memberId);
+      if (record?.controller !== 'bot') {
+        continue;
+      }
+      const bots = carriers.get(record.accountId) ?? [];
+      bots.push(memberId);
+      carriers.set(record.accountId, bots);
+    }
+    return [...carriers.entries()].map(([carrierId, botIds]) => ({ carrierId, botIds }));
+  }
+
+  /** Section 11 multibox, before a war row is saved or the bank is charged. */
+  async function carrierBlocked(guildId: string): Promise<boolean> {
+    const reviewed = reviewSection11({
+      nowMs: clock.now(),
+      lastOfficeMs: null,
+      history: [],
+      next: null,
+      portals: [],
+      ballots: [],
+      carriers: await guildCarriers(guildId),
+      withdrawalsLogged: 0,
+    });
+    if (reviewed.multibox !== 'carrier') {
+      return false;
+    }
+    abuse = { ...abuse, multibox: 'carrier' };
+    return true;
   }
 
   async function reviewNewSettlements(): Promise<void> {
@@ -2342,6 +2526,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       };
       await section11For(war.attackerGuildId, stamp);
       warHistory = [...warHistory, stamp];
+      if (stamp.result === 'win' || stamp.result === 'draw') {
+        settledEvents.push({
+          atMs: stamp.atMs,
+          elapsedMs: stamp.elapsedMs,
+          participants: stamp.roster.length,
+          result: stamp.result,
+        });
+      }
     }
   }
 
@@ -2530,6 +2722,341 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
   }
 
+  function openLeaderPoll(guildId: string): void {
+    if (leaderPolls.has(guildId)) {
+      return;
+    }
+    leaderPolls.set(guildId, {
+      guildId,
+      openedAtMs: clock.now(),
+      ballots: [],
+      tieAtMs: null,
+      revoteUsed: false,
+      closed: false,
+    });
+  }
+
+  async function finishLeaderPoll(
+    guildId: string,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guild = await repos.guilds.findGuild(guildId);
+    const poll = leaderPolls.get(guildId);
+    if (guild === null || poll === undefined) {
+      return { ok: false, code: 'member' };
+    }
+    if (poll.closed) {
+      return { ok: false, code: 'closed' };
+    }
+    const revote =
+      poll.tieAtMs !== null && !poll.revoteUsed && clock.now() >= poll.tieAtMs + REVOTE_MS;
+    if (revote) {
+      poll.revoteUsed = true;
+    }
+    const elected = castLeaderVote({
+      memberIds: guild.memberIds,
+      ballots: poll.ballots,
+      revote,
+      rng: voteRng,
+    });
+    if (!elected.ok) {
+      return { ok: false, code: elected.code };
+    }
+    if (elected.value.status === 'tie') {
+      if (poll.tieAtMs === null) {
+        poll.tieAtMs = clock.now();
+      }
+      return { ok: true, value: { status: 'tie', candidateIds: elected.value.candidateIds, revote: true } };
+    }
+    if (!voteQuorum(poll.ballots.length, guild.memberIds.length)) {
+      return { ok: true, value: { status: 'open', quorum: false, leaderId: elected.value.leaderId } };
+    }
+    poll.closed = true;
+    await repos.guilds.saveGuild({ ...guild, leaderId: elected.value.leaderId });
+    seatFounders(guildId, elected.value.leaderId, guild.memberIds);
+    return { ok: true, value: elected.value };
+  }
+
+  async function castLeaderBallot(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const voterId =
+      typeof body.voterId === 'string'
+        ? body.voterId
+        : typeof body.characterId === 'string'
+          ? body.characterId
+          : '';
+    const candidateId = typeof body.candidateId === 'string' ? body.candidateId : '';
+    if (guildId.length === 0 || voterId.length === 0 || candidateId.length === 0) {
+      return { ok: false, code: 'member' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null || !guild.memberIds.includes(voterId)) {
+      return { ok: false, code: 'member' };
+    }
+    let poll = leaderPolls.get(guildId);
+    if (poll === undefined) {
+      openLeaderPoll(guildId);
+      poll = leaderPolls.get(guildId);
+    }
+    if (poll === undefined || poll.closed) {
+      return { ok: false, code: 'closed' };
+    }
+    if (poll.ballots.some((row) => row.voterId === voterId)) {
+      return { ok: false, code: 'stuffed' };
+    }
+    const record = await repos.characters.findById(voterId);
+    if (record?.controller === 'bot') {
+      const entity = simWorld.entities.find((row) => row.id === voterId);
+      const online = entity !== undefined && entity.phase === 'online' && entity.carrierOffline !== true;
+      if (!online) {
+        return { ok: false, code: 'offline' };
+      }
+    }
+    poll.ballots.push({ voterId, candidateId });
+    const finished = await finishLeaderPoll(guildId);
+    if (!finished.ok) {
+      poll.ballots.pop();
+    }
+    return finished;
+  }
+
+  async function resolveLeaderPolls(): Promise<void> {
+    for (const poll of leaderPolls.values()) {
+      if (poll.closed || poll.tieAtMs === null || clock.now() < poll.tieAtMs + REVOTE_MS) {
+        continue;
+      }
+      await finishLeaderPoll(poll.guildId);
+    }
+  }
+
+  function councilSize(guildId: string): number {
+    let count = 0;
+    for (const rank of guildRanks.get(guildId)?.values() ?? []) {
+      if (rank === 'council') {
+        count += 1;
+      }
+    }
+    return count;
+  }
+
+  async function depositGuild(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const amount = body.amount;
+    if (guildId.length === 0 || characterId.length === 0 || typeof amount !== 'number') {
+      return { ok: false, code: 'member' };
+    }
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return { ok: false, code: 'gold' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null || !guild.memberIds.includes(characterId)) {
+      return { ok: false, code: 'member' };
+    }
+    const wallet = repos.economy.getCharacter(characterId);
+    if (wallet === null || wallet.gold < amount) {
+      return { ok: false, code: 'gold' };
+    }
+    const deposited = depositBank(guild.bank, amount);
+    const entered = amount - deposited.overflow;
+    if (entered <= 0) {
+      return { ok: false, code: 'limit' };
+    }
+    repos.economy.saveCharacter({ ...wallet, gold: wallet.gold - entered });
+    await repos.guilds.saveGuild({ ...guild, bank: deposited.bank });
+    const table = contributions.get(guildId) ?? new Map<string, number>();
+    table.set(characterId, (table.get(characterId) ?? 0) + entered);
+    contributions.set(guildId, table);
+    noteTurnover(entered);
+    return { ok: true, value: { bank: deposited.bank, contributed: entered } };
+  }
+
+  async function dissolveGuild(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    if (guildId.length === 0 || characterId.length === 0) {
+      return { ok: false, code: 'member' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    const rank = memberRank(guildId, characterId);
+    if (guild === null || rank === null) {
+      return { ok: false, code: 'member' };
+    }
+    const poll = dissolvePolls.get(guildId) ?? { leaderConsent: false, councilIds: new Set<string>() };
+    if (rank === 'leader') {
+      poll.leaderConsent = true;
+    } else if (rank === 'council') {
+      poll.councilIds.add(characterId);
+    } else {
+      return { ok: false, code: 'rank' };
+    }
+    dissolvePolls.set(guildId, poll);
+    const decision = canDissolve({
+      leaderConsent: poll.leaderConsent,
+      councilConsents: poll.councilIds.size,
+      councilVotesFor: poll.councilIds.size,
+      councilSize: councilSize(guildId),
+    });
+    if (!decision.ok) {
+      return { ok: false, code: decision.code };
+    }
+    const rows = [...(contributions.get(guildId)?.entries() ?? [])]
+      .filter((row) => row[1] > 0)
+      .map(([id, contributed]) => ({ id, contributed }));
+    const shares = dissolveShares(guild.bank, rows);
+    for (const share of shares.shares) {
+      if (share.gold > 0) {
+        creditGold(share.id, share.gold);
+      }
+    }
+    dissolutionVoid += shares.void;
+    noteTurnover(guild.bank);
+    await repos.guilds.saveGuild({ ...guild, bank: 0, memberIds: [] });
+    for (const memberId of guild.memberIds) {
+      guildOf.delete(memberId);
+    }
+    guildRanks.delete(guildId);
+    contributions.delete(guildId);
+    dissolvePolls.delete(guildId);
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) => {
+        if (entity.guildId !== guildId) {
+          return entity;
+        }
+        const next = { ...entity };
+        delete next.guildId;
+        return next;
+      }),
+    };
+    return { ok: true, value: { by: decision.value.by, shares: shares.shares, void: shares.void } };
+  }
+
+  function strikeNode(body: Record<string, unknown>): { ok: boolean; code?: string; value?: unknown } {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const nodeId = typeof body.nodeId === 'string' ? body.nodeId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const node = resourceAt(nodeId);
+    const rank = memberRank(guildId, characterId);
+    if (node === undefined || rank === null) {
+      return { ok: false, code: rank === null ? 'rank' : 'owner' };
+    }
+    const struck = strikeNodeFlag({ node, guildId, rank });
+    if (!struck.ok) {
+      return { ok: false, code: struck.code };
+    }
+    resourceNodes = resourceNodes.map((row) => (row.nodeId === nodeId ? struck.value.node : row));
+    if (struck.value.pocketed > 0) {
+      creditGuildVault(guildId, struck.value.pocketed);
+    }
+    return { ok: true, value: { nodeId, pocketed: struck.value.pocketed, guildId: null } };
+  }
+
+  async function holdWithdrawal(input: {
+    guildId: string;
+    characterId: string;
+    rank: GuildRank;
+    amount: number;
+    leaderConfirm: boolean;
+    councilConfirms: number;
+    councilVote: boolean;
+  }): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guild = await repos.guilds.findGuild(input.guildId);
+    if (guild === null) {
+      return { ok: false, code: 'member' };
+    }
+    const checked = withdraw({
+      rank: input.rank,
+      bank: guild.bank,
+      amount: input.amount,
+      leaderConfirm: input.leaderConfirm,
+      councilConfirms: input.councilConfirms,
+      councilVote: input.councilVote,
+    });
+    if (!checked.ok) {
+      return { ok: false, code: checked.code };
+    }
+    heldWithdrawals = [
+      ...heldWithdrawals,
+      {
+        guildId: input.guildId,
+        characterId: input.characterId,
+        amount: checked.value.amount,
+        rank: input.rank,
+        leaderConfirm: input.leaderConfirm,
+        councilConfirms: input.councilConfirms,
+        councilVote: input.councilVote,
+      },
+    ];
+    logWithdrawal(input.guildId, input.characterId, checked.value.amount);
+    return { ok: true, value: { held: true, bank: guild.bank, amount: checked.value.amount } };
+  }
+
+  async function releaseHeldWithdrawals(guildId: string): Promise<void> {
+    const pending = heldWithdrawals.filter((row) => row.guildId === guildId);
+    heldWithdrawals = heldWithdrawals.filter((row) => row.guildId !== guildId);
+    for (const row of pending) {
+      const taken = await guild.service.withdraw({
+        guildId,
+        rank: row.rank,
+        amount: row.amount,
+        leaderConfirm: row.leaderConfirm,
+        councilConfirms: row.councilConfirms,
+        councilVote: row.councilVote,
+      });
+      if (taken.ok) {
+        noteTurnover(taken.value.amount);
+      }
+    }
+  }
+
+  async function inspectRewardFreezes(): Promise<void> {
+    const now = clock.now();
+    const still = [];
+    for (const freeze of rewardFreezes) {
+      if (!rewardFreezeEnds(freeze.atMs, now)) {
+        still.push(freeze);
+        continue;
+      }
+      frozenGuilds.delete(freeze.guildId);
+      await releaseHeldWithdrawals(freeze.guildId);
+    }
+    rewardFreezes = still;
+    abuse = { ...abuse, frozen: [...frozenGuilds] };
+  }
+
+  function refreshPortalLifts(): void {
+    const now = clock.now();
+    const portals = captures.flatMap((hold) => {
+      if (!hold.won || hold.guildId === null || hold.wonAtMs === undefined) {
+        return [];
+      }
+      const warActive = openWars.some(
+        (war) =>
+          war.cityId === hold.cityId &&
+          war.startsAtMs <= now &&
+          warPhase(Math.max(0, now - war.startsAtMs)) !== 'closed',
+      );
+      return [{ cityId: hold.cityId, blockedForMs: Math.max(0, now - hold.wonAtMs), warActive }];
+    });
+    const reviewed = reviewSection11({
+      nowMs: now,
+      lastOfficeMs: null,
+      history: warHistory,
+      next: null,
+      portals,
+      ballots: [],
+      carriers: [],
+      withdrawalsLogged: bankLog.length,
+    });
+    abuse = { ...abuse, portalsLifted: reviewed.portalsLifted };
+  }
+
   async function tickOnce(): Promise<void> {
     if (runtimeError !== null) {
       throw runtimeError;
@@ -2627,12 +3154,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       guardsRemaining: guardRows(),
     });
     applyOwnedCityFees();
+    const ownersBeforeTick = new Map(resourceNodes.map((node) => [node.nodeId, node.guildId] as const));
     const tickedNodes = tickResourceNodes({
       nodes: resourceNodes,
       present: presentNodes(),
       deltaMs: SIM_TICK_MS,
     });
     resourceNodes = tickedNodes.nodes;
+    noteNodeCaptures(ownersBeforeTick);
     applyNodeSeizure(tickedNodes.seized);
     for (const entity of simWorld.entities) {
       if (entity.monsterId !== undefined || entity.nodeId === undefined) {
@@ -2736,6 +3265,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await penalizeAbsentSuzerains();
     noteWarRoster();
     await reviewNewSettlements();
+    await resolveLeaderPolls();
+    await inspectRewardFreezes();
+    refreshPortalLifts();
+    await sampleBalance();
   }
 
   function simSnapshot(): {
@@ -3108,6 +3641,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       defenses: defenseDuties,
       suzerainFlags,
       abuse,
+      balance: balanceReport,
+      dissolutionVoid,
       musterCamps: (simWorld.geography?.nodes ?? [])
         .filter((node) => node.id.startsWith('muster:'))
         .map((node) => node.id),
@@ -3738,6 +4273,10 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/war', action: 'guild_war' },
   { path: '/guild/withdraw', action: 'guild_withdraw' },
   { path: '/guild/rank', action: 'guild_rank' },
+  { path: '/guild/vote', action: 'guild_vote' },
+  { path: '/guild/dissolve', action: 'guild_dissolve' },
+  { path: '/guild/deposit', action: 'guild_deposit' },
+  { path: '/node/strike', action: 'node_strike' },
 ];
 
 function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
