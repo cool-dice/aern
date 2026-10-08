@@ -53,6 +53,8 @@ export interface LivePorts {
   shiftReputation(characterId: string, npcId: string, event: 'quest' | 'fail' | 'attack' | 'gift'): number;
   portalTo(characterId: string, toNodeId: string): Promise<LiveResult>;
   assignGuild(characterId: string, guildId: string): void;
+  creditService(characterId: string, cost: number): Promise<number>;
+  setOwnedCityFee(guildId: string, cityId: string, fee: number): Promise<LiveResult>;
   placeQuest(characterId: string, questId: string): Promise<void>;
   loadBuild(characterId: string): Promise<BuildState>;
   relicGrade(characterId: string): Promise<GradeId>;
@@ -96,6 +98,8 @@ const LIVE_ACTIONS = new Set([
   'encounter_enter',
   'dialogue',
   'portal',
+  'repair',
+  'city_fee',
 ]);
 
 export function isLiveAction(action: string): boolean {
@@ -156,6 +160,10 @@ export async function runLive(
       return dialogue(body, ports);
     case 'portal':
       return portal(body, ports);
+    case 'repair':
+      return repair(body, ports);
+    case 'city_fee':
+      return cityFee(body, ports);
     default:
       return { ok: false, code: 'unknown' };
   }
@@ -424,8 +432,9 @@ async function craftStart(body: Record<string, unknown>, ports: LivePorts): Prom
   if (!started.ok) {
     return { ok: false, code: started.code };
   }
+  const cut = await ports.creditService(characterId, started.value.goldSpent);
   await ports.note(characterId, 'craft');
-  return { ok: true, value: started.value };
+  return { ok: true, value: { ...started.value, serviceCut: cut } };
 }
 
 async function craftComplete(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
@@ -616,6 +625,31 @@ async function dialogue(body: Record<string, unknown>, ports: LivePorts): Promis
   const reputation =
     npcId === undefined ? null : ports.shiftReputation(characterId, npcId, choiceReputation(choiceId));
   return { ok: true, value: { choiceId, questId: text(body, 'questId') ?? null, npcId, reputation } };
+}
+
+async function repair(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const itemId = text(body, 'itemId');
+  if (characterId === undefined || itemId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  const before = ports.walletGold(characterId);
+  const repaired = await ports.economy.repair(characterId, itemId);
+  if (!repaired.ok) {
+    return { ok: false, code: repaired.code };
+  }
+  const spent = before - ports.walletGold(characterId);
+  const cut = await ports.creditService(characterId, spent);
+  return { ok: true, value: { ...repaired.value, serviceCut: cut } };
+}
+
+async function cityFee(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const guildId = text(body, 'guildId');
+  const cityId = text(body, 'cityId');
+  if (guildId === undefined || cityId === undefined || typeof body.fee !== 'number') {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.setOwnedCityFee(guildId, cityId, body.fee);
 }
 
 async function portal(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

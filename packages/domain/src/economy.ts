@@ -19,7 +19,13 @@ const SAME_SIDE_GOLD = 5;
 const CROSS_SIDE_GOLD = 10;
 const SAME_SIDE_COOLDOWN_MS = 5 * 60 * 1000;
 const CROSS_SIDE_COOLDOWN_MS = 10 * 60 * 1000;
-const CITY_FEE_MAX = 5;
+/** Artifact 13: a guild-owned city charges 1–5 gold on a crossing. Neutral cities stay at 0. */
+export const CITY_FEE_MIN = 1;
+export const CITY_FEE_MAX = 5;
+/** Artifact 13: 10% of a repair or forge bill is credited to the owning guild. */
+export const SERVICE_CUT_PERCENT = 10;
+/** Artifact 17: a portal block older than this, with no active war, opens to neutrals. */
+export const PORTAL_BLOCK_MS = 24 * 60 * 60 * 1000;
 const BID_STEP_PERCENT = 5;
 
 export type AuctionTaxSink = 'void' | 'guild';
@@ -131,6 +137,62 @@ export function portalFee(input: {
     return ok({ gold: SAME_SIDE_GOLD + input.cityFee, cooldownMs: SAME_SIDE_COOLDOWN_MS });
   }
   return ok({ gold: CROSS_SIDE_GOLD + input.cityFee, cooldownMs: CROSS_SIDE_COOLDOWN_MS });
+}
+
+/**
+ * Crossing fee once a guild owns the city. A stored value inside 1–5 is kept.
+ * Zero or anything outside the range becomes the minimum, so a captured city
+ * does not keep a neutral fee of 0.
+ */
+export function ownedCrossingFee(stored: number): number {
+  if (Number.isInteger(stored) && stored >= CITY_FEE_MIN && stored <= CITY_FEE_MAX) {
+    return stored;
+  }
+  return CITY_FEE_MIN;
+}
+
+/** The owner sets the crossing fee. Only 1–5 is a legal guild tariff. */
+export function setCityFee(fee: number): Result<number, 'fee'> {
+  if (!Number.isInteger(fee) || fee < CITY_FEE_MIN || fee > CITY_FEE_MAX) {
+    return err('fee');
+  }
+  return ok(fee);
+}
+
+/** 10% of a repair or forge bill, floored. The traveler already paid `cost`. */
+export function serviceCut(cost: number): number {
+  assertNonNegativeInteger(cost, 'cost');
+  return Math.floor((cost * SERVICE_CUT_PERCENT) / 100);
+}
+
+export type PortalStance = 'member' | 'ally' | 'enemy' | 'neutral';
+
+/**
+ * A neutral asking a guild-owned city for a portal.
+ * Members and allies enter. Enemies are blocked.
+ * A neutral is refused until the owner has granted them, or the block has
+ * lasted 24 hours with no active war (portal griefing lift).
+ */
+export function askHostilePortal(input: {
+  stance: PortalStance;
+  warActive: boolean;
+  blockedForMs: number;
+  granted: boolean;
+}): Result<'enter', 'blocked' | 'refused'> {
+  assertNonNegativeInteger(input.blockedForMs, 'blockedForMs');
+  if (input.stance === 'member' || input.stance === 'ally') {
+    return ok('enter');
+  }
+  if (input.stance === 'enemy') {
+    return err('blocked');
+  }
+  if (input.granted) {
+    return ok('enter');
+  }
+  if (!input.warActive && input.blockedForMs >= PORTAL_BLOCK_MS) {
+    return ok('enter');
+  }
+  return err('refused');
 }
 
 /**

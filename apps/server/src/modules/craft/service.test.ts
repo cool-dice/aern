@@ -95,7 +95,11 @@ test('prototype rusty_sword starts in the fort', async () => {
 
   expect(started).toEqual({
     ok: true,
-    value: { readyAtMs: clock.now() + 600_000, jobId: started.ok ? started.value.jobId : '' },
+    value: {
+      readyAtMs: clock.now() + 600_000,
+      jobId: started.ok ? started.value.jobId : '',
+      goldSpent: 0,
+    },
   });
   expect(await bank.read('c1')).toEqual({ wood: 1 });
   const crafter = await crafters.get('c1');

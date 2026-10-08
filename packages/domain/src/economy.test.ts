@@ -4,7 +4,11 @@ import {
   AUCTION_LOT_LIMIT,
   AUCTION_LOT_MS,
   AUCTION_TAX,
+  CITY_FEE_MAX,
+  CITY_FEE_MIN,
   GUILD_BANK_CAP,
+  PORTAL_BLOCK_MS,
+  SERVICE_CUT_PERCENT,
   STASH_BASE_SLOTS,
   STASH_EXPAND_GOLD,
   STASH_EXPAND_SLOTS,
@@ -12,17 +16,21 @@ import {
   STASH_SLOT_CAP,
   STARTER_GOLD,
   WALLET_CAP,
+  askHostilePortal,
   auctionTaxSink,
   basePrice,
   buyFromNpc,
   deposit,
   expandStash,
   materialGold,
+  ownedCrossingFee,
   placeBid,
   portalFee,
   repairCost,
   sellToNpc,
   sellerProceeds,
+  serviceCut,
+  setCityFee,
   trade,
 } from './economy';
 
@@ -304,4 +312,48 @@ test('stash expansion is 1000 gold per 50 slots up to 1000', () => {
   }
   expect(slots).toBe(1_000);
   expect(expandStash(slots)).toEqual({ ok: false, code: 'cap' });
+});
+
+test('a guild city crossing fee is 1 to 5 and a zero tariff becomes the minimum', () => {
+  expect(CITY_FEE_MIN).toBe(1);
+  expect(CITY_FEE_MAX).toBe(5);
+  expect(ownedCrossingFee(0)).toBe(1);
+  expect(ownedCrossingFee(3)).toBe(3);
+  expect(ownedCrossingFee(5)).toBe(5);
+  expect(ownedCrossingFee(6)).toBe(1);
+  expect(setCityFee(4)).toEqual({ ok: true, value: 4 });
+  expect(setCityFee(0)).toEqual({ ok: false, code: 'fee' });
+  expect(setCityFee(6)).toEqual({ ok: false, code: 'fee' });
+});
+
+test('a repair or forge bill credits 10 percent to the owning guild', () => {
+  expect(SERVICE_CUT_PERCENT).toBe(10);
+  expect(serviceCut(30)).toBe(3);
+  expect(serviceCut(9)).toBe(0);
+  expect(serviceCut(0)).toBe(0);
+});
+
+test('a neutral asking a hostile city is refused until the block lifts', () => {
+  expect(PORTAL_BLOCK_MS).toBe(86_400_000);
+  expect(
+    askHostilePortal({ stance: 'neutral', warActive: true, blockedForMs: PORTAL_BLOCK_MS, granted: false }),
+  ).toEqual({ ok: false, code: 'refused' });
+  expect(
+    askHostilePortal({ stance: 'neutral', warActive: false, blockedForMs: PORTAL_BLOCK_MS - 1, granted: false }),
+  ).toEqual({ ok: false, code: 'refused' });
+  expect(
+    askHostilePortal({ stance: 'neutral', warActive: false, blockedForMs: PORTAL_BLOCK_MS, granted: false }),
+  ).toEqual({ ok: true, value: 'enter' });
+  expect(
+    askHostilePortal({ stance: 'enemy', warActive: false, blockedForMs: PORTAL_BLOCK_MS, granted: true }),
+  ).toEqual({ ok: false, code: 'blocked' });
+  expect(
+    askHostilePortal({ stance: 'member', warActive: true, blockedForMs: 0, granted: false }),
+  ).toEqual({ ok: true, value: 'enter' });
+  expect(
+    askHostilePortal({ stance: 'ally', warActive: true, blockedForMs: 0, granted: false }),
+  ).toEqual({ ok: true, value: 'enter' });
+  expect(
+    askHostilePortal({ stance: 'neutral', warActive: true, blockedForMs: 0, granted: true }),
+  ).toEqual({ ok: true, value: 'enter' });
 });

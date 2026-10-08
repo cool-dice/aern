@@ -1,0 +1,90 @@
+import { readFileSync } from 'node:fs';
+import { SERVICE_CUT_PERCENT } from '@rift/domain/economy';
+import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
+import { expect, test } from 'vitest';
+import { compose } from './compose';
+
+test('city fees are applied from the live tick, portal, and repair', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  expect(composeSource.includes('ownedCrossingFee(')).toBe(true);
+  expect(composeSource.includes('applyOwnedCityFees(')).toBe(true);
+  expect(composeSource.includes('creditGuildBank(')).toBe(true);
+  expect(composeSource.includes('serviceCut(')).toBe(true);
+  expect(composeSource.includes('setCityFee(')).toBe(true);
+  expect(dispatch.includes('creditService(')).toBe(true);
+  expect(dispatch.includes('setOwnedCityFee(')).toBe(true);
+  expect(composeSource.includes("path: '/repair'")).toBe(true);
+  expect(composeSource.includes("path: '/city-fee'")).toBe(true);
+});
+
+test('a guild-owned city debits the crossing fee and the repair cut', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  const created = await graph.act('guild_create', {
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'lia', level: 5 },
+      { id: 'm1', level: 5 },
+      { id: 'm2', level: 5 },
+      { id: 'm3', level: 5 },
+    ],
+  });
+  expect(created.ok).toBe(true);
+  const guildId = (created.value as { guildId: string }).guildId;
+  await graph.guild.repository.saveWar({
+    id: 'war-fort',
+    attackerGuildId: guildId,
+    cityId: 'fort_humans',
+    startsAtMs: 0,
+    gold: 0,
+    resources: 0,
+  });
+  let won = false;
+  for (let i = 0; i < 7_000 && !won; i += 1) {
+    graph.tickOnce();
+    const held = graph.state() as { captures: { cityId: string; won: boolean }[] };
+    won = held.captures.some((row) => row.cityId === 'fort_humans' && row.won);
+  }
+  expect(won).toBe(true);
+
+  graph.seedTrader({
+    characterId: 'lia',
+    gold: 100,
+    itemId: 'epic_sword',
+    level: 20,
+    grade: 'epic',
+    durability: 50,
+  });
+  const portaled = await graph.act('portal', { characterId: 'lia', toNodeId: 'fort_humans' });
+  expect(portaled).toMatchObject({
+    ok: true,
+    value: { nodeId: 'fort_humans', cityFee: 1, gold: 94 },
+  });
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(1);
+
+  const priced = await graph.act('city_fee', { guildId, cityId: 'fort_humans', fee: 4 });
+  expect(priced).toMatchObject({ ok: true, value: { cityFee: 4 } });
+  expect(await graph.act('city_fee', { guildId, cityId: 'fort_humans', fee: 0 })).toMatchObject({
+    ok: false,
+    code: 'fee',
+  });
+
+  graph.enterCharacter('account-m1', 'm1');
+  const member = await graph.act('portal', { characterId: 'm1', toNodeId: 'fort_humans' });
+  expect(member).toMatchObject({
+    ok: true,
+    value: { cityFee: 4, gold: GUILD_CREATE_GOLD - 9 },
+  });
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(5);
+
+  const repaired = await graph.act('repair', { characterId: 'lia', itemId: 'epic_sword' });
+  expect(repaired).toMatchObject({ ok: true, value: { serviceCut: 3, gold: 64 } });
+  expect(SERVICE_CUT_PERCENT).toBe(10);
+  expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(8);
+}, 60_000);

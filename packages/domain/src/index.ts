@@ -227,12 +227,20 @@ export {
   STASH_EXPAND_GOLD,
   STASH_SLOT_CAP,
   STASH_MAX_PURCHASES,
+  CITY_FEE_MIN,
+  CITY_FEE_MAX,
+  SERVICE_CUT_PERCENT,
+  PORTAL_BLOCK_MS,
   basePrice,
   sellToNpc,
   buyFromNpc,
   repairCost,
   deposit,
   portalFee,
+  ownedCrossingFee,
+  setCityFee,
+  serviceCut,
+  askHostilePortal,
   placeBid,
   sellerProceeds,
   auctionTaxSink,
@@ -240,7 +248,7 @@ export {
   materialGold,
   expandStash,
 } from './economy';
-export type { AuctionTaxSink } from './economy';
+export type { AuctionTaxSink, PortalStance } from './economy';
 
 export {
   ACTIVE_QUEST_LIMIT,

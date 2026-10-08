@@ -45,7 +45,8 @@ import { NODES } from '@rift/domain/gathering';
 import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import { nnUsed, type BuildState } from '@rift/domain/build';
 import { RACES } from '@rift/domain/character';
-import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
+import { ownedCrossingFee, serviceCut, setCityFee } from '@rift/domain/economy';
+import { depositBank, GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { DIRS, type Dir } from '@rift/domain/movement';
 import { SIM_TICK_MS } from '@rift/domain/time';
 import { canPortal } from '@rift/domain/world';
@@ -115,7 +116,15 @@ export interface ServerComposition {
   act: (action: string, body: Record<string, unknown>) => Promise<{ ok: boolean; code?: string; value?: unknown }>;
   state: () => Record<string, unknown>;
   creditGold: (characterId: string, amount: number) => void;
-  seedTrader: (input: { characterId: string; gold: number; itemId?: string; qty?: number }) => void;
+  seedTrader: (input: {
+    characterId: string;
+    gold: number;
+    itemId?: string;
+    qty?: number;
+    level?: number;
+    grade?: GradeId;
+    durability?: number;
+  }) => void;
   flush: () => Promise<void>;
   hydrate: () => Promise<void>;
   noteSidecar: (input: { atMs: number; characterId: string; action: string }) => void;
@@ -130,7 +139,15 @@ export interface BuiltServer {
   guild: GuildModule;
   social: SocialModule;
   creditGold: (characterId: string, amount: number) => void;
-  seedTrader: (input: { characterId: string; gold: number; itemId?: string; qty?: number }) => void;
+  seedTrader: (input: {
+    characterId: string;
+    gold: number;
+    itemId?: string;
+    qty?: number;
+    level?: number;
+    grade?: GradeId;
+    durability?: number;
+  }) => void;
 }
 
 interface SessionCacheEntry {
@@ -561,6 +578,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     shiftReputation,
     portalTo,
     assignGuild,
+    creditService,
+    setOwnedCityFee,
     async loadBuild(characterId) {
       return buildOf(characterId);
     },
@@ -719,6 +738,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (!paid.ok) {
       return { ok: false, code: paid.code };
     }
+    const crossing = repos.economy.getNode(toNodeId)?.cityFee ?? 0;
+    if (owner !== null && crossing > 0) {
+      await creditGuildBank(owner, crossing);
+    }
     simWorld = {
       ...simWorld,
       entities: simWorld.entities.map((row) => {
@@ -731,7 +754,78 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }),
     };
     const gold = repos.economy.getCharacter(characterId)?.gold ?? wallet.gold;
-    return { ok: true, value: { cooldownUntilMs: paid.value.cooldownUntilMs, nodeId: toNodeId, gold } };
+    const crossingFee = repos.economy.getNode(toNodeId)?.cityFee ?? 0;
+    return {
+      ok: true,
+      value: { cooldownUntilMs: paid.value.cooldownUntilMs, nodeId: toNodeId, gold, cityFee: crossingFee },
+    };
+  }
+
+  async function creditGuildBank(guildId: string, amount: number): Promise<void> {
+    if (!Number.isInteger(amount) || amount <= 0) {
+      return;
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null) {
+      return;
+    }
+    const deposited = depositBank(guild.bank, amount);
+    await repos.guilds.saveGuild({ ...guild, bank: deposited.bank });
+  }
+
+  function applyOwnedCityFees(): void {
+    for (const hold of captures) {
+      if (!hold.won || hold.guildId === null) {
+        continue;
+      }
+      const node = repos.economy.getNode(hold.cityId);
+      if (node === null) {
+        continue;
+      }
+      const fee = ownedCrossingFee(node.cityFee);
+      if (node.cityFee === fee) {
+        continue;
+      }
+      repos.economy.saveNode({ ...node, cityFee: fee });
+    }
+  }
+
+  async function creditService(characterId: string, cost: number): Promise<number> {
+    const cut = serviceCut(cost);
+    if (cut <= 0) {
+      return 0;
+    }
+    const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
+    if (entity?.nodeId === undefined) {
+      return 0;
+    }
+    const hold = captures.find((row) => row.cityId === entity.nodeId && row.won && row.guildId !== null);
+    if (hold?.guildId === undefined || hold.guildId === null) {
+      return 0;
+    }
+    await creditGuildBank(hold.guildId, cut);
+    return cut;
+  }
+
+  async function setOwnedCityFee(
+    guildId: string,
+    cityId: string,
+    fee: number,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const hold = captures.find((row) => row.cityId === cityId && row.won && row.guildId === guildId);
+    if (hold === undefined) {
+      return { ok: false, code: 'owner' };
+    }
+    const priced = setCityFee(fee);
+    if (!priced.ok) {
+      return { ok: false, code: priced.code };
+    }
+    const node = repos.economy.getNode(cityId);
+    if (node === null) {
+      return { ok: false, code: 'unknown' };
+    }
+    repos.economy.saveNode({ ...node, cityFee: priced.value });
+    return { ok: true, value: { cityId, cityFee: priced.value } };
   }
 
   function rememberCharacter(_accountId: string, characterId: string): void {
@@ -945,6 +1039,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         return [{ cityId: entity.nodeId, guildId: entity.guildId }];
       }),
     });
+    applyOwnedCityFees();
     for (const entity of simWorld.entities) {
       if (entity.monsterId !== undefined || entity.nodeId === undefined) {
         continue;
@@ -1061,6 +1156,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         }
       }
       captures = readCaptures(loaded);
+      applyOwnedCityFees();
     }
     for (const wallet of stored.wallets) {
       repos.economy.saveCharacter(wallet);
@@ -1442,7 +1538,15 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     repos.economy.saveCharacter({ ...current, gold: current.gold + amount });
   }
 
-  function seedTrader(input: { characterId: string; gold: number; itemId?: string; qty?: number }): void {
+  function seedTrader(input: {
+    characterId: string;
+    gold: number;
+    itemId?: string;
+    qty?: number;
+    level?: number;
+    grade?: GradeId;
+    durability?: number;
+  }): void {
     const current =
       repos.economy.getCharacter(input.characterId) ??
       newEconomyCharacter({ characterId: input.characterId, side: 'light', gold: 0 });
@@ -1450,10 +1554,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (input.itemId !== undefined) {
       items[input.itemId] = {
         itemId: input.itemId,
-        level: 1,
-        grade: 'common',
+        level: input.level ?? 1,
+        grade: input.grade ?? 'common',
         unique: false,
-        durability: 100,
+        durability: input.durability ?? 100,
         qty: input.qty ?? 1,
       };
     }
@@ -1851,6 +1955,8 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/encounter/enter', action: 'encounter_enter' },
   { path: '/dialogue', action: 'dialogue' },
   { path: '/portal', action: 'portal' },
+  { path: '/repair', action: 'repair' },
+  { path: '/city-fee', action: 'city_fee' },
 ];
 
 function entityView(entity: SimEntity, gold: number): Record<string, unknown> {

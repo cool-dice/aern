@@ -319,7 +319,11 @@ export function createCraftService(deps: CraftServiceDeps): CraftService {
         status: 'active',
       };
       jobs.set(job.id, job);
-      return pass({ readyAtMs: job.readyAtMs, jobId: job.id });
+      return pass({
+        readyAtMs: job.readyAtMs,
+        jobId: job.id,
+        goldSpent: crafter.gold - started.value.gold,
+      });
     },
 
     async complete(characterId, jobId, nowMs) {

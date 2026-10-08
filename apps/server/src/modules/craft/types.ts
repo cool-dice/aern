@@ -57,7 +57,7 @@ export interface CraftService {
     itemLevel: number;
     accelerate: boolean;
     nowMs: number;
-  }): Promise<Result<{ readyAtMs: number; jobId: string }, string>>;
+  }): Promise<Result<{ readyAtMs: number; jobId: string; goldSpent: number }, string>>;
   complete(
     characterId: string,
     jobId: string,
