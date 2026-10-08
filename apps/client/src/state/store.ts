@@ -87,6 +87,8 @@ export interface ClientState {
   portalResult: Record<string, unknown> | null;
   /** Last `/dungeon` body. Null until the play session posts one. */
   dungeonResult: Record<string, unknown> | null;
+  /** Last city-service, node, war, storage, or contract response. */
+  serviceResult: Record<string, unknown> | null;
   /** City flags from the world snapshot. */
   captures: CaptureView[];
   /** Resource-node flags from the world snapshot. */
@@ -103,6 +105,7 @@ export interface ClientState {
   setTradeResult(result: Record<string, unknown> | null): void;
   setPortalResult(result: Record<string, unknown> | null): void;
   setDungeonResult(result: Record<string, unknown> | null): void;
+  setServiceResult(result: Record<string, unknown> | null): void;
   setPredicted(input: { cell: CellPoint | null; steps: PredictedStep[] }): void;
 }
 
@@ -401,6 +404,7 @@ export function createClientStore(): ClientStore {
     tradeResult: null,
     portalResult: null,
     dungeonResult: null,
+    serviceResult: null,
     captures: [],
     resourceNodes: [],
     reputation: {},
@@ -439,6 +443,9 @@ export function createClientStore(): ClientStore {
     },
     setDungeonResult: (result) => {
       set({ dungeonResult: result });
+    },
+    setServiceResult: (result) => {
+      set({ serviceResult: result });
     },
     setPredicted: (input) => {
       const predicted = readPredicted(input);

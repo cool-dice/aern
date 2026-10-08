@@ -3,7 +3,23 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 import { createClientStore } from '../state/store';
-import { askPortal, completeTrade, enterDungeon, startCraft, startPortal, type LiveResponse } from './live';
+import {
+  askPortal,
+  completeTrade,
+  declareWar,
+  enterDungeon,
+  grantNode,
+  postMercenary,
+  postPatrol,
+  rentStorage,
+  setCityFee,
+  setNodeAccess,
+  setNodeTax,
+  startCraft,
+  startPortal,
+  withdrawBank,
+  type LiveResponse,
+} from './live';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -14,6 +30,15 @@ test('the play screen posts craft and trade through App', () => {
   expect(app).toContain('startPortal(');
   expect(app).toContain('askPortal(');
   expect(app).toContain('enterDungeon(');
+  expect(app).toContain('setCityFee(');
+  expect(app).toContain('setNodeTax(');
+  expect(app).toContain('setNodeAccess(');
+  expect(app).toContain('grantNode(');
+  expect(app).toContain('rentStorage(');
+  expect(app).toContain('declareWar(');
+  expect(app).toContain('withdrawBank(');
+  expect(app).toContain('postMercenary(');
+  expect(app).toContain('postPatrol(');
   expect(app).toContain('onCraft=');
   expect(app).toContain('onTrade=');
   expect(app).toContain('onPortal=');
@@ -170,4 +195,101 @@ test('a world snapshot keeps captures and reputation the map can read', () => {
   ]);
   expect(store.getState().reputation).toEqual({ koval: 3 });
   expect(store.getState().quests[0]?.objectives[0]?.scene).toContain('questioned the council');
+});
+
+test('the play session posts city fees, node commands, storage, war, and contracts', async () => {
+  const store = createClientStore();
+  store.getState().applySnapshot({
+    captures: [{ cityId: 'fort_humans', guildId: 'wolves', heldMs: 1, won: true }],
+    resourceNodes: [{ nodeId: 'plains_mine', guildId: 'wolves', plantMs: 60_000, absentMs: 0, chest: 4, taxPercent: 10, access: 'open' }],
+  });
+  const calls: { url: string; body: Record<string, unknown> }[] = [];
+  const fetchImpl = async (url: string, init: { method: string; headers: Record<string, string>; body: string }) => {
+    calls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
+    return { ok: true, json: async () => ({ ok: true, cityFee: 1, taxPercent: 10, cost: 1, gold: 9 }) };
+  };
+  await setCityFee({ server: 'http://game.example', guildId: 'wolves', cityId: 'fort_humans', fee: 1, store, fetchImpl });
+  await setNodeTax({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    nodeId: 'plains_mine',
+    characterId: 'lia',
+    taxPercent: 10,
+    store,
+    fetchImpl,
+  });
+  await setNodeAccess({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    nodeId: 'plains_mine',
+    access: 'request',
+    store,
+    fetchImpl,
+  });
+  await grantNode({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    nodeId: 'plains_mine',
+    characterId: 'noa',
+    store,
+    fetchImpl,
+  });
+  await rentStorage({
+    server: 'http://game.example',
+    characterId: 'lia',
+    cityId: 'fort_humans',
+    slots: 1,
+    days: 1,
+    store,
+    fetchImpl,
+  });
+  await declareWar({
+    server: 'http://game.example',
+    attackerGuildId: 'wolves',
+    cityId: 'obsidian_tower',
+    store,
+    fetchImpl,
+  });
+  await withdrawBank({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    amount: 1,
+    store,
+    fetchImpl,
+  });
+  await postMercenary({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    mercenaryId: 'blade',
+    nodeId: 'plains_mine',
+    kind: 'patrol',
+    rewardGold: 100,
+    store,
+    fetchImpl,
+  });
+  await postPatrol({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    nodeId: 'plains_mine',
+    assigneeId: 'lia',
+    store,
+    fetchImpl,
+  });
+  expect(calls.map((call) => call.url)).toEqual([
+    'http://game.example/city-fee',
+    'http://game.example/node/tax',
+    'http://game.example/node/access',
+    'http://game.example/node/grant',
+    'http://game.example/storage',
+    'http://game.example/war',
+    'http://game.example/guild/withdraw',
+    'http://game.example/mercenary',
+    'http://game.example/patrol',
+  ]);
+  expect(store.getState().serviceResult?.route).toBe('/patrol');
+  expect(store.getState().captures).toEqual([{ cityId: 'fort_humans', guildId: 'wolves', heldMs: 1, won: true }]);
+  expect(store.getState().resourceNodes[0]?.chest).toBe(4);
 });

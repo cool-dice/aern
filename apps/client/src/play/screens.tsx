@@ -56,6 +56,18 @@ export function PlayPanels({
   onPortalAsk,
   onDungeon,
   onDungeonSolo,
+  onCityFee,
+  onNodeTax,
+  onNodeAccess,
+  onNodeGrant,
+  onStorage,
+  onWar,
+  onWithdraw,
+  onMercenary,
+  onPatrol,
+  onPactNotice,
+  onPactRenew,
+  onContend,
 }: {
   session: PlaySession;
   onCraft?: () => void;
@@ -64,6 +76,18 @@ export function PlayPanels({
   onPortalAsk?: () => void;
   onDungeon?: () => void;
   onDungeonSolo?: () => void;
+  onCityFee?: () => void;
+  onNodeTax?: () => void;
+  onNodeAccess?: () => void;
+  onNodeGrant?: () => void;
+  onStorage?: () => void;
+  onWar?: () => void;
+  onWithdraw?: () => void;
+  onMercenary?: () => void;
+  onPatrol?: () => void;
+  onPactNotice?: () => void;
+  onPactRenew?: () => void;
+  onContend?: () => void;
 }): ReactElement | null {
   if (session.screen === 'inventory') {
     return <InventoryScreen model={inventoryModel(inventoryItems(session), true)} />;
@@ -122,6 +146,45 @@ export function PlayPanels({
           <p data-resource-node={state.resourceNodes[0].nodeId}>
             {state.resourceNodes[0].guildId ?? ''}:{String(state.resourceNodes[0].plantMs)}
           </p>
+        ) : null}
+        <button type="button" data-city-fee="set" onClick={() => onCityFee?.()}>
+          fee
+        </button>
+        <button type="button" data-node-tax="set" onClick={() => onNodeTax?.()}>
+          tax
+        </button>
+        <button type="button" data-node-access="set" onClick={() => onNodeAccess?.()}>
+          access
+        </button>
+        <button type="button" data-node-grant="set" onClick={() => onNodeGrant?.()}>
+          grant
+        </button>
+        <button type="button" data-storage="rent" onClick={() => onStorage?.()}>
+          storage
+        </button>
+        <button type="button" data-war="declare" onClick={() => onWar?.()}>
+          war
+        </button>
+        <button type="button" data-withdraw="bank" onClick={() => onWithdraw?.()}>
+          withdraw
+        </button>
+        <button type="button" data-mercenary="post" onClick={() => onMercenary?.()}>
+          mercenary
+        </button>
+        <button type="button" data-patrol="post" onClick={() => onPatrol?.()}>
+          patrol
+        </button>
+        <button type="button" data-pact="notice" onClick={() => onPactNotice?.()}>
+          notice
+        </button>
+        <button type="button" data-pact="renew" onClick={() => onPactRenew?.()}>
+          renew
+        </button>
+        <button type="button" data-war="contend" onClick={() => onContend?.()}>
+          contend
+        </button>
+        {typeof state.serviceResult?.route === 'string' ? (
+          <p data-service-route={state.serviceResult.route}>{state.serviceResult.route}</p>
         ) : null}
       </section>
     );

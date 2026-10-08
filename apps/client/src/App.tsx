@@ -11,7 +11,25 @@ import { t } from './i18n/translate';
 import { hudModel } from './ui/models';
 import { CreationScreen, HudScreen } from './ui/screens';
 import { PlayPanels } from './play/screens';
-import { askPortal, completeTrade, enterDungeon, startCraft, startPortal } from './play/live';
+import {
+  askPortal,
+  completeTrade,
+  declareWar,
+  enterDungeon,
+  grantNode,
+  noticePact,
+  postMercenary,
+  postPatrol,
+  registerContender,
+  renewPact,
+  rentStorage,
+  setCityFee,
+  setNodeAccess,
+  setNodeTax,
+  startCraft,
+  startPortal,
+  withdrawBank,
+} from './play/live';
 import { spawnMockSidecar, type SidecarHandle } from './play/sidecar';
 import {
   bindKeyboard,
@@ -470,6 +488,165 @@ export function App() {
                 characterId,
                 groupId: characterId,
                 partySize: 1,
+                store: plan.store,
+              });
+            }}
+            onCityFee={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void setCityFee({
+                server: SERVER,
+                guildId: 'guild',
+                cityId: 'fort_humans',
+                fee: 1,
+                store: plan.store,
+              });
+            }}
+            onNodeTax={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void setNodeTax({
+                server: SERVER,
+                guildId: 'guild',
+                nodeId: 'plains_mine',
+                characterId,
+                taxPercent: 10,
+                store: plan.store,
+              });
+            }}
+            onNodeAccess={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void setNodeAccess({
+                server: SERVER,
+                guildId: 'guild',
+                nodeId: 'plains_mine',
+                access: 'request',
+                store: plan.store,
+              });
+            }}
+            onNodeGrant={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void grantNode({
+                server: SERVER,
+                guildId: 'guild',
+                nodeId: 'plains_mine',
+                characterId,
+                store: plan.store,
+              });
+            }}
+            onStorage={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void rentStorage({
+                server: SERVER,
+                characterId,
+                cityId: 'fort_humans',
+                slots: 1,
+                days: 1,
+                store: plan.store,
+              });
+            }}
+            onWar={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void declareWar({
+                server: SERVER,
+                attackerGuildId: 'guild',
+                cityId: 'fort_humans',
+                store: plan.store,
+              });
+            }}
+            onWithdraw={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void withdrawBank({
+                server: SERVER,
+                guildId: 'guild',
+                characterId,
+                amount: 1,
+                store: plan.store,
+              });
+            }}
+            onMercenary={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postMercenary({
+                server: SERVER,
+                guildId: 'guild',
+                characterId,
+                mercenaryId: 'blade',
+                nodeId: 'plains_mine',
+                kind: 'patrol',
+                rewardGold: 100,
+                store: plan.store,
+              });
+            }}
+            onPatrol={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postPatrol({
+                server: SERVER,
+                guildId: 'guild',
+                characterId,
+                nodeId: 'plains_mine',
+                assigneeId: characterId,
+                store: plan.store,
+              });
+            }}
+            onPactNotice={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void noticePact({
+                server: SERVER,
+                pactId: 'pact',
+                characterId,
+                store: plan.store,
+              });
+            }}
+            onPactRenew={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void renewPact({
+                server: SERVER,
+                pactId: 'pact',
+                characterId,
+                store: plan.store,
+              });
+            }}
+            onContend={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void registerContender({
+                server: SERVER,
+                guildId: 'guild',
+                warId: 'war',
+                characterId,
                 store: plan.store,
               });
             }}

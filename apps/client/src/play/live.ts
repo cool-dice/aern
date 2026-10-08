@@ -148,3 +148,277 @@ export async function enterDungeon(input: {
   input.store.getState().pushLog(posted.ok ? `dungeon:${instanceId}` : `dungeon:${instanceId}`);
   return posted;
 }
+
+async function postService(input: {
+  server: string;
+  path: string;
+  body: Record<string, unknown>;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+  log: string;
+}): Promise<LiveResponse> {
+  const posted = await postJson(input.fetchImpl ?? fetch, `${input.server}${input.path}`, input.body);
+  input.store.getState().setServiceResult({ route: input.path, ...posted.body });
+  const code = typeof posted.body.code === 'string' ? posted.body.code : input.log;
+  input.store.getState().pushLog(posted.ok ? `${input.log}:ok` : `${input.log}:${code}`);
+  return posted;
+}
+
+/** Posts `/city-fee` and stores the fee the owner set. */
+export async function setCityFee(input: {
+  server: string;
+  guildId: string;
+  cityId: string;
+  fee: number;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/city-fee',
+    body: { guildId: input.guildId, cityId: input.cityId, fee: input.fee },
+    store: input.store,
+    log: 'city-fee',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/node/tax`. The server applies the officer cap. */
+export async function setNodeTax(input: {
+  server: string;
+  guildId: string;
+  nodeId: string;
+  characterId: string;
+  taxPercent: number;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/node/tax',
+    body: {
+      guildId: input.guildId,
+      nodeId: input.nodeId,
+      characterId: input.characterId,
+      taxPercent: input.taxPercent,
+    },
+    store: input.store,
+    log: 'node-tax',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/node/access` and stores the access mode. */
+export async function setNodeAccess(input: {
+  server: string;
+  guildId: string;
+  nodeId: string;
+  access: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/node/access',
+    body: { guildId: input.guildId, nodeId: input.nodeId, access: input.access },
+    store: input.store,
+    log: 'node-access',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/node/grant` and stores the grant. */
+export async function grantNode(input: {
+  server: string;
+  guildId: string;
+  nodeId: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/node/grant',
+    body: { guildId: input.guildId, nodeId: input.nodeId, characterId: input.characterId },
+    store: input.store,
+    log: 'node-grant',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/storage`. One slot for one day debits 1 gold. */
+export async function rentStorage(input: {
+  server: string;
+  characterId: string;
+  cityId: string;
+  slots: number;
+  days: number;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/storage',
+    body: { characterId: input.characterId, cityId: input.cityId, slots: input.slots, days: input.days },
+    store: input.store,
+    log: 'storage',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/war`. `GuildService.declareWar` is the live route. */
+export async function declareWar(input: {
+  server: string;
+  attackerGuildId: string;
+  cityId: string;
+  store: ClientStore;
+  leaderConsent?: boolean;
+  councilConsents?: number;
+  resources?: number;
+  suzerainConsent?: boolean;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/war',
+    body: {
+      attackerGuildId: input.attackerGuildId,
+      cityId: input.cityId,
+      leaderConsent: input.leaderConsent ?? true,
+      councilConsents: input.councilConsents ?? 2,
+      resources: input.resources ?? 20_000,
+      suzerainConsent: input.suzerainConsent ?? false,
+    },
+    store: input.store,
+    log: 'war',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/guild/withdraw`. `GuildService.withdraw` is the live route. */
+export async function withdrawBank(input: {
+  server: string;
+  guildId: string;
+  characterId: string;
+  amount: number;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/guild/withdraw',
+    body: { guildId: input.guildId, characterId: input.characterId, amount: input.amount },
+    store: input.store,
+    log: 'withdraw',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/mercenary`. The tick pays or fails the contract. */
+export async function postMercenary(input: {
+  server: string;
+  guildId: string;
+  characterId: string;
+  mercenaryId: string;
+  nodeId: string;
+  kind: string;
+  rewardGold: number;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/mercenary',
+    body: {
+      guildId: input.guildId,
+      characterId: input.characterId,
+      mercenaryId: input.mercenaryId,
+      nodeId: input.nodeId,
+      kind: input.kind,
+      rewardGold: input.rewardGold,
+    },
+    store: input.store,
+    log: 'mercenary',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/patrol`. The default reward is the 3-hour guild patrol. */
+export async function postPatrol(input: {
+  server: string;
+  guildId: string;
+  characterId: string;
+  nodeId: string;
+  assigneeId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/patrol',
+    body: {
+      guildId: input.guildId,
+      characterId: input.characterId,
+      nodeId: input.nodeId,
+      assigneeId: input.assigneeId,
+    },
+    store: input.store,
+    log: 'patrol',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/pact/notice`. An alliance ends 24 hours later; a vassal ends after 7 days. */
+export async function noticePact(input: {
+  server: string;
+  pactId: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/pact/notice',
+    body: { pactId: input.pactId, characterId: input.characterId },
+    store: input.store,
+    log: 'pact-notice',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/pact/renew`. Alliances and non-aggression pacts last another 7 days. */
+export async function renewPact(input: {
+  server: string;
+  pactId: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/pact/renew',
+    body: { pactId: input.pactId, characterId: input.characterId },
+    store: input.store,
+    log: 'pact-renew',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/war/contend`. Registration costs 10 000 gold and closes one hour before the war. */
+export async function registerContender(input: {
+  server: string;
+  guildId: string;
+  warId: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/war/contend',
+    body: { guildId: input.guildId, warId: input.warId, characterId: input.characterId },
+    store: input.store,
+    log: 'contend',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
