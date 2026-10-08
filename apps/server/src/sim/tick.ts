@@ -92,6 +92,8 @@ export interface SimEntity {
   moveFrac?: number;
   /** Last combatant whose hit committed. Kill credit uses this id. */
   lastAttackerId?: string;
+  /** Seasonal pack tag copied from the live event snapshot. */
+  seasonTag?: string;
   dungeonId?: string;
   roomId?: number;
   dungeonRooms?: { id: number; x: number; y: number }[];

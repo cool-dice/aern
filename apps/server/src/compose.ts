@@ -52,7 +52,6 @@ import { toSimCommand } from './sim/commands';
 import { onObjective } from './sim/progress';
 import { prototypeEncounter, spawnNamed } from './sim/population';
 import { PROTOTYPE_MONSTERS } from './sim/bestiary';
-import { seasonSpawnCount } from './sim/weather';
 import { stepTick, type SimCommand, type SimEntity, type SimWorld } from './sim/tick';
 import { renderMetrics, type MetricsSnapshot } from './metrics';
 
@@ -423,7 +422,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       seasonSpawn,
       ...(snap.weatherId !== null ? { weatherId: snap.weatherId } : {}),
     };
-    topUpSeasonSpawns(seasonSpawnCount(PROTOTYPE_MONSTERS.length));
+    topUpSeasonSpawns(Math.max(0, Math.round(PROTOTYPE_MONSTERS.length * seasonSpawn)), snap.spawnTag);
     const commands: SimCommand[] = [];
     for (const command of pending.splice(0, pending.length)) {
       const simCommand = toSimCommand(command);
@@ -509,7 +508,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     });
   }
 
-  function topUpSeasonSpawns(budget: number): void {
+  function topUpSeasonSpawns(budget: number, tag: string): void {
     const players = simWorld.entities.filter((entity) => entity.monsterId === undefined);
     if (players.length === 0) {
       return;
@@ -526,7 +525,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (spawned === null) {
       return;
     }
-    simWorld = { ...simWorld, entities: [...simWorld.entities, spawned] };
+    simWorld = { ...simWorld, entities: [...simWorld.entities, { ...spawned, seasonTag: tag }] };
   }
 
   function observeAndSubmit(): void {
@@ -1100,6 +1099,11 @@ function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
     gold,
     monsterId: entity.monsterId ?? null,
     eliteId: entity.eliteId ?? null,
+    seasonTag: entity.seasonTag ?? null,
+    legsDestroyed: entity.legsDestroyed ?? 0,
+    roomId: entity.roomId ?? null,
+    nn: entity.nn ?? 0,
+    nnLimit: entity.nnLimit ?? 0,
   };
 }
 

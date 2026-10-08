@@ -73,6 +73,7 @@ export function createEventService(
       return {
         season,
         resourceBonus: seasonResource(season),
+        spawnTag: seasonSpawnTag(season),
         spawnTagMultiplier: spawnMultiplier(season, seasonSpawnTag(season)),
         weather: effectAt(regionId, nowMs, inSafe),
         weatherId: activeWeather(plans, nowMs)?.weatherId ?? null,

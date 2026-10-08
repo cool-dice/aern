@@ -23,6 +23,8 @@ export interface EventSnapshot {
   resourceBonus: string;
   /** Spawn multiplier for this season's tag. Matching tags are 1.2 and do not stack. */
   spawnTagMultiplier: number;
+  /** Tag whose frequency `spawnTagMultiplier` describes (`pack`, `fire`, `undead`, `ice`). */
+  spawnTag: string;
   weather: Record<string, number | boolean> | null;
   /** Active anomaly id, or null while none has started. */
   weatherId: string | null;

@@ -1,4 +1,5 @@
 import type { Appearance } from '@rift/domain/character';
+import { DAY_MS, EPOCH_MS, seasonAt, seasonSpawnTag, spawnMultiplier } from '@rift/domain/events';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { emptyPoints } from '@rift/domain/stats';
 import { expect, test } from 'vitest';
@@ -281,6 +282,40 @@ test('death drops the inventory kit and the client respawn command restores the 
   } finally {
     await built.close();
   }
+});
+
+test('season spawns use the live snapshot multiplier and tag', () => {
+  const nowMs = EPOCH_MS + 84 * DAY_MS;
+  const season = seasonAt(nowMs);
+  const tag = seasonSpawnTag(season);
+  const multiplier = spawnMultiplier(season, tag);
+  expect(multiplier).not.toBe(1);
+  const graph = compose({ nowMs, jwtSecret: 'test-secret' });
+  graph.enterWorld('lia');
+  const before = graph.state() as { entities: { id: string }[] };
+  for (const entity of before.entities) {
+    graph.submit({
+      commandId: `clear-${entity.id}`,
+      seq: 1,
+      issuedAtMs: nowMs,
+      action: 'attack_ranged',
+      targetId: entity.id,
+      params: { entityId: 'lia', weaponDamage: 5000, range: 30, odCost: 0 },
+    });
+  }
+  graph.tickOnce();
+  for (let step = 0; step < 8; step += 1) {
+    graph.tickOnce();
+  }
+  const after = graph.state() as {
+    seasonSpawn: number;
+    entities: { hp: number; seasonTag: string | null }[];
+  };
+  expect(after.seasonSpawn).toBe(multiplier);
+  const budget = Math.round(PROTOTYPE_MONSTERS.length * multiplier);
+  const living = after.entities.filter((entity) => entity.hp > 0);
+  expect(living.length).toBeLessThanOrEqual(budget);
+  expect(living.some((entity) => entity.seasonTag === tag)).toBe(true);
 });
 
 test('auction buyout records the 5% tax destination', async () => {
