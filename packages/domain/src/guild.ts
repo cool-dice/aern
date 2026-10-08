@@ -1480,8 +1480,17 @@ export function postMercenary(input: {
   nowMs: number;
   durationMs: number;
   nodeId: string;
+  destinationId?: string;
 }): Result<
-  { kind: MercenaryKind; rewardGold: number; mercenaryId: string; untilMs: number; nodeId: string; durationMs: number },
+  {
+    kind: MercenaryKind;
+    rewardGold: number;
+    mercenaryId: string;
+    untilMs: number;
+    nodeId: string;
+    durationMs: number;
+    destinationId: string | null;
+  },
   'rank' | 'gold' | 'member' | 'kind'
 > {
   if (!isRank(input.rank)) {
@@ -1508,6 +1517,10 @@ export function postMercenary(input: {
   if (input.durationMs <= 0) {
     return err('kind');
   }
+  const destinationId = input.destinationId ?? null;
+  if (input.kind === 'escort' && destinationId !== null && destinationId === input.nodeId) {
+    return err('kind');
+  }
   return ok({
     kind: input.kind,
     rewardGold: input.rewardGold,
@@ -1515,7 +1528,37 @@ export function postMercenary(input: {
     untilMs: input.nowMs + input.durationMs,
     nodeId: input.nodeId,
     durationMs: input.durationMs,
+    destinationId,
   });
+}
+
+/** Escort pay requires a walk along edges from the start node to the destination. */
+export function escortArrived(input: {
+  startId: string;
+  destinationId: string | null;
+  trail: readonly string[];
+  edges: readonly { a: string; b: string }[];
+}): boolean {
+  if (input.destinationId === null || input.destinationId === input.startId) {
+    return false;
+  }
+  if (input.trail.length < 2 || input.trail[0] !== input.startId) {
+    return false;
+  }
+  if (input.trail[input.trail.length - 1] !== input.destinationId) {
+    return false;
+  }
+  for (let index = 1; index < input.trail.length; index += 1) {
+    const from = input.trail[index - 1] ?? '';
+    const to = input.trail[index] ?? '';
+    const linked = input.edges.some(
+      (edge) => (edge.a === from && edge.b === to) || (edge.a === to && edge.b === from),
+    );
+    if (!linked) {
+      return false;
+    }
+  }
+  return true;
 }
 
 export function postPatrolQuest(input: {

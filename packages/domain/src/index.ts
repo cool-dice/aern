@@ -427,6 +427,7 @@ export {
   allianceFriendlyFire,
   napBetween,
   postMercenary,
+  escortArrived,
   postPatrolQuest,
   tickContract,
 } from './guild';
