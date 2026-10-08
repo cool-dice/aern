@@ -99,6 +99,7 @@ import {
   aiLeadership,
   closeInternalVote,
   dissolveHoldings,
+  dissolveKindPiles,
   officerInvite,
   reserveItemSlots,
   succeedAbsentLeader,
@@ -1723,6 +1724,45 @@ test('dissolution splits resources and items on their own ledgers', () => {
   });
   expect(split.resources).toEqual({ shares: [{ id: 'a', amount: 10 }], void: 0 });
   expect(split.items).toEqual({ shares: [], void: 3 });
+  expect(
+    dissolveKindPiles([
+      {
+        kind: 'metal',
+        amount: 4,
+        ledger: [{ id: 'lia', contributed: 4 }],
+      },
+      {
+        kind: 'leather',
+        amount: 3,
+        ledger: [{ id: 'm1', contributed: 3 }],
+      },
+      {
+        kind: 'blade',
+        amount: 4,
+        ledger: [
+          { id: 'lia', contributed: 2 },
+          { id: 'm1', contributed: 2 },
+        ],
+      },
+      {
+        kind: 'shield',
+        amount: 2,
+        ledger: [{ id: 'lia', contributed: 2 }],
+      },
+    ]),
+  ).toEqual([
+    { kind: 'metal', shares: [{ id: 'lia', amount: 4 }], void: 0 },
+    { kind: 'leather', shares: [{ id: 'm1', amount: 3 }], void: 0 },
+    {
+      kind: 'blade',
+      shares: [
+        { id: 'lia', amount: 2 },
+        { id: 'm1', amount: 2 },
+      ],
+      void: 0,
+    },
+    { kind: 'shield', shares: [{ id: 'lia', amount: 2 }], void: 0 },
+  ]);
 });
 
 test('withdraw enforces item slots and the daily item and resource caps', () => {

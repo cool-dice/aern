@@ -98,6 +98,10 @@ test('cycle 11 hooks are called from tickOnce, skipMs, or the live route', () =>
   );
   expect(payout.includes('dissolveHoldings(')).toBe(true);
   expect(payout.includes('dissolveShares(')).toBe(true);
+  expect(payout.includes('dissolveKindPiles(')).toBe(true);
+  expect(payout.includes('pile.kind')).toBe(true);
+  expect(payout.includes("creditMaterial(share.id, 'metal'")).toBe(false);
+  expect(payout.includes('cursor < stacks.length')).toBe(false);
   const release = composeSource.slice(
     composeSource.indexOf('async function releaseHeldWithdrawals'),
     composeSource.indexOf('async function inspectRewardFreezes'),
@@ -178,6 +182,58 @@ test('an internal ballot stays open for 24 hours and the leader breaks the tie',
     closed: true,
     result: { status: 'passed', choice: 'yes', by: 'leader' },
   });
+});
+
+test('dissolution pays each resource kind and each item from its own ledger', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.enterCharacter('account-m1', 'm1');
+  const guildId = await foundGuild(graph);
+  await graph.creditMaterial('m1', 'leather', 3);
+  graph.seedTrader({ characterId: 'lia', gold: 20, itemId: 'blade', qty: 2 });
+  graph.seedTrader({ characterId: 'lia', gold: 20, itemId: 'shield', qty: 2 });
+  graph.seedTrader({ characterId: 'm1', gold: 20, itemId: 'blade', qty: 2 });
+  expect(
+    await graph.act('guild_deposit', {
+      guildId,
+      characterId: 'lia',
+      amount: 1,
+      resources: 4,
+      resourceId: 'metal',
+      itemId: 'blade',
+      itemQty: 2,
+    }),
+  ).toMatchObject({ ok: true, value: { resources: 4, items: 2 } });
+  expect(
+    await graph.act('guild_deposit', {
+      guildId,
+      characterId: 'lia',
+      amount: 1,
+      itemId: 'shield',
+      itemQty: 2,
+    }),
+  ).toMatchObject({ ok: true, value: { items: 2 } });
+  expect(
+    await graph.act('guild_deposit', {
+      guildId,
+      characterId: 'm1',
+      amount: 1,
+      resources: 3,
+      resourceId: 'leather',
+      itemId: 'blade',
+      itemQty: 2,
+    }),
+  ).toMatchObject({ ok: true, value: { resources: 3, items: 2 } });
+  graph.ai.service.onCarrierOffline('lia');
+  await graph.skipMs(LEADER_ABSENCE_MS);
+  expect(await graph.materialQty('lia', 'metal')).toBe(5);
+  expect(await graph.materialQty('lia', 'leather')).toBe(0);
+  expect(await graph.materialQty('m1', 'metal')).toBe(5);
+  expect(await graph.materialQty('m1', 'leather')).toBe(3);
+  expect(graph.heldItemQty('lia', 'blade')).toBe(2);
+  expect(graph.heldItemQty('lia', 'shield')).toBe(2);
+  expect(graph.heldItemQty('m1', 'blade')).toBe(2);
+  expect(graph.heldItemQty('m1', 'shield')).toBe(0);
 });
 
 test('fourteen days of leader absence dissolves a guild with no council and no officers', async () => {

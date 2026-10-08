@@ -380,6 +380,7 @@ export {
   withdraw,
   reserveItemSlots,
   dissolveHoldings,
+  dissolveKindPiles,
   closeInternalVote,
   succeedAbsentLeader,
   aiLeadership,

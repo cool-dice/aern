@@ -72,6 +72,7 @@ import {
   depositBank,
   depositNodeChest,
   dissolveHoldings,
+  dissolveKindPiles,
   dissolveShares,
   formPact,
   withdraw,
@@ -196,6 +197,9 @@ export interface ServerComposition {
   act: (action: string, body: Record<string, unknown>) => Promise<{ ok: boolean; code?: string; value?: unknown }>;
   state: () => Record<string, unknown>;
   creditGold: (characterId: string, amount: number) => void;
+  creditMaterial: (characterId: string, resourceId: string, amount: number) => Promise<void>;
+  materialQty: (characterId: string, resourceId: string) => Promise<number>;
+  heldItemQty: (characterId: string, itemId: string) => number;
   appointStaff: (characterId: string, role: 'moderator' | 'admin') => void;
   seedTrader: (input: {
     characterId: string;
@@ -352,6 +356,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const contributions = new Map<string, Map<string, number>>();
   const resourceLedgers = new Map<string, Map<string, number>>();
   const itemLedgers = new Map<string, Map<string, number>>();
+  const resourceKindLedgers = new Map<string, Map<string, Map<string, number>>>();
+  const itemKindLedgers = new Map<string, Map<string, Map<string, number>>>();
+  const resourceKindStock = new Map<string, Map<string, number>>();
   const guildResources = new Map<string, number>();
   const guildItems = new Map<string, { itemId: string; qty: number }[]>();
   const memberStats = new Map<string, Map<string, { seatedAtMs: number; activityMs: number }>>();
@@ -1538,15 +1545,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     if (input.resourceAmount > 0) {
       const kind = input.resourceId ?? 'metal';
-      const stock = guildResources.get(input.guildId) ?? 0;
+      const stocks = resourceKindStock.get(input.guildId) ?? new Map<string, number>();
+      const stock = stocks.get(kind) ?? 0;
       const moved = Math.min(stock, input.resourceAmount);
-      guildResources.set(input.guildId, Math.max(0, stock - moved));
-      const stacks = resourceLedgers.get(input.guildId);
+      stocks.set(kind, Math.max(0, stock - moved));
+      resourceKindStock.set(input.guildId, stocks);
+      guildResources.set(input.guildId, Math.max(0, (guildResources.get(input.guildId) ?? 0) - moved));
       if (moved > 0) {
         await creditMaterial(input.characterId, kind, moved);
-      }
-      if (stacks !== undefined) {
-        stacks.set(input.characterId, Math.max(0, (stacks.get(input.characterId) ?? 0) - moved));
       }
     }
     if (input.itemAmount > 0) {
@@ -3624,6 +3630,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       const ledger = resourceLedgers.get(guildId) ?? new Map<string, number>();
       ledger.set(characterId, (ledger.get(characterId) ?? 0) + resources);
       resourceLedgers.set(guildId, ledger);
+      noteKind(resourceKindLedgers, guildId, resourceId, characterId, resources);
+      const stocks = resourceKindStock.get(guildId) ?? new Map<string, number>();
+      stocks.set(resourceId, (stocks.get(resourceId) ?? 0) + resources);
+      resourceKindStock.set(guildId, stocks);
       resourceContributed = resources;
     }
     if (Number.isInteger(itemQtyIn) && itemQtyIn > 0 && itemId.length > 0) {
@@ -3657,6 +3667,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       const ledger = itemLedgers.get(guildId) ?? new Map<string, number>();
       ledger.set(characterId, (ledger.get(characterId) ?? 0) + itemQtyIn);
       itemLedgers.set(guildId, ledger);
+      noteKind(itemKindLedgers, guildId, itemId, characterId, itemQtyIn);
       itemContributed = itemQtyIn;
     }
     return {
@@ -3709,6 +3720,44 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       .map(([id, contributed]) => ({ id, contributed }));
   }
 
+  function noteKind(
+    table: Map<string, Map<string, Map<string, number>>>,
+    guildId: string,
+    kind: string,
+    characterId: string,
+    amount: number,
+  ): void {
+    const kinds = table.get(guildId) ?? new Map<string, Map<string, number>>();
+    const pile = kinds.get(kind) ?? new Map<string, number>();
+    pile.set(characterId, (pile.get(characterId) ?? 0) + amount);
+    kinds.set(kind, pile);
+    table.set(guildId, kinds);
+  }
+
+  function resourceKindPiles(guildId: string): { kind: string; amount: number; ledger: { id: string; contributed: number }[] }[] {
+    const stocks = resourceKindStock.get(guildId) ?? new Map<string, number>();
+    const ledgers = resourceKindLedgers.get(guildId) ?? new Map<string, Map<string, number>>();
+    return [...stocks.entries()]
+      .filter((row) => row[1] > 0)
+      .sort((left, right) => (left[0] < right[0] ? -1 : left[0] > right[0] ? 1 : 0))
+      .map(([kind, amount]) => ({
+        kind,
+        amount,
+        ledger: ledgerRows(new Map([[guildId, ledgers.get(kind) ?? new Map()]]), guildId),
+      }));
+  }
+
+  function itemKindPiles(guildId: string): { kind: string; amount: number; ledger: { id: string; contributed: number }[] }[] {
+    const ledgers = itemKindLedgers.get(guildId) ?? new Map<string, Map<string, number>>();
+    return (guildItems.get(guildId) ?? [])
+      .filter((stack) => stack.qty > 0)
+      .map((stack) => ({
+        kind: stack.itemId,
+        amount: stack.qty,
+        ledger: ledgerRows(new Map([[guildId, ledgers.get(stack.itemId) ?? new Map()]]), guildId),
+      }));
+  }
+
   async function payDissolution(
     guildId: string,
     by: string,
@@ -3734,34 +3783,25 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         creditGold(share.id, share.gold);
       }
     }
-    for (const share of holdings.resources.shares) {
-      if (share.amount > 0) {
-        await creditMaterial(share.id, 'metal', share.amount);
+    const resourceKinds = dissolveKindPiles(resourceKindPiles(guildId));
+    const itemKinds = dissolveKindPiles(itemKindPiles(guildId));
+    for (const pile of resourceKinds) {
+      for (const share of pile.shares) {
+        if (share.amount > 0) {
+          await creditMaterial(share.id, pile.kind, share.amount);
+        }
       }
+      dissolutionResourceVoid += pile.void;
     }
-    const stacks = guildItems.get(guildId) ?? [];
-    let cursor = 0;
-    for (const share of holdings.items.shares) {
-      let left = share.amount;
-      const given: { itemId: string; qty: number }[] = [];
-      while (left > 0 && cursor < stacks.length) {
-        const stack = stacks[cursor];
-        if (stack === undefined) {
-          break;
-        }
-        const moved = Math.min(stack.qty, left);
-        given.push({ itemId: stack.itemId, qty: moved });
-        stack.qty -= moved;
-        left -= moved;
-        if (stack.qty === 0) {
-          cursor += 1;
+    for (const pile of itemKinds) {
+      for (const share of pile.shares) {
+        if (share.amount > 0) {
+          giveItems(share.id, [{ itemId: pile.kind, qty: share.amount }]);
         }
       }
-      giveItems(share.id, given);
+      dissolutionItemVoid += pile.void;
     }
     dissolutionVoid += shares.void;
-    dissolutionResourceVoid += holdings.resources.void;
-    dissolutionItemVoid += holdings.items.void;
     noteTurnover(guild.bank);
     await repos.guilds.saveGuild({ ...guild, bank: 0, memberIds: [] });
     for (const memberId of guild.memberIds) {
@@ -3772,6 +3812,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     contributions.delete(guildId);
     resourceLedgers.delete(guildId);
     itemLedgers.delete(guildId);
+    resourceKindLedgers.delete(guildId);
+    itemKindLedgers.delete(guildId);
+    resourceKindStock.delete(guildId);
     guildResources.delete(guildId);
     guildItems.delete(guildId);
     dissolvePolls.delete(guildId);
@@ -3793,6 +3836,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       void: shares.void,
       resources: holdings.resources.shares,
       items: holdings.items.shares,
+      resourceKinds,
+      itemKinds,
     };
   }
 
@@ -4815,6 +4860,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     act: (action, body) => runLive(action, body, livePorts),
     state: statePayload,
     creditGold,
+    creditMaterial,
+    async materialQty(characterId: string, resourceId: string) {
+      const stacks = await repos.materials.read(characterId);
+      return stacks[resourceId] ?? 0;
+    },
+    heldItemQty(characterId: string, itemId: string) {
+      return repos.economy.getCharacter(characterId)?.items[itemId]?.qty ?? 0;
+    },
     appointStaff(characterId: string, role: 'moderator' | 'admin') {
       staffRoles.set(characterId, role);
     },

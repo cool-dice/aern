@@ -1129,6 +1129,37 @@ export function dissolveHoldings(input: {
   };
 }
 
+export interface KindContribution {
+  kind: string;
+  amount: number;
+  ledger: ContributionRow[];
+}
+
+export interface KindSplit {
+  kind: string;
+  shares: { id: string; amount: number }[];
+  void: number;
+}
+
+/**
+ * Artifact 17 §4.3. Each resource kind and each item kind splits on its own
+ * contribution ledger. A pile is not rewritten as another kind, and it is not
+ * handed out by bank-stack order.
+ */
+export function dissolveKindPiles(piles: KindContribution[]): KindSplit[] {
+  return piles.map((pile) => {
+    if (pile.kind.length === 0) {
+      throw new RangeError('kind must be non-empty');
+    }
+    const split = dissolveShares(pile.amount, pile.ledger);
+    return {
+      kind: pile.kind,
+      shares: split.shares.map((share) => ({ id: share.id, amount: share.gold })),
+      void: split.void,
+    };
+  });
+}
+
 function asAmount(split: { shares: { id: string; gold: number }[]; void: number }): AssetSplit {
   return {
     shares: split.shares.map((share) => ({ id: share.id, amount: share.gold })),
