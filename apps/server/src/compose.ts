@@ -40,7 +40,7 @@ import { createWorldModule, type WorldModule } from './modules/world/index';
 import { createBus } from './shared/bus';
 import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
-import { OBSERVATION_LENGTH } from '@rift/domain/ai';
+import { OBSERVATION_LENGTH, utilityAction } from '@rift/domain/ai';
 import { setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import { nnUsed, type BuildState } from '@rift/domain/build';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
@@ -104,6 +104,7 @@ export interface ServerComposition {
   creditGold: (characterId: string, amount: number) => void;
   seedTrader: (input: { characterId: string; gold: number; itemId?: string; qty?: number }) => void;
   flush: () => Promise<void>;
+  noteSidecar: (input: { atMs: number; characterId: string; action: string }) => void;
 }
 
 export interface BuiltServer {
@@ -381,6 +382,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     void note(event.attackerId, 'pvp');
   });
   const pending: ClientCommand[] = [];
+  let sidecarHeardAt = clock.now();
+  let focusObservation: number[] = [];
+  let lastUtility: string | null = null;
+  let playedUtility = 0;
   let rejectedTotal = 0;
   let runtimeError: unknown = null;
   const rng = mulberry32(1);
@@ -572,7 +577,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
     topUpSeasonSpawns(Math.max(0, Math.round(PROTOTYPE_MONSTERS.length * seasonSpawn)), live.spawnTag);
     const commands: SimCommand[] = [];
+    playedUtility = 0;
     for (const command of pending.splice(0, pending.length)) {
+      if (command.commandId.startsWith('utility-')) {
+        playedUtility += 1;
+      }
       const simCommand = toSimCommand(command);
       if (simCommand !== null) {
         commands.push(simCommand);
@@ -686,12 +695,27 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     simWorld = { ...simWorld, entities: [...simWorld.entities, { ...spawned, seasonTag: tag }] };
   }
 
+  function noteSidecar(input: { atMs: number; characterId: string; action: string }): void {
+    if (!Number.isFinite(input.atMs)) {
+      return;
+    }
+    sidecarHeardAt = input.atMs;
+    if (input.action === 'wait' || input.action === '') {
+      return;
+    }
+    pending.push({
+      commandId: `sidecar-${input.characterId}-${String(simWorld.tick)}`,
+      seq: simWorld.tick,
+      issuedAtMs: input.atMs,
+      action: input.action,
+      params: { entityId: input.characterId },
+    });
+  }
+
   function observeAndSubmit(): void {
-    for (const player of simWorld.entities) {
-      if (player.monsterId !== undefined) {
-        continue;
-      }
-      const monsters = simWorld.entities.filter((entity) => entity.monsterId !== undefined);
+    const players = simWorld.entities.filter((entity) => entity.monsterId === undefined);
+    for (const player of players) {
+      const monsters = simWorld.entities.filter((entity) => entity.monsterId !== undefined && entity.hp > 0);
       const vector = observeEntity({
         player: {
           hp: player.hp,
@@ -709,7 +733,20 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       if (vector.length !== OBSERVATION_LENGTH) {
         throw new Error(`observation length ${String(vector.length)}`);
       }
+      if (player.id === players[0]?.id) {
+        focusObservation = vector;
+      }
+      if (player.phase !== 'online') {
+        lastUtility = 'downed';
+        continue;
+      }
+      const silentForMs = simWorld.nowMs - sidecarHeardAt;
+      if (silentForMs <= SIDECAR_TIMEOUT_MS) {
+        lastUtility = `quiet:${String(silentForMs)}`;
+        continue;
+      }
       let nearest: number | null = null;
+      let nearestId: string | undefined;
       for (const monster of monsters) {
         const distance = Math.max(
           Math.abs(monster.cell.x - player.cell.x),
@@ -717,14 +754,24 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         );
         if (nearest === null || distance < nearest) {
           nearest = distance;
+          nearestId = monster.id;
         }
       }
+      const legal = ['wait', 'step_n', 'attack_melee', 'attack_ranged'];
+      const picked = utilityAction({
+        legal,
+        hp: player.hp,
+        maxHp: player.maxHp,
+        od: player.od,
+        nearestEnemy: nearest,
+        weaponRange: 1,
+      });
       void ai.service
         .submit({
           characterId: player.id,
           action: 'wait',
-          legal: ['wait', 'step_n', 'attack_melee'],
-          sidecarAtMs: simWorld.nowMs - SIDECAR_TIMEOUT_MS - 1,
+          legal,
+          sidecarAtMs: sidecarHeardAt,
           nowMs: simWorld.nowMs,
           hp: player.hp,
           maxHp: player.maxHp,
@@ -732,10 +779,39 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
           nearestEnemy: nearest,
           weaponRange: 1,
         })
+        .then((decision) => {
+          if (!decision.ok) {
+            return;
+          }
+          if (picked.ok && decision.value.action === picked.value) {
+            return;
+          }
+          pending.push(utilityCommand(player, decision.value.action, nearestId));
+        })
         .catch((error: unknown) => {
           runtimeError = error;
         });
+      lastUtility = picked.ok ? picked.value : 'none';
+      if (picked.ok && picked.value !== 'wait') {
+        pending.push(utilityCommand(player, picked.value, nearestId));
+      }
     }
+  }
+
+  function utilityCommand(player: SimEntity, action: string, nearestId: string | undefined): ClientCommand {
+    return {
+      commandId: `utility-${player.id}-${String(simWorld.tick)}-${action}`,
+      seq: simWorld.tick + 1,
+      issuedAtMs: simWorld.nowMs,
+      action,
+      ...(action.startsWith('attack') && nearestId !== undefined ? { targetId: nearestId } : {}),
+      params: {
+        entityId: player.id,
+        ...(action.startsWith('attack')
+          ? { weaponDamage: 8, range: action === 'attack_melee' ? 1 : 8, odCost: 1 }
+          : {}),
+      },
+    };
   }
 
   function statePayload(): Record<string, unknown> {
@@ -774,6 +850,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       corpses: simWorld.corpses,
       hack: passwords,
       hackPassword,
+      observation: focusObservation,
+      lastUtility,
+      playedUtility,
       quests: focus === undefined ? [] : questRows(focus),
       players: players.map((entity) => ({
         id: entity.id,
@@ -973,6 +1052,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     creditGold,
     seedTrader,
     flush: () => repos.flush(),
+    noteSidecar,
     snapshot,
     auth,
     character,
@@ -1052,6 +1132,26 @@ function registerHttp(app: FastifyInstance, composition: ServerComposition): voi
 
   app.get('/health', async () => {
     return { ok: true as const, tick: composition.snapshot().ticks };
+  });
+
+  app.post('/sidecar', async (request, reply) => {
+    const body = request.body;
+    if (typeof body !== 'object' || body === null) {
+      return reply.code(400).send({ code: 'invalid' });
+    }
+    const record = body as Record<string, unknown>;
+    const characterId = typeof record.characterId === 'string' ? record.characterId : '';
+    const action = typeof record.action === 'string' ? record.action : '';
+    const atMs = typeof record.atMs === 'number' ? record.atMs : composition.state().nowMs;
+    if (characterId === '' || action === '') {
+      return reply.code(400).send({ code: 'invalid' });
+    }
+    composition.noteSidecar({
+      characterId,
+      action,
+      atMs: typeof atMs === 'number' ? atMs : 0,
+    });
+    return { ok: true as const };
   });
 
   app.get('/metrics', async (_request, reply) => {

@@ -10,11 +10,16 @@ export interface SidecarHandle {
   started: boolean;
   error: string | null;
   pid: number | null;
+  observe(observation: readonly number[]): void;
   stop(): void;
 }
 
 /** Command line for the mock perception process. Tests do not spawn it unless `start` is set. */
-export function spawnMockSidecar(options?: { start?: boolean; onPong?: () => void }): SidecarHandle {
+export function spawnMockSidecar(options?: {
+  start?: boolean;
+  onPong?: () => void;
+  onAction?: (action: string) => void;
+}): SidecarHandle {
   const command = 'cargo run --manifest-path apps/sidecar/Cargo.toml';
   const ping = '{"type":"ping"}';
   const pong = '{"type":"pong"}';
@@ -25,6 +30,9 @@ export function spawnMockSidecar(options?: { start?: boolean; onPong?: () => voi
     started: false,
     error: null,
     pid: null,
+    observe() {
+      return undefined;
+    },
     stop() {
       return undefined;
     },
@@ -46,9 +54,23 @@ export function spawnMockSidecar(options?: { start?: boolean; onPong?: () => voi
     };
   }
   let stopped = false;
+  let buffer = '';
   child.stdout?.on('data', (chunk: Buffer | string) => {
-    if (String(chunk).includes('"type":"pong"')) {
-      options.onPong?.();
+    buffer += String(chunk);
+    const lines = buffer.split('\n');
+    buffer = lines.pop() ?? '';
+    for (const line of lines) {
+      if (line.includes('"type":"pong"')) {
+        options.onPong?.();
+      }
+      try {
+        const message = JSON.parse(line) as { type?: string; action?: string };
+        if (message.type === 'action' && typeof message.action === 'string') {
+          options.onAction?.(message.action);
+        }
+      } catch {
+        // Partial or non-JSON lines are ignored.
+      }
     }
   });
   child.stdin?.write(`${ping}\n`);
@@ -56,6 +78,9 @@ export function spawnMockSidecar(options?: { start?: boolean; onPong?: () => voi
     ...idle,
     started: true,
     pid: child.pid ?? null,
+    observe(observation) {
+      child.stdin?.write(`${JSON.stringify({ type: 'observe', observation })}\n`);
+    },
     stop() {
       if (stopped) {
         return;

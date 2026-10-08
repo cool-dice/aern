@@ -497,6 +497,64 @@ test('story acts publish artifact scenes and live events advance them', async ()
   expect(outer?.current).toBe(2);
 });
 
+test('utility runs after 200ms of sidecar silence and the action is played', async () => {
+  const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  graph.enterWorld('lia');
+  const before = graph.state() as { self: { cell: { x: number; y: number } } | null; observation: number[] };
+  expect(before.observation).toHaveLength(0);
+  const monsters = (graph.state() as { entities: { id: string }[] }).entities;
+  for (const entity of monsters) {
+    graph.submit({
+      commandId: `clear-${entity.id}`,
+      seq: 1,
+      issuedAtMs: 1_000,
+      action: 'attack_ranged',
+      targetId: entity.id,
+      params: { entityId: 'lia', weaponDamage: 5000, range: 30, odCost: 0 },
+    });
+  }
+  graph.tickOnce();
+  const seen = graph.state() as { observation: number[]; self: { cell: { x: number; y: number } } | null };
+  expect(seen.observation).toHaveLength(896);
+  expect(seen.self?.cell).toEqual({ x: 0, y: 0 });
+  graph.tickOnce();
+  const quiet = graph.state() as {
+    self: { cell: { x: number; y: number } } | null;
+    entities: { id: string; hp: number }[];
+    lastUtility: string | null;
+  };
+  expect(quiet.self?.cell).toEqual({ x: 0, y: 0 });
+  expect(quiet.lastUtility?.startsWith('quiet:')).toBe(true);
+  const beforeHp = new Map(quiet.entities.map((entity) => [entity.id, entity.hp]));
+
+  graph.tickOnce();
+  graph.tickOnce();
+  const moved = graph.state() as {
+    self: { cell: { x: number; y: number } } | null;
+    entities: { id: string; hp: number }[];
+    lastUtility: string | null;
+    playedUtility: number;
+  };
+  expect(['step_n', 'attack_melee', 'attack_ranged']).toContain(moved.lastUtility);
+  expect(moved.playedUtility).toBeGreaterThan(0);
+  const damaged = moved.entities.some((entity) => {
+    const previous = beforeHp.get(entity.id);
+    return previous !== undefined && entity.hp < previous;
+  });
+  const stepped = moved.self?.cell.x !== 0 || moved.self?.cell.y !== 0;
+  expect(stepped || damaged).toBe(true);
+
+  const heard = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  heard.enterWorld('lia');
+  for (let step = 0; step < 6; step += 1) {
+    heard.noteSidecar({ atMs: 1_000 + step * 100, characterId: 'lia', action: 'wait' });
+    heard.tickOnce();
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const stayed = heard.state() as { self: { cell: { x: number; y: number } } | null };
+  expect(stayed.self?.cell).toEqual({ x: 0, y: 0 });
+});
+
 test('auction buyout records the 5% tax destination', async () => {
   const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
   try {

@@ -11,7 +11,7 @@ import { t } from './i18n/translate';
 import { hudModel } from './ui/models';
 import { CreationScreen, HudScreen } from './ui/screens';
 import { PlayPanels } from './play/screens';
-import { spawnMockSidecar } from './play/sidecar';
+import { spawnMockSidecar, type SidecarHandle } from './play/sidecar';
 import {
   bindKeyboard,
   characterBody,
@@ -46,6 +46,7 @@ export function App() {
   const [accountId, setAccountId] = useState<string | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const netRef = useRef<ClientNet | null>(null);
+  const sidecarRef = useRef<SidecarHandle | null>(null);
   const openRef = useRef(false);
   const nowRef = useRef(0);
   const seqRef = useRef(1);
@@ -64,7 +65,19 @@ export function App() {
       onPong: () => {
         setPong(true);
       },
+      onAction: (action) => {
+        const characterId = session.store.getState().self?.id ?? '';
+        if (characterId === '') {
+          return;
+        }
+        void fetch(`${SERVER}/sidecar`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ characterId, action, atMs: nowRef.current }),
+        });
+      },
     });
+    sidecarRef.current = sidecar;
     if (sidecar.error !== null) {
       setSidecarError(sidecar.error);
     }
@@ -86,10 +99,11 @@ export function App() {
       });
     return () => {
       cancelled = true;
+      sidecarRef.current = null;
       sidecar.stop();
       netRef.current?.close();
     };
-  }, []);
+  }, [session]);
 
   useEffect(() => {
     return bindKeyboard(window, (code) => {
@@ -130,9 +144,12 @@ export function App() {
     };
   }, [accountId, plan, session]);
 
-  function applyServer(payload: { nowMs?: number }): void {
+  function applyServer(payload: { nowMs?: number; observation?: number[] }): void {
     const now = typeof payload.nowMs === 'number' ? payload.nowMs : nowRef.current;
     nowRef.current = now;
+    if (Array.isArray(payload.observation) && payload.observation.length === 896) {
+      sidecarRef.current?.observe(payload.observation);
+    }
     if (netRef.current !== null) {
       netRef.current.ingest(payload, now);
     } else {

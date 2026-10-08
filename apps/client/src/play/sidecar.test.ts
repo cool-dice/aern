@@ -12,6 +12,26 @@ test('the mock sidecar speaks the JSON ping protocol', () => {
   expect(request.observation).toEqual([0.25, 2]);
 });
 
+test('the mock sidecar answers an observation with an action', async () => {
+  let action = '';
+  const sidecar = spawnMockSidecar({
+    start: true,
+    onAction(next) {
+      action = next;
+    },
+  });
+  try {
+    expect(sidecar.error).toBeNull();
+    const observation = new Array<number>(896).fill(0);
+    observation[0] = 1;
+    sidecar.observe(observation);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(action).toBe('step_n');
+  } finally {
+    sidecar.stop();
+  }
+});
+
 test('spawnMockSidecar starts the in-repo mock when the script exists', async () => {
   let pong = false;
   const sidecar = spawnMockSidecar({
