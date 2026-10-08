@@ -1,6 +1,6 @@
 # 116. Замкнутый клиентский цикл
 
-status: pending
+status: done
 
 ## Правило GDD
 

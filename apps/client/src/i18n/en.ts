@@ -4,6 +4,7 @@ export const en: Record<string, string> = {
   'ui.menu.play': 'Play',
   'ui.menu.settings': 'Settings',
   'ui.menu.exit': 'Exit',
+  'ui.sidecar.unavailable': 'Sidecar unavailable',
   'race.human': 'Humans',
   'race.demon': 'Demons',
 };
