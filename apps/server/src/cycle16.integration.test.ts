@@ -286,3 +286,28 @@ test('relicBonuses applies worn relic armor on the combat tick', async () => {
   const self = (graph.state() as { self: { relicArmor?: number } | null }).self;
   expect(self?.relicArmor).toBe(1);
 });
+
+test('silenceMs mutes the hacked keeper kind for the domain duration', async () => {
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const guess = dispatch.slice(dispatch.indexOf('async function hackGuess'), dispatch.indexOf('async function wiki'));
+  const once = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('async function hydrate'),
+  );
+  expect(guess.includes('silenceMs(')).toBe(true);
+  expect(once.includes('stampKeeperSilence(')).toBe(true);
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  expect(await graph.act('hack_start', { characterId: 'lia', kind: 'patrol' })).toMatchObject({ ok: true });
+  const password = (graph.state() as { hackPassword: string | null }).hackPassword;
+  expect(password).toMatch(/^[A-H]{4}$/);
+  const opened = await graph.act('hack_guess', { characterId: 'lia', attempt: password ?? '' });
+  expect(opened).toMatchObject({ ok: true, value: { correct: true, silentUntilMs: 60_000 } });
+  await graph.tickOnce();
+  const entities = (graph.state() as { entities: { monsterId: string | null; keeperSilent?: boolean }[] }).entities;
+  const patrol = entities.find((entity) => entity.monsterId === 'keeper_patrol');
+  const rat = entities.find((entity) => entity.monsterId === 'spore_rat');
+  expect(patrol?.keeperSilent).toBe(true);
+  expect(rat?.keeperSilent).toBe(false);
+});

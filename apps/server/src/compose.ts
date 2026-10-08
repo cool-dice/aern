@@ -74,6 +74,7 @@ import { RACES } from '@rift/domain/character';
 import { readWiki, type WikiArticleSide } from '@rift/domain/wiki';
 import { PARTY_MAX, matchmake, type PartyRole } from '@rift/domain/social';
 import { chatPresentation, gainUpy, type LanguageId } from '@rift/domain/language';
+import type { KeeperKind } from '@rift/domain/hack';
 import {
   askHostilePortal,
   isCityService,
@@ -856,6 +857,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const weatherRng = mulberry32(2);
   const sockets = new Set<{ send(data: string): void }>();
   const parked = spawnNamed('keeper_enhanced', 'content:keeper_enhanced');
+  const keeperQuietUntil = new Map<KeeperKind, number>();
 
   const livePorts: LivePorts = {
     now: () => clock.now(),
@@ -1107,6 +1109,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
       simWorld = { ...simWorld, entities: [...simWorld.entities, { ...spawned, inEncounter: true }] };
       return true;
+    },
+    silenceKeeper(kind, untilMs) {
+      const current = keeperQuietUntil.get(kind) ?? 0;
+      if (untilMs > current) {
+        keeperQuietUntil.set(kind, untilMs);
+      }
     },
     enterEncounter(characterId) {
       const present = simWorld.entities.some((entity) => entity.id === characterId && entity.monsterId === undefined);
@@ -2970,6 +2978,43 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       entities.push({ ...entity, relicArmor, relicAccuracy, relicReaction, relicPerception });
     }
     simWorld = { ...simWorld, entities };
+  }
+
+  /**
+   * Artifact 19. A hacked keeper kind stays quiet until the silence window ends.
+   * Patrol is 60s, guard 30s, destroyer 15s, and any other keeper is unique (10s).
+   */
+  function stampKeeperSilence(): void {
+    const now = clock.now();
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) => {
+        const monsterId = entity.monsterId;
+        if (monsterId === undefined || !monsterId.startsWith('keeper')) {
+          if (entity.keeperSilent !== true) {
+            return entity;
+          }
+          const next = { ...entity };
+          delete next.keeperSilent;
+          return next;
+        }
+        const until = keeperQuietUntil.get(keeperKindOf(monsterId)) ?? 0;
+        return { ...entity, keeperSilent: now < until };
+      }),
+    };
+  }
+
+  function keeperKindOf(monsterId: string): KeeperKind {
+    if (monsterId.includes('patrol')) {
+      return 'patrol';
+    }
+    if (monsterId.includes('guard')) {
+      return 'guard';
+    }
+    if (monsterId.includes('destroyer')) {
+      return 'destroyer';
+    }
+    return 'unique';
   }
 
   function relicReady(relic: RelicState): RelicState {
@@ -5892,6 +5937,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
     stampGuildDoctrines();
     await stampWornRelics();
+    stampKeeperSilence();
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
     spawnNeutralGuards();
     captures = tickCaptures({
@@ -7174,6 +7220,7 @@ function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
     nn: entity.nn ?? 0,
     nnLimit: entity.nnLimit ?? 0,
     relicArmor: entity.relicArmor ?? 0,
+    keeperSilent: entity.keeperSilent === true,
     guildId: entity.guildId ?? null,
     reputation: entity.reputation ?? {},
     dungeonId: entity.dungeonId ?? null,

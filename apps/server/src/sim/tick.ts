@@ -123,6 +123,8 @@ export interface SimEntity {
   relicAccuracy?: number;
   relicReaction?: number;
   relicPerception?: number;
+  /** A hacked keeper does not attack until this is false. */
+  keeperSilent?: boolean;
   /** Unscaled max hp, so fortitude does not compound each tick. */
   doctrineBaseMaxHp?: number;
   /** Sim time of the war death. `applyRespawn` waits `WAR_RESPAWN_DELAY_MS`. */
@@ -492,6 +494,9 @@ function pursuePlayers(
       continue;
     }
     if (best <= 1) {
+      if (monster.keeperSilent === true) {
+        continue;
+      }
       applyAttack(
         entities,
         {

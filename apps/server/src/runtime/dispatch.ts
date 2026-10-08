@@ -4,7 +4,7 @@ import { doctrineMultiplier, WAR_GOLD } from '@rift/domain/guild';
 import type { DoctrineId } from '@rift/domain/guild';
 import { NODE_IDS, type NodeId, type ToolId, type ToolKind } from '@rift/domain/gathering';
 import type { GuildRank } from '@rift/domain/guild';
-import type { KeeperKind } from '@rift/domain/hack';
+import { silenceMs, type KeeperKind } from '@rift/domain/hack';
 import type { GradeId } from '@rift/domain/items';
 import type { RelicState, RelicSubtype } from '@rift/domain/relics';
 import { canCraftLanguage, questLanguageAccess } from '@rift/domain/language';
@@ -199,6 +199,8 @@ export interface LivePorts {
   seasonBonus(): boolean;
   addEncounter(monsterId: string): boolean;
   enterEncounter(characterId: string): boolean;
+  /** Artifact 19. A successful hack silences keepers of this kind until `untilMs`. */
+  silenceKeeper(kind: KeeperKind, untilMs: number): void;
 }
 
 const TOOLS: readonly ToolId[] = ['none', 'basic', 'advanced', 'master'];
@@ -566,7 +568,15 @@ async function hackGuess(body: Record<string, unknown>, ports: LivePorts): Promi
   if (!guessed.ok) {
     return { ok: false, code: guessed.code, value: ports.hack.view(characterId) };
   }
-  return { ok: true, value: { ...guessed.value, password: ports.hack.view(characterId) } };
+  let silentUntilMs = 0;
+  if (guessed.value.correct) {
+    silentUntilMs = ports.now() + silenceMs(guessed.value.kind);
+    ports.silenceKeeper(guessed.value.kind, silentUntilMs);
+  }
+  return {
+    ok: true,
+    value: { ...guessed.value, silentUntilMs, password: ports.hack.view(characterId) },
+  };
 }
 
 async function wiki(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

@@ -39,7 +39,7 @@ export interface HackService {
     characterId: string;
     attempt: string;
     nowMs: number;
-  }): Result<{ correct: boolean; bulls: number; attemptsLeft: number }, string>;
+  }): Result<{ correct: boolean; bulls: number; attemptsLeft: number; kind: KeeperKind }, string>;
 }
 
 export function createHackService(rng: Rng, bus: Bus): HackService {
@@ -91,20 +91,21 @@ export function createHackService(rng: Rng, bus: Bus): HackService {
         return err(result.code);
       }
       session.attemptsLeft = result.value.attemptsLeft;
+      const kind = session.kind;
       if (result.value.correct) {
         bus.emit('hack.opened', {
           characterId: input.characterId,
-          kind: session.kind,
+          kind,
           ...(session.subject !== undefined ? { subject: session.subject } : {}),
         });
         sessions.delete(input.characterId);
-        return ok(result.value);
+        return ok({ ...result.value, kind });
       }
       if (result.value.attemptsLeft <= 0) {
         session.lockoutUntilMs = input.nowMs + LOCKOUT_MS;
         return err('lockout');
       }
-      return ok(result.value);
+      return ok({ ...result.value, kind });
     },
   };
 }
