@@ -995,21 +995,23 @@ test('a resource node plants in 60 seconds and drops after 30 minutes', () => {
   expect(NODE_CHEST_CAP).toBe(10_000);
   expect(NODE_TAX_MAX).toBe(30);
   let node = freshResourceNode('plains_mine');
-  node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: 1_000 });
+  node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: 1_000 }).node;
   expect(node.guildId).toBeNull();
   expect(node.plantMs).toBe(1_000);
-  node = advanceResourceNode({ node, presentGuildIds: ['wolves', 'ash'], deltaMs: 5_000 });
+  node = advanceResourceNode({ node, presentGuildIds: ['wolves', 'ash'], deltaMs: 5_000 }).node;
   expect(node.plantMs).toBe(0);
   expect(node.plantingGuildId).toBeNull();
-  node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: NODE_PLANT_MS });
+  node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: NODE_PLANT_MS }).node;
   expect(node).toMatchObject({ guildId: 'wolves', plantMs: NODE_PLANT_MS, chest: 0 });
   node = { ...node, chest: 40 };
-  node = advanceResourceNode({ node, presentGuildIds: ['ash'], deltaMs: NODE_DROP_MS - 1 });
+  node = advanceResourceNode({ node, presentGuildIds: ['ash'], deltaMs: NODE_DROP_MS - 1 }).node;
   expect(node.guildId).toBe('wolves');
   expect(node.chest).toBe(40);
-  node = advanceResourceNode({ node, presentGuildIds: [], deltaMs: 1 });
+  const droppedEarly = advanceResourceNode({ node, presentGuildIds: [], deltaMs: 1 });
+  node = droppedEarly.node;
   expect(node.guildId).toBeNull();
-  expect(node.chest).toBe(40);
+  expect(node.chest).toBe(0);
+  expect(droppedEarly.seized).toEqual({ guildId: 'wolves', amount: 40 });
   expect(depositNodeChest(node.chest, NODE_CHEST_CAP)).toBe(NODE_CHEST_CAP);
   expect(setNodeTax({ next: 15, nowMs: 0, taxSetAtMs: null })).toEqual({
     ok: true,
@@ -1062,17 +1064,16 @@ test('a resource node plants in 60 seconds and drops after 30 minutes', () => {
 
 test('a dropped resource-node flag seizes the chest onto the capturing guild', () => {
   let node = freshResourceNode('plains_mine');
-  node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: NODE_PLANT_MS });
+  node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: NODE_PLANT_MS }).node;
   node = { ...node, chest: 40 };
-  const held = advanceResourceNode({ node, presentGuildIds: [], deltaMs: NODE_DROP_MS - 1 });
+  const held = advanceResourceNode({ node, presentGuildIds: [], deltaMs: NODE_DROP_MS - 1 }).node;
   expect(held.guildId).toBe('wolves');
   expect(held.chest).toBe(40);
   const dropped = advanceResourceNode({ node: held, presentGuildIds: [], deltaMs: 1 });
-  expect(dropped.guildId).toBeNull();
-  const seized = settleNodeDrop(held, dropped);
-  expect(seized.node.chest).toBe(0);
-  expect(seized.node.guildId).toBeNull();
-  expect(seized.seized).toEqual({ guildId: 'wolves', amount: 40 });
+  expect(dropped.node.guildId).toBeNull();
+  expect(dropped.node.chest).toBe(0);
+  expect(dropped.seized).toEqual({ guildId: 'wolves', amount: 40 });
+  expect(settleNodeDrop(held, { ...dropped.node, chest: held.chest }).seized).toEqual(dropped.seized);
 });
 
 test('pacts make two guilds allies and a vassal cannot declare war alone', () => {

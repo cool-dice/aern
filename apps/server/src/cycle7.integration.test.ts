@@ -70,7 +70,17 @@ test('auction tax, storage, diplomacy, and war routes call the domain functions'
   expect(composeSource.includes('postMercenary(')).toBe(true);
   expect(composeSource.includes('postPatrolQuest(')).toBe(true);
   expect(composeSource.includes('tickContract(')).toBe(true);
-  expect(composeSource.includes('settleNodeDrop(') || readFileSync(new URL('./sim/nodes.ts', import.meta.url), 'utf8').includes('settleNodeDrop(')).toBe(true);
+  const nodeTick = readFileSync(new URL('./sim/nodes.ts', import.meta.url), 'utf8');
+  expect(nodeTick.includes('advanceResourceNode(')).toBe(true);
+  expect(nodeTick.includes('advanced.seized')).toBe(true);
+  expect(nodeTick.includes('settleNodeDrop(')).toBe(false);
+  const advanceBody = readFileSync(new URL('../../../packages/domain/src/guild.ts', import.meta.url), 'utf8');
+  const seizure = advanceBody.slice(
+    advanceBody.indexOf('export function advanceResourceNode'),
+    advanceBody.indexOf('export function depositNodeChest'),
+  );
+  expect(seizure.includes('settleNodeDrop(')).toBe(true);
+  expect(composeSource.includes('tickResourceNodes(')).toBe(true);
   expect(composeSource.includes('declareWar(') || dispatch.includes('declareWar(')).toBe(true);
   expect(dispatch.includes('ports.guild.declareWar(')).toBe(true);
   expect(dispatch.includes('declareNeutralCity(')).toBe(true);

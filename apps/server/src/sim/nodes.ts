@@ -1,4 +1,4 @@
-import { advanceResourceNode, settleNodeDrop, type ResourceNode } from '@rift/domain/guild';
+import { advanceResourceNode, type ResourceNode } from '@rift/domain/guild';
 
 export interface NodeSeizure {
   nodeId: string;
@@ -7,9 +7,8 @@ export interface NodeSeizure {
 }
 
 /**
- * One tick of every resource node. `advanceResourceNode` owns the 60-second
- * plant and the 30-minute drop. `settleNodeDrop` moves the chest onto the
- * guild that held the flag. This only supplies who is standing there.
+ * One tick of every resource node. `advanceResourceNode` owns the plant,
+ * the drop, and the chest seizure. This only supplies who is standing there.
  */
 export function tickResourceNodes(input: {
   nodes: readonly ResourceNode[];
@@ -25,11 +24,10 @@ export function tickResourceNodes(input: {
         .map((row) => row.guildId),
       deltaMs: input.deltaMs,
     });
-    const settled = settleNodeDrop(node, advanced);
-    if (settled.seized !== null) {
-      seized.push({ nodeId: node.nodeId, guildId: settled.seized.guildId, amount: settled.seized.amount });
+    if (advanced.seized !== null) {
+      seized.push({ nodeId: node.nodeId, guildId: advanced.seized.guildId, amount: advanced.seized.amount });
     }
-    return settled.node;
+    return advanced.node;
   });
   return { nodes, seized };
 }

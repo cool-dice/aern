@@ -963,13 +963,13 @@ export function nodeAccessAllows(input: {
  * Plant while exactly one guild stands on a neutral node.
  * Two guilds, or none, reset the plant timer.
  * An owned node drops only after the owning guild has been absent for 30 minutes.
- * This step leaves the chest on the node. `settleNodeDrop` seizes it.
+ * The same call seizes the chest. The tick must not leave it on the node.
  */
 export function advanceResourceNode(input: {
   node: ResourceNode;
   presentGuildIds: readonly string[];
   deltaMs: number;
-}): ResourceNode {
+}): { node: ResourceNode; seized: { guildId: string; amount: number } | null } {
   assertNonNegativeInteger(input.deltaMs, 'deltaMs');
   const present = [...new Set(input.presentGuildIds)];
   const next: ResourceNode = { ...input.node };
@@ -982,17 +982,17 @@ export function advanceResourceNode(input: {
       next.guildId = null;
       next.absentMs = 0;
     }
-    return next;
+    return settleNodeDrop(input.node, next);
   }
   next.absentMs = 0;
   if (present.length !== 1) {
     next.plantingGuildId = null;
     next.plantMs = 0;
-    return next;
+    return settleNodeDrop(input.node, next);
   }
   const planter = present[0] ?? null;
   if (planter === null) {
-    return next;
+    return settleNodeDrop(input.node, next);
   }
   if (next.plantingGuildId !== planter) {
     next.plantingGuildId = planter;
@@ -1005,7 +1005,7 @@ export function advanceResourceNode(input: {
     next.plantMs = NODE_PLANT_MS;
     next.absentMs = 0;
   }
-  return next;
+  return settleNodeDrop(input.node, next);
 }
 
 export function depositNodeChest(chest: number, amount: number): number {
