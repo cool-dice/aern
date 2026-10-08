@@ -280,14 +280,14 @@ test('mail and guild chat channels are stubs without an input', () => {
   });
 });
 
-test('direct trade leaves the auction as a stub', () => {
+test('direct trade runs beside a live auction', () => {
   const trade = tradeModel(
     { items: [{ id: 'a', itemId: 'bandage', qty: 1 }], gold: 10 },
     { items: [], gold: 0 },
   );
   expect(trade.mode).toBe('direct');
-  expect(trade.auction).toBe('stub');
-  expect(catalog.features.auction).toBe('stub');
+  expect(trade.auction).toBe('live');
+  expect(catalog.features.auction).toBe('live');
 });
 
 test('hack screen is a 4 by 4 grid and stays blocked without a deck', () => {

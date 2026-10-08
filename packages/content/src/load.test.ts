@@ -43,10 +43,10 @@ describe('loadCatalog', () => {
   it('loads the repository fixtures', () => {
     expect(loadFromIndex).toBeTypeOf('function');
     expect(catalog.races).toHaveLength(8);
-    expect(catalog.features.auction).toBe('stub');
-    expect(catalog.features.mail).toBe('stub');
-    expect(catalog.features.guild).toBe('stub');
-    expect(catalog.features.titles).toBe('stub');
+    expect(catalog.features.auction).toBe('live');
+    expect(catalog.features.mail).toBe('live');
+    expect(catalog.features.guild).toBe('live');
+    expect(catalog.features.titles).toBe('live');
     expect(catalog.features.languages).toEqual(['ru', 'en']);
     expect(catalog.features.playableRaces).toEqual(['human', 'demon']);
   });

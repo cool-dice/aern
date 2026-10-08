@@ -1,8 +1,8 @@
 {
   "playableRaces": ["human", "demon"],
-  "auction": "stub",
-  "mail": "stub",
-  "guild": "stub",
-  "titles": "stub",
+  "auction": "live",
+  "mail": "live",
+  "guild": "live",
+  "titles": "live",
   "languages": ["ru", "en"]
 }

@@ -1,6 +1,6 @@
 # 113. Аукцион пишет ставки
 
-status: pending
+status: done
 
 ## Правило GDD
 

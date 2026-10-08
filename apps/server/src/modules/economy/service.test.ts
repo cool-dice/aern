@@ -149,14 +149,47 @@ test('intact and destroyed gear are not repaired', async () => {
   expect(repository.getCharacter('hero')?.items.scrap?.durability).toBe(0);
 });
 
-test('listAuction is a feature stub and writes nothing', async () => {
+test('an auction lot accepts a step bid and a buyout', () => {
   const repository = memoryEconomyRepository();
-  repository.saveCharacter(newEconomyCharacter({ characterId: 'hero', side: 'light', gold: 15 }));
+  repository.saveCharacter(
+    newEconomyCharacter({
+      characterId: 'seller',
+      side: 'light',
+      gold: 0,
+      items: { ore: { itemId: 'ore', level: 1, grade: 'common', unique: false, durability: 100, qty: 2 } },
+    }),
+  );
+  repository.saveCharacter(newEconomyCharacter({ characterId: 'buyer', side: 'light', gold: 200 }));
   const economy = createEconomyService(repository);
-  const before = snapshot(repository.getCharacter('hero')!);
-
-  expect(economy.listAuction()).toEqual({ ok: false, code: 'feature_stub' });
-  expect(repository.getCharacter('hero')).toEqual(before);
+  expect(economy.listAuction()).toEqual({ ok: true, value: [] });
+  const listed = economy.offerAuction({
+    sellerId: 'seller',
+    itemId: 'ore',
+    qty: 1,
+    startPrice: 10,
+    buyout: 50,
+    guildCity: false,
+  });
+  expect(listed.ok).toBe(true);
+  expect(repository.getCharacter('seller')?.items.ore?.qty).toBe(1);
+  if (!listed.ok) {
+    return;
+  }
+  expect(economy.bidAuction({ lotId: listed.value.id, bidderId: 'buyer', bid: 9 })).toEqual({
+    ok: false,
+    code: 'low',
+  });
+  expect(economy.bidAuction({ lotId: listed.value.id, bidderId: 'buyer', bid: 10 }).ok).toBe(true);
+  expect(economy.bidAuction({ lotId: listed.value.id, bidderId: 'buyer', bid: 10 })).toEqual({
+    ok: false,
+    code: 'step',
+  });
+  const bought = economy.bidAuction({ lotId: listed.value.id, bidderId: 'buyer', bid: 50 });
+  expect(bought).toEqual({ ok: true, value: { price: 50, buyout: true } });
+  expect(repository.getCharacter('buyer')?.items.ore?.qty).toBe(1);
+  expect(repository.getCharacter('buyer')?.gold).toBe(150);
+  expect(repository.getCharacter('seller')?.gold).toBeGreaterThan(0);
+  expect(economy.listAuction()).toEqual({ ok: true, value: [] });
 });
 
 test('a same-side portal charges 5 gold and blocks a repeat until the cooldown', async () => {
@@ -468,7 +501,7 @@ test('the economy module starts from the bus clock and does not listen', async (
   try {
     economy.start({ bus, now: () => clock.now() });
     expect(economy.name).toBe('economy');
-    expect(economy.service.listAuction()).toEqual({ ok: false, code: 'feature_stub' });
+    expect(economy.service.listAuction()).toEqual({ ok: true, value: [] });
     expect(await economy.service.sell('hero', 'sword')).toEqual({ ok: true, value: { gold: 100 } });
     clock.advance(100);
     expect(clock.now()).toBe(1_100);

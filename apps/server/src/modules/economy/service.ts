@@ -1,5 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { deposit, portalFee, repairCost, sellToNpc, trade } from '@rift/domain/economy';
+import {
+  auctionTaxSink,
+  deposit,
+  placeBid,
+  portalFee,
+  repairCost,
+  sellerProceeds,
+  sellToNpc,
+  trade,
+} from '@rift/domain/economy';
 import { STARTING_DURABILITY } from '@rift/domain/items';
 import type { EconomyRepository } from './repository';
 import {
@@ -199,7 +208,111 @@ export function createEconomyService(repository: EconomyRepository): EconomyServ
     },
 
     listAuction() {
-      return err('feature_stub');
+      return ok(repository.listLots());
+    },
+
+    offerAuction(input) {
+      if (!Number.isInteger(input.qty) || input.qty < 1) {
+        return err('items');
+      }
+      if (!Number.isInteger(input.startPrice) || input.startPrice < 1) {
+        return err('gold');
+      }
+      const seller = repository.getCharacter(input.sellerId);
+      if (seller === null) {
+        return err('missing');
+      }
+      const stack = seller.items[input.itemId];
+      if (stack === undefined || stack.qty < input.qty) {
+        return err('items');
+      }
+      const next = copyCharacter(seller);
+      const left = stack.qty - input.qty;
+      if (left === 0) {
+        delete next.items[input.itemId];
+      } else {
+        next.items[input.itemId] = { ...stack, qty: left };
+      }
+      repository.saveCharacter(next);
+      const id = randomUUID();
+      repository.saveLot({
+        id,
+        sellerId: input.sellerId,
+        itemId: input.itemId,
+        qty: input.qty,
+        startPrice: input.startPrice,
+        currentBid: 0,
+        bidderId: null,
+        buyout: input.buyout,
+        guildCity: input.guildCity,
+      });
+      return ok({ id });
+    },
+
+    bidAuction(input) {
+      const lot = repository.getLot(input.lotId);
+      const bidder = repository.getCharacter(input.bidderId);
+      if (lot === null || bidder === null) {
+        return err('missing');
+      }
+      if (lot.sellerId === input.bidderId) {
+        return err('self');
+      }
+      const placed = placeBid({
+        startPrice: lot.startPrice,
+        currentBid: lot.currentBid,
+        bid: input.bid,
+        buyout: lot.buyout,
+      });
+      if (!placed.ok) {
+        return err(placed.code);
+      }
+      const already = lot.bidderId === input.bidderId ? lot.currentBid : 0;
+      if (bidder.gold + already < placed.value.price) {
+        return err('gold');
+      }
+      if (lot.bidderId !== null && lot.bidderId !== input.bidderId && lot.currentBid > 0) {
+        const previous = repository.getCharacter(lot.bidderId);
+        if (previous !== null) {
+          const refunded = copyCharacter(previous);
+          refunded.gold += lot.currentBid;
+          repository.saveCharacter(refunded);
+        }
+      }
+      const buyer = copyCharacter(bidder);
+      buyer.gold = bidder.gold + already - placed.value.price;
+      if (!placed.value.buyout) {
+        repository.saveCharacter(buyer);
+        repository.saveLot({
+          ...lot,
+          currentBid: placed.value.price,
+          bidderId: input.bidderId,
+        });
+        return ok({ price: placed.value.price, buyout: false });
+      }
+      const seller = repository.getCharacter(lot.sellerId);
+      if (seller === null) {
+        return err('missing');
+      }
+      const paid = sellerProceeds(placed.value.price);
+      const nextSeller = copyCharacter(seller);
+      nextSeller.gold += paid.seller;
+      const stack = buyer.items[lot.itemId];
+      buyer.items[lot.itemId] = stack
+        ? { ...stack, qty: stack.qty + lot.qty }
+        : {
+            itemId: lot.itemId,
+            level: 1,
+            grade: 'common',
+            unique: false,
+            durability: 100,
+            qty: lot.qty,
+          };
+      repository.saveCharacter(buyer);
+      repository.saveCharacter(nextSeller);
+      repository.deleteLot(lot.id);
+      auctionTaxSink(lot.guildCity);
+      return ok({ price: placed.value.price, buyout: true });
     },
   };
 }

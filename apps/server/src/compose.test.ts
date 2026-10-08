@@ -55,9 +55,9 @@ test('compose wires modules in registration order without listening', () => {
   }
 });
 
-test('guild creation is live and auction mail titles stay until their modules', async () => {
+test('guild creation is live and auction lists lots', async () => {
   const graph = compose({ catalog: minimalCatalog(), nowMs: 1_000, jwtSecret: 'test-secret' });
-  expect(graph.economy.service.listAuction()).toEqual({ ok: false, code: 'feature_stub' });
+  expect(graph.economy.service.listAuction()).toEqual({ ok: true, value: [] });
   expect(await graph.guild.service.create({})).toEqual({ ok: false, code: 'member' });
   expect(
     await graph.guild.service.declareWar({ attackerGuildId: 'guild-1', cityId: 'fort_humans' }),
@@ -96,6 +96,34 @@ test('guild creation is live and auction mail titles stay until their modules', 
       nowMs: 1_000,
     }),
   ).toEqual({ ok: false, code: 'feature_stub' });
+});
+  graph.social.service.register({ id: 'lia', nodeId: 'fort_humans', language: 'common_light' });
+  graph.social.service.register({ id: 'kai', nodeId: 'far', language: 'common_dark' });
+  expect(
+    await graph.social.service.say({
+      senderId: 'lia',
+      channel: 'mail',
+      text: 'hello',
+      subject: 'note',
+      recipientId: 'kai',
+      nowMs: 1_000,
+    }),
+  ).toEqual({ ok: true, value: { delivered: 1 } });
+  expect(graph.social.service.inbox('kai')).toEqual([
+    { channel: 'mail', senderId: 'lia', text: 'hello', mode: 'raw' },
+  ]);
+  expect(graph.social.service.grantTitle({ characterId: 'lia', titleId: 'scout' })).toEqual({
+    ok: true,
+    value: { titleId: 'scout' },
+  });
+  expect(
+    await graph.social.service.say({
+      senderId: 'lia',
+      channel: 'guild',
+      text: 'hello',
+      nowMs: 1_000,
+    }),
+  ).toEqual({ ok: false, code: 'no_guild' });
 });
 
 test('enterWorld puts the player and prototype monsters on the tick', () => {
@@ -201,9 +229,9 @@ test('health, metrics, auth, and a human inventory do not listen', async () => {
     expect(inventory.json()).toMatchObject({ gold: 100 });
 
     const auction = await built.app.inject({ method: 'POST', url: '/auction' });
-    expect(auction.statusCode).toBe(409);
-    expect(auction.json()).toEqual({ code: 'feature_stub' });
-    expect(built.economy.service.listAuction()).toEqual({ ok: false, code: 'feature_stub' });
+    expect(auction.statusCode).toBe(200);
+    expect(auction.json()).toEqual({ lots: [] });
+    expect(built.economy.service.listAuction()).toEqual({ ok: true, value: [] });
 
     built.tickOnce();
     built.tickOnce();

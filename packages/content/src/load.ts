@@ -245,10 +245,10 @@ export interface QuestDef {
 
 export interface Features {
   playableRaces: string[];
-  auction: 'stub';
-  mail: 'stub';
-  guild: 'stub';
-  titles: 'stub';
+  auction: 'live' | 'stub';
+  mail: 'live' | 'stub';
+  guild: 'live' | 'stub';
+  titles: 'live' | 'stub';
   languages: string[];
 }
 

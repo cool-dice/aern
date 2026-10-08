@@ -18,7 +18,7 @@
 | 110 | [110-wiki-module.md](110-wiki-module.md) | done |
 | 111 | [111-relic-build-module.md](111-relic-build-module.md) | done |
 | 112 | [112-guild-live.md](112-guild-live.md) | done |
-| 113 | [113-auction-live.md](113-auction-live.md) | pending |
+| 113 | [113-auction-live.md](113-auction-live.md) | done |
 | 114 | [114-mail-titles.md](114-mail-titles.md) | pending |
 | 115 | [115-prisma-repositories.md](115-prisma-repositories.md) | pending |
 | 116 | [116-client-play-loop.md](116-client-play-loop.md) | pending |

@@ -1,5 +1,6 @@
 import { STARTER_GOLD } from '@rift/domain/economy';
 import type {
+  AuctionLot,
   EconomyCharacter,
   EconomyItem,
   GuildMode,
@@ -22,6 +23,10 @@ export interface EconomyRepository {
   findTrade(characterId: string, counterpartyId: string): TradeSession | null;
   saveTrade(session: TradeSession): void;
   deleteTrade(tradeId: string): void;
+  listLots(): AuctionLot[];
+  getLot(id: string): AuctionLot | null;
+  saveLot(lot: AuctionLot): void;
+  deleteLot(id: string): void;
 }
 
 export function newEconomyCharacter(input: {
@@ -91,6 +96,7 @@ export function memoryEconomyRepository(): EconomyRepository {
   const nodes = new Map<string, PortalNode>();
   const trades = new Map<string, TradeSession>();
   const tradesByPair = new Map<string, string>();
+  const lots = new Map<string, AuctionLot>();
   let barrier = false;
   let guild: GuildMode = 'stub';
 
@@ -148,5 +154,22 @@ export function memoryEconomyRepository(): EconomyRepository {
         tradesByPair.delete(key);
       }
     },
+    listLots() {
+      return [...lots.values()].map(copyLot);
+    },
+    getLot(id) {
+      const lot = lots.get(id);
+      return lot === undefined ? null : copyLot(lot);
+    },
+    saveLot(lot) {
+      lots.set(lot.id, copyLot(lot));
+    },
+    deleteLot(id) {
+      lots.delete(id);
+    },
   };
+}
+
+function copyLot(lot: AuctionLot): AuctionLot {
+  return { ...lot };
 }

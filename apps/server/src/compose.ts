@@ -420,12 +420,17 @@ function registerHttp(app: FastifyInstance, composition: ServerComposition): voi
     return inventory.service.list(request.params.id);
   });
 
-  app.post('/auction', async (_request, reply) => {
-    const listed = economy.service.listAuction();
-    if (listed.ok) {
-      return reply.code(409).send({ code: 'feature_stub' });
+  app.post('/auction', async (request, reply) => {
+    const body = readAuction(request.body);
+    if (body === undefined) {
+      const listed = economy.service.listAuction();
+      return reply.send({ lots: listed.ok ? listed.value : [] });
     }
-    return reply.code(409).send({ code: listed.code });
+    const offered = economy.service.offerAuction(body);
+    if (!offered.ok) {
+      return reply.code(400).send({ code: offered.code });
+    }
+    return reply.send(offered.value);
   });
 }
 
@@ -620,6 +625,36 @@ function readCredentials(body: unknown): { email: string; password: string } | u
     return undefined;
   }
   return { email: record.email, password: record.password };
+}
+
+function readAuction(body: unknown):
+  | {
+      sellerId: string;
+      itemId: string;
+      qty: number;
+      startPrice: number;
+      buyout: number | null;
+      guildCity: boolean;
+    }
+  | undefined {
+  if (typeof body !== 'object' || body === null) {
+    return undefined;
+  }
+  const record = body as Record<string, unknown>;
+  if (typeof record.sellerId !== 'string' || typeof record.itemId !== 'string') {
+    return undefined;
+  }
+  if (typeof record.startPrice !== 'number' || typeof record.qty !== 'number') {
+    return undefined;
+  }
+  return {
+    sellerId: record.sellerId,
+    itemId: record.itemId,
+    qty: record.qty,
+    startPrice: record.startPrice,
+    buyout: typeof record.buyout === 'number' ? record.buyout : null,
+    guildCity: record.guildCity === true,
+  };
 }
 
 function readCharacterBody(body: unknown):

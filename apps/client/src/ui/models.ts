@@ -487,7 +487,7 @@ export interface TradeSide {
 
 export interface TradeModel {
   mode: 'direct';
-  auction: 'stub';
+  auction: 'live';
   self: { items: TradeStack[]; gold: number };
   partner: { items: TradeStack[]; gold: number };
   actions: readonly ['exchange', 'cancel'];
@@ -500,7 +500,7 @@ export function tradeModel(self: TradeSide, partner: TradeSide): TradeModel {
   });
   return {
     mode: 'direct',
-    auction: 'stub',
+    auction: 'live',
     self: copySide(self),
     partner: copySide(partner),
     actions: ['exchange', 'cancel'],

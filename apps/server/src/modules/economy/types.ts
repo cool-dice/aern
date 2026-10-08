@@ -48,6 +48,18 @@ export interface TradeOffer {
   items: Record<string, number>;
 }
 
+export interface AuctionLot {
+  id: string;
+  sellerId: string;
+  itemId: string;
+  qty: number;
+  startPrice: number;
+  currentBid: number;
+  bidderId: string | null;
+  buyout: number | null;
+  guildCity: boolean;
+}
+
 export interface TradeSession {
   tradeId: string;
   aId: string;
@@ -79,5 +91,18 @@ export interface EconomyService {
   offerTrade(input: OfferTradeInput): Promise<Result<{ tradeId: string }, string>>;
   acceptTrade(tradeId: string, characterId: string): Promise<Result<'pending' | 'done', string>>;
   cancelTrade(tradeId: string, characterId: string): Promise<Result<'cleared', string>>;
-  listAuction(): Result<never, 'feature_stub'>;
+  listAuction(): Result<AuctionLot[], never>;
+  offerAuction(input: {
+    sellerId: string;
+    itemId: string;
+    qty: number;
+    startPrice: number;
+    buyout: number | null;
+    guildCity: boolean;
+  }): Result<{ id: string }, string>;
+  bidAuction(input: {
+    lotId: string;
+    bidderId: string;
+    bid: number;
+  }): Result<{ price: number; buyout: boolean }, string>;
 }
