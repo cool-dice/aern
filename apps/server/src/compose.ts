@@ -354,6 +354,25 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     economy: economy.service,
     social: social.service,
     note,
+    async placeQuest(characterId, questId) {
+      const rows = await repos.quests.list(characterId);
+      const row = rows.find(
+        (entry) => entry.progress.questId === questId && entry.progress.status === 'active',
+      );
+      if (row === undefined) {
+        return;
+      }
+      simWorld = {
+        ...simWorld,
+        entities: simWorld.entities.map((entity) => {
+          if (entity.id !== characterId) {
+            return entity;
+          }
+          const quests = (entity.quests ?? []).filter((quest) => quest.questId !== questId);
+          return { ...entity, quests: [...quests, row.progress] };
+        }),
+      };
+    },
     setNeural(characterId, nn, nnLimit) {
       simWorld = {
         ...simWorld,
@@ -425,8 +444,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       if (beforeCorpses.has(corpse.victimId)) {
         continue;
       }
-      const killer = simWorld.entities.find((entity) => entity.monsterId === undefined && entity.progress !== undefined);
-      if (killer !== undefined) {
+      const killer = simWorld.entities.find((entity) => entity.id === corpse.killerId);
+      if (killer !== undefined && killer.monsterId === undefined) {
         void reportKind(killer.id, 'kill');
         if (corpse.victimId.includes(':elite') || corpse.victimId.includes('keeper')) {
           void note(killer.id, 'capture');
@@ -583,6 +602,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       hack: passwords,
       hackPassword,
       quests: focus === undefined ? [] : questRows(focus),
+      players: players.map((entity) => ({
+        id: entity.id,
+        xp: entity.progress?.xp ?? 0,
+        level: entity.progress?.level ?? 1,
+        quests: questRows(entity),
+      })),
       mapNodes: graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
       recipes: catalog.recipes.map((recipe) => ({ id: recipe.id })),
       tax: economy.service.taxLedger(),

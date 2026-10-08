@@ -90,6 +90,12 @@ export interface SimEntity {
   nnLimit?: number;
   /** Fractional steps saved while `speedMultiplier` is below 1. */
   moveFrac?: number;
+  /** Last combatant whose hit committed. Kill credit uses this id. */
+  lastAttackerId?: string;
+  dungeonId?: string;
+  roomId?: number;
+  dungeonRooms?: { id: number; x: number; y: number }[];
+  dungeonEdges?: [number, number][];
 }
 
 export interface MonsterRespawn {
@@ -103,6 +109,7 @@ export interface SimCorpse {
   stacks?: { itemId: string; qty: number; questItem?: boolean; questOwnerId?: string }[];
   looted?: boolean;
   bindNodeId?: string;
+  killerId?: string;
 }
 
 export interface SimRejection {
@@ -468,6 +475,7 @@ function settleMonsters(
         stacks: stacks.map((stack) => ({ itemId: stack.itemId, qty: stack.qty })),
         looted: false,
         bindNodeId: '',
+        ...(entity.lastAttackerId !== undefined ? { killerId: entity.lastAttackerId } : {}),
       });
       respawns.push({
         atMs: nowMs + MONSTER_RESPAWN_MS,
@@ -676,10 +684,13 @@ function toDomainCorpse(corpse: SimCorpse) {
 }
 
 function grantKill(entities: readonly SimEntity[], victim: SimEntity): void {
-  const hero = entities.find(
-    (entity) => entity.monsterId === undefined && entity.progress !== undefined && entity.quests !== undefined,
-  );
-  if (hero === undefined || hero.progress === undefined || hero.quests === undefined) {
+  const hero = entities.find((entity) => entity.id === victim.lastAttackerId);
+  if (
+    hero === undefined ||
+    hero.monsterId !== undefined ||
+    hero.progress === undefined ||
+    hero.quests === undefined
+  ) {
     return;
   }
   const next = onKill(
@@ -845,6 +856,7 @@ function applyAttack(
 
   commitCombatant(attackerDraft, result.value.attacker);
   commitCombatant(targetDraft, result.value.target);
+  targetDraft.lastAttackerId = attacker.id;
   if (result.value.stunnedMs > 0) {
     const applied = tryApplyStatus({
       resist: 0,
@@ -903,6 +915,9 @@ function commitCombatant(entity: SimEntity, combatant: Combatant): void {
   entity.hp = combatant.hp;
   entity.limbs = { ...combatant.limbs };
   entity.stunned = combatant.stunned;
+  const left = combatant.limbs.leg_left <= 0 ? 1 : 0;
+  const right = combatant.limbs.leg_right <= 0 ? 1 : 0;
+  entity.legsDestroyed = (left + right) as 0 | 1 | 2;
   spendOd(entity, combatant.od);
 }
 

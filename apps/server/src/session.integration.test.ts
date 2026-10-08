@@ -129,6 +129,53 @@ test('login resume loads repository characters and create opens a guild wallet',
   }
 });
 
+test('accepted quests publish on /state and kill credit follows the attacker', async () => {
+  const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  graph.enterWorld('alpha');
+  graph.enterWorld('beta');
+  const accepted = await graph.act('quest_accept', { characterId: 'beta', questId: 'kill_rats' });
+  expect(accepted.ok).toBe(true);
+  const listed = graph.state() as {
+    players: { id: string; xp: number; quests: { id: string; objectives: { current: number }[] }[] }[];
+  };
+  const beta = listed.players.find((player) => player.id === 'beta');
+  expect(beta?.quests.map((quest) => quest.id)).toEqual(['kill_rats']);
+  expect(beta?.quests[0]?.objectives[0]?.current).toBe(0);
+
+  graph.submit({
+    commandId: 'beta-hit',
+    seq: 1,
+    issuedAtMs: 1_000,
+    action: 'attack_ranged',
+    targetId: 'alpha:spore_rat',
+    params: { entityId: 'beta', weaponDamage: 500, range: 8, odCost: 0 },
+  });
+  graph.tickOnce();
+  const after = graph.state() as {
+    players: { id: string; xp: number; quests: { id: string; objectives: { current: number }[] }[] }[];
+  };
+  const alphaAfter = after.players.find((player) => player.id === 'alpha');
+  const betaAfter = after.players.find((player) => player.id === 'beta');
+  expect(alphaAfter?.xp).toBe(0);
+  expect(betaAfter?.xp).toBeGreaterThan(0);
+  expect(betaAfter?.quests[0]?.objectives[0]?.current).toBe(1);
+
+  const gathered = await graph.act('quest_accept', { characterId: 'alpha', questId: 'gather_metal' });
+  expect(gathered.ok).toBe(true);
+  const gather = await graph.act('gather', { characterId: 'alpha', nodeId: 'mine_metal' });
+  expect(gather.ok).toBe(true);
+  const visited = await graph.act('quest_accept', { characterId: 'alpha', questId: 'visit_hub' });
+  expect(visited.ok).toBe(true);
+  const dungeon = await graph.act('dungeon_enter', { characterId: 'alpha' });
+  expect(dungeon.ok).toBe(true);
+  const played = graph.state() as {
+    players: { id: string; quests: { id: string; objectives: { id: string; current: number }[] }[] }[];
+  };
+  const alphaPlayed = played.players.find((player) => player.id === 'alpha');
+  expect(alphaPlayed?.quests.find((quest) => quest.id === 'gather_metal')?.objectives[0]?.current).toBe(1);
+  expect(alphaPlayed?.quests.find((quest) => quest.id === 'visit_hub')?.objectives[0]?.current).toBe(1);
+});
+
 test('0 HP writes a corpse and respawnAtBind brings the player back', () => {
   const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
   graph.enterWorld('lia');

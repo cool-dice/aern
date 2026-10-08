@@ -32,6 +32,7 @@ export interface LivePorts {
   economy: EconomyService;
   social: SocialService;
   note(characterId: string, kind: QuestObjectiveKind): Promise<void>;
+  placeQuest(characterId: string, questId: string): Promise<void>;
   setNeural(characterId: string, nn: number, nnLimit: number): void;
   weatherSpeed(): number;
   seasonBonus(): boolean;
@@ -293,6 +294,7 @@ async function questAccept(body: Record<string, unknown>, ports: LivePorts): Pro
   if (!accepted.ok) {
     return { ok: false, code: accepted.code };
   }
+  await ports.placeQuest(characterId, questId);
   return { ok: true, value: { questId } };
 }
 
