@@ -147,10 +147,10 @@ test('login resume loads repository characters and create opens a guild wallet',
         tag: 'RW',
         initiatorId: characterId,
         members: [
-          { id: characterId, level: 5 },
-          { id: 'm1', level: 5 },
-          { id: 'm2', level: 5 },
-          { id: 'm3', level: 5 },
+          { id: characterId, level: 5, confirmed: true },
+          { id: 'm1', level: 5, confirmed: true },
+          { id: 'm2', level: 5, confirmed: true },
+          { id: 'm3', level: 5, confirmed: true },
         ],
         gold: GUILD_CREATE_GOLD,
       },
@@ -881,6 +881,8 @@ function memoryDb(): RiftDb {
 test('guild create debits character gold and rejects a short roster', async () => {
   const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
   try {
+    built.enterWorld('m0', 'fort_humans');
+    built.enterWorld('fresh', 'fort_humans');
     built.creditGold('m0', 10_000);
     const short = await built.app.inject({
       method: 'POST',
@@ -890,9 +892,9 @@ test('guild create debits character gold and rejects a short roster', async () =
         tag: 'RW',
         initiatorId: 'm0',
         members: [
-          { id: 'm0', level: 5 },
-          { id: 'm1', level: 5 },
-          { id: 'm2', level: 5 },
+          { id: 'm0', level: 5, confirmed: true },
+          { id: 'm1', level: 5, confirmed: true },
+          { id: 'm2', level: 5, confirmed: true },
         ],
         gold: 10_000,
       },
@@ -908,10 +910,10 @@ test('guild create debits character gold and rejects a short roster', async () =
         tag: 'RW',
         initiatorId: 'm0',
         members: [
-          { id: 'm0', level: 5 },
-          { id: 'm1', level: 5 },
-          { id: 'm2', level: 5 },
-          { id: 'm3', level: 5 },
+          { id: 'm0', level: 5, confirmed: true },
+          { id: 'm1', level: 5, confirmed: true },
+          { id: 'm2', level: 5, confirmed: true },
+          { id: 'm3', level: 5, confirmed: true },
         ],
         gold: 10_000,
       },
@@ -927,10 +929,10 @@ test('guild create debits character gold and rejects a short roster', async () =
         tag: 'BW',
         initiatorId: 'm0',
         members: [
-          { id: 'm0', level: 5 },
-          { id: 'a1', level: 5 },
-          { id: 'a2', level: 5 },
-          { id: 'a3', level: 5 },
+          { id: 'm0', level: 5, confirmed: true },
+          { id: 'a1', level: 5, confirmed: true },
+          { id: 'a2', level: 5, confirmed: true },
+          { id: 'a3', level: 5, confirmed: true },
         ],
         gold: 10_000,
       },
@@ -946,10 +948,10 @@ test('guild create debits character gold and rejects a short roster', async () =
         tag: 'GW',
         initiatorId: 'fresh',
         members: [
-          { id: 'fresh', level: 5 },
-          { id: 'b1', level: 5 },
-          { id: 'b2', level: 5 },
-          { id: 'b3', level: 5 },
+          { id: 'fresh', level: 5, confirmed: true },
+          { id: 'b1', level: 5, confirmed: true },
+          { id: 'b2', level: 5, confirmed: true },
+          { id: 'b3', level: 5, confirmed: true },
         ],
         gold: 10_000,
       },
@@ -1071,10 +1073,10 @@ test('boot restores guild membership from the guild table and the hold uses it',
     leaderId: 'lia',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'lia', level: 5 },
-      { id: 'm1', level: 5 },
-      { id: 'm2', level: 5 },
-      { id: 'm3', level: 5 },
+      { id: 'lia', level: 5, confirmed: true },
+      { id: 'm1', level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
   });
   expect(created.ok).toBe(true);

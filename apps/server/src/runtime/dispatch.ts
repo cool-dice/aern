@@ -119,8 +119,10 @@ export interface LivePorts {
   }): Promise<LiveResult>;
   reviewRewardFreeze(body: Record<string, unknown>): Promise<LiveResult>;
   screenGuildCreate(body: Record<string, unknown>): LiveResult;
+  confirmFounders(body: Record<string, unknown>): LiveResult;
+  registerAtHall(initiatorId: string, place: string | undefined): LiveResult;
   banFounder(body: Record<string, unknown>): LiveResult;
-  openLeaderPoll(guildId: string): void;
+  openLeaderPoll(guildId: string, emblem?: string, description?: string): void;
   seatCharter(guildId: string, leaderId: string, memberIds: readonly string[]): void;
   carriersBlocked(memberIds: readonly string[]): Promise<boolean>;
   leadershipBlocked(characterId: string): Promise<boolean>;
@@ -764,7 +766,21 @@ async function guildCreate(body: Record<string, unknown>, ports: LivePorts): Pro
   if (!screened.ok) {
     return screened;
   }
-  const created = await ports.guild.create(body);
+  const confirmed = ports.confirmFounders(body);
+  if (!confirmed.ok) {
+    return confirmed;
+  }
+  const initiatorIdForHall = text(body, 'initiatorId') ?? '';
+  const registered = ports.registerAtHall(
+    initiatorIdForHall,
+    typeof body.place === 'string' ? body.place : undefined,
+  );
+  if (!registered.ok) {
+    return registered;
+  }
+  const emblem = text(body, 'emblem') ?? '';
+  const description = text(body, 'description') ?? '';
+  const created = await ports.guild.create({ ...body, emblem: '', description: '' });
   if (!created.ok) {
     return { ok: false, code: created.code };
   }
@@ -787,7 +803,7 @@ async function guildCreate(body: Record<string, unknown>, ports: LivePorts): Pro
   if (initiator !== undefined) {
     await ports.note(initiator, 'capture');
   }
-  ports.openLeaderPoll(created.value.guildId);
+  ports.openLeaderPoll(created.value.guildId, emblem, description);
   return { ok: true, value: created.value };
 }
 

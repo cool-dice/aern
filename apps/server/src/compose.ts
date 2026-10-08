@@ -100,6 +100,8 @@ import {
   applyCreationBan,
   COLLUSION_BAN_MS,
   reviewSection11,
+  foundersConfirmed,
+  registrationPlace,
   screenCharter,
   rewardFreezeEnds,
   type Section12Report,
@@ -175,6 +177,7 @@ export interface ServerComposition {
   tickOnce: () => Promise<void>;
   submit: (command: ClientCommand) => void;
   enterWorld: (playerId: string, bindNodeId?: string) => void;
+  place: (playerId: string, nodeId: string) => void;
   creditGuildGold: (characterId: string, amount: number) => void;
   snapshot: () => MetricsSnapshot;
   auth: AuthModule;
@@ -225,6 +228,7 @@ export interface BuiltServer {
   guild: GuildModule;
   social: SocialModule;
   creditGold: (characterId: string, amount: number) => void;
+  enterWorld: (playerId: string, bindNodeId?: string) => void;
   seedTrader: (input: {
     characterId: string;
     gold: number;
@@ -329,6 +333,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       tieAtMs: number | null;
       revoteUsed: boolean;
       closed: boolean;
+      emblem: string;
+      description: string;
     }
   >();
   const voteRng = mulberry32(3);
@@ -843,6 +849,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     holdWithdrawal,
     reviewRewardFreeze,
     screenGuildCreate,
+    confirmFounders,
+    registerAtHall,
     banFounder,
     openLeaderPoll,
     seatCharter,
@@ -2753,6 +2761,39 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return reviewed;
   }
 
+  function confirmFounders(body: Record<string, unknown>): { ok: boolean; code?: string } {
+    const members = Array.isArray(body.members) ? body.members : [];
+    const founders: { id: string; confirmed: boolean }[] = [];
+    for (const member of members) {
+      if (typeof member !== 'object' || member === null || !('id' in member)) {
+        continue;
+      }
+      const row = member as { id?: unknown; confirmed?: unknown };
+      if (typeof row.id !== 'string' || row.id.length === 0) {
+        continue;
+      }
+      founders.push({ id: row.id, confirmed: row.confirmed === true });
+    }
+    const confirmed = foundersConfirmed(founders);
+    if (!confirmed.ok) {
+      return { ok: false, code: confirmed.code };
+    }
+    return { ok: true };
+  }
+
+  function registerAtHall(initiatorId: string, place: string | undefined): { ok: boolean; code?: string } {
+    const nodeId = characterNode(initiatorId);
+    const kind =
+      nodeId === undefined
+        ? ''
+        : (simWorld.geography?.nodes.find((node) => node.id === nodeId)?.kind ?? '');
+    const registered = registrationPlace(place === undefined ? { nodeKind: kind } : { nodeKind: kind, place });
+    if (!registered.ok) {
+      return { ok: false, code: registered.code };
+    }
+    return { ok: true };
+  }
+
   function screenGuildCreate(body: Record<string, unknown>): { ok: boolean; code?: string } {
     const name = typeof body.name === 'string' ? body.name : '';
     const members = Array.isArray(body.members) ? body.members : [];
@@ -3126,8 +3167,17 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
   }
 
-  function openLeaderPoll(guildId: string): void {
+  function openLeaderPoll(guildId: string, emblem = '', description = ''): void {
     if (leaderPolls.has(guildId)) {
+      const poll = leaderPolls.get(guildId);
+      if (poll !== undefined && !poll.closed) {
+        if (emblem.length > 0) {
+          poll.emblem = emblem;
+        }
+        if (description.length > 0) {
+          poll.description = description;
+        }
+      }
       return;
     }
     leaderPolls.set(guildId, {
@@ -3137,6 +3187,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       tieAtMs: null,
       revoteUsed: false,
       closed: false,
+      emblem,
+      description,
     });
   }
 
@@ -3188,7 +3240,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       return { ok: false, code: allowed.code };
     }
     poll.closed = true;
-    await repos.guilds.saveGuild({ ...guild, leaderId: elected.value.leaderId });
+    await repos.guilds.saveGuild({
+      ...guild,
+      leaderId: elected.value.leaderId,
+      emblem: poll.emblem,
+      description: poll.description,
+    });
     seatFounders(guildId, elected.value.leaderId, guild.memberIds);
     return { ok: true, value: elected.value };
   }
@@ -4581,6 +4638,24 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     pending.push(command);
   }
 
+  function place(playerId: string, nodeId: string): void {
+    const home = simWorld.geography?.nodes.find((node) => node.id === nodeId);
+    if (home === undefined) {
+      return;
+    }
+    const cell = { x: home.x, y: home.y };
+    if (!simWorld.entities.some((entity) => entity.id === playerId)) {
+      enterWorld(playerId, nodeId);
+      return;
+    }
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) =>
+        entity.id === playerId ? { ...entity, nodeId, cell } : entity,
+      ),
+    };
+  }
+
   function enterWorld(playerId: string, bindNodeId = 'fort_humans'): void {
     if (simWorld.entities.some((entity) => entity.id === playerId)) {
       return;
@@ -4685,6 +4760,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     tickOnce,
     submit,
     enterWorld,
+    place,
     creditGuildGold: creditGold,
     enterCharacter: rememberCharacter,
     async resume(accountId: string) {
@@ -4789,6 +4865,7 @@ export async function buildApp(options: ComposeOptions = {}): Promise<BuiltServe
       guild: composition.guild,
       social: composition.social,
       creditGold: composition.creditGold,
+      enterWorld: composition.enterWorld,
       seedTrader: composition.seedTrader,
       close: async () => {
         await closeSockets(sockets);

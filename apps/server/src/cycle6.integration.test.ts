@@ -70,10 +70,10 @@ test('a guild-owned city debits the crossing fee and the repair cut', async () =
     leaderId: 'lia',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'lia', level: 5 },
-      { id: 'm1', level: 5 },
-      { id: 'm2', level: 5 },
-      { id: 'm3', level: 5 },
+      { id: 'lia', level: 5, confirmed: true },
+      { id: 'm1', level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
   });
   expect(created.ok).toBe(true);
@@ -138,10 +138,10 @@ test('a neutral asking a hostile city is refused and an enemy is blocked', async
     leaderId: 'lia',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'lia', level: 5 },
-      { id: 'm1', level: 5 },
-      { id: 'm2', level: 5 },
-      { id: 'm3', level: 5 },
+      { id: 'lia', level: 5, confirmed: true },
+      { id: 'm1', level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
   });
   expect(created.ok).toBe(true);
@@ -164,10 +164,10 @@ test('a neutral asking a hostile city is refused and an enemy is blocked', async
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'n1', level: 5 },
-      { id: 'n2', level: 5 },
-      { id: 'n3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'n1', level: 5, confirmed: true },
+      { id: 'n2', level: 5, confirmed: true },
+      { id: 'n3', level: 5, confirmed: true },
     ],
   });
   expect(rival.ok).toBe(true);
@@ -208,10 +208,10 @@ test('a guild member on a resource node starts the plant timer', async () => {
     leaderId: 'lia',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'lia', level: 5 },
-      { id: 'm1', level: 5 },
-      { id: 'm2', level: 5 },
-      { id: 'm3', level: 5 },
+      { id: 'lia', level: 5, confirmed: true },
+      { id: 'm1', level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
   });
   expect(created.ok).toBe(true);

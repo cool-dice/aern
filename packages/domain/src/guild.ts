@@ -314,6 +314,39 @@ export function screenCharter(input: {
   return ok(true);
 }
 
+/** Artifact 17 §2.2 step 2. Every founder confirms before the charter is paid. */
+export function foundersConfirmed(
+  founders: { id: string; confirmed: boolean }[],
+): Result<true, 'confirm'> {
+  if (founders.length === 0) {
+    return err('confirm');
+  }
+  for (const founder of founders) {
+    if (founder.id.length === 0 || founder.confirmed !== true) {
+      return err('confirm');
+    }
+  }
+  return ok(true);
+}
+
+/** Artifact 17 §2.1. Registration is a city, its hall, or the guild registrar. */
+export const REGISTRATION_PLACES = ['city', 'hall', 'registrar'] as const;
+export type RegistrationPlace = (typeof REGISTRATION_PLACES)[number];
+
+export function registrationPlace(input: {
+  nodeKind: string;
+  place?: string;
+}): Result<RegistrationPlace, 'place'> {
+  if (input.nodeKind !== 'city') {
+    return err('place');
+  }
+  const place = input.place ?? 'hall';
+  if (!(REGISTRATION_PLACES as readonly string[]).includes(place)) {
+    return err('place');
+  }
+  return ok(place as RegistrationPlace);
+}
+
 function creationBanActive(ban: CreationBan, nowMs: number): boolean {
   if (ban.kind !== 'collusion' && ban.kind !== 'alt_guild') {
     return false;

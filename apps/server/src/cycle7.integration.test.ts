@@ -5,10 +5,10 @@ import { expect, test } from 'vitest';
 import { compose } from './compose';
 
 const founders = [
-  { id: 'lia', level: 5 },
-  { id: 'm1', level: 5 },
-  { id: 'm2', level: 5 },
-  { id: 'm3', level: 5 },
+  { id: 'lia', level: 5, confirmed: true },
+  { id: 'm1', level: 5, confirmed: true },
+  { id: 'm2', level: 5, confirmed: true },
+  { id: 'm3', level: 5, confirmed: true },
 ];
 
 async function foundGuild(graph: ReturnType<typeof compose>, name = 'Red Wolves', tag = 'RW'): Promise<string> {
@@ -224,10 +224,10 @@ test('extended storage debits 1 gold per slot and a hostile city refuses a neutr
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'n1', level: 5 },
-      { id: 'n2', level: 5 },
-      { id: 'n3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'n1', level: 5, confirmed: true },
+      { id: 'n2', level: 5, confirmed: true },
+      { id: 'n3', level: 5, confirmed: true },
     ],
   });
   expect(rival.ok).toBe(true);
@@ -252,10 +252,10 @@ test('a node flag drop seizes the chest and the officer tax cap is 15', async ()
   expect(NODE_DROP_MS).toBe(1_800_000);
   expect(NODE_TAX_OFFICER_MAX).toBe(15);
   const graph = compose({ nowMs: 0 });
-  graph.enterWorld('lia', 'plains_mine');
   graph.enterCharacter('account-lia', 'lia');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
   const guildId = await foundGuild(graph);
+  graph.place('lia', 'plains_mine');
   await graph.skipMs(NODE_PLANT_MS);
   const planted = graph.state() as { resourceNodes: { nodeId: string; guildId: string | null; chest: number }[] };
   expect(planted.resourceNodes.find((node) => node.nodeId === 'plains_mine')).toMatchObject({ guildId });
@@ -329,7 +329,6 @@ test('a node flag drop seizes the chest and the officer tax cap is 15', async ()
   expect(node?.guildId).toBeNull();
   expect(node?.chest).toBe(chest);
   expect(dropped.guildVaults.find((row) => row.guildId === guildId)?.amount).toBeUndefined();
-  graph.enterWorld('kai', 'plains_mine');
   graph.enterCharacter('account-kai', 'kai');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'kai', action: 'wait' });
   const ash = await graph.act('guild_create', {
@@ -339,14 +338,15 @@ test('a node flag drop seizes the chest and the officer tax cap is 15', async ()
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'n1', level: 5 },
-      { id: 'n2', level: 5 },
-      { id: 'n3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'n1', level: 5, confirmed: true },
+      { id: 'n2', level: 5, confirmed: true },
+      { id: 'n3', level: 5, confirmed: true },
     ],
   });
   expect(ash.ok).toBe(true);
   const ashId = (ash.value as { guildId: string }).guildId;
+  graph.place('kai', 'plains_mine');
   await graph.skipMs(NODE_PLANT_MS);
   const taken = graph.state() as {
     resourceNodes: { nodeId: string; guildId: string | null; chest: number }[];
@@ -361,10 +361,10 @@ test('a node flag drop seizes the chest and the officer tax cap is 15', async ()
 
 test('node access is separate for allies, other guilds, and neutrals', async () => {
   const graph = compose({ nowMs: 0 });
-  graph.enterWorld('lia', 'plains_mine');
   graph.enterCharacter('account-lia', 'lia');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
   const guildId = await foundGuild(graph);
+  graph.place('lia', 'plains_mine');
   await graph.skipMs(NODE_PLANT_MS);
   expect(
     await graph.act('node_access', { guildId, nodeId: 'plains_mine', category: 'allies', access: 'open' }),
@@ -379,7 +379,6 @@ test('node access is separate for allies, other guilds, and neutrals', async () 
     await graph.act('node_access', { guildId, nodeId: 'plains_mine', category: 'open', access: 'closed' }),
   ).toMatchObject({ ok: false, code: 'category' });
 
-  graph.enterWorld('kai', 'plains_mine');
   graph.enterCharacter('account-kai', 'kai');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'kai', action: 'wait' });
   const rival = await graph.act('guild_create', {
@@ -389,14 +388,15 @@ test('node access is separate for allies, other guilds, and neutrals', async () 
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'n1', level: 5 },
-      { id: 'n2', level: 5 },
-      { id: 'n3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'n1', level: 5, confirmed: true },
+      { id: 'n2', level: 5, confirmed: true },
+      { id: 'n3', level: 5, confirmed: true },
     ],
   });
   expect(rival.ok).toBe(true);
   const ash = (rival.value as { guildId: string }).guildId;
+  graph.place('kai', 'plains_mine');
   const gather = { nodeId: 'spring', tool: 'basic', toolKind: 'flask' };
   expect(await graph.act('gather', { characterId: 'kai', ...gather })).toMatchObject({ ok: false, code: 'closed' });
   expect(await graph.act('pact', { kind: 'alliance', guildIds: [guildId, ash], characterId: 'lia' })).toMatchObject({
@@ -434,10 +434,10 @@ test('the 24 hour portal lift uses the domain clock skip', async () => {
 
 test('mercenary and patrol contracts pay from the guild bank or fail', async () => {
   const graph = compose({ nowMs: 0 });
-  graph.enterWorld('lia', 'plains_mine');
   graph.enterCharacter('account-lia', 'lia');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
   const guildId = await foundGuild(graph);
+  graph.place('lia', 'plains_mine');
   const guild = await graph.guild.repository.findGuild(guildId);
   expect(guild).not.toBeNull();
   if (guild === null) {
@@ -506,13 +506,13 @@ test('mercenary kind changes patrol, combat, and escort outcomes', async () => {
   expect(once.includes('void tickContracts(')).toBe(false);
 
   const graph = compose({ nowMs: 0 });
-  graph.enterWorld('lia', 'plains_mine');
   graph.enterCharacter('account-lia', 'lia');
-  graph.enterWorld('blade', 'cross_light');
   graph.enterCharacter('account-blade', 'blade');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'blade', action: 'wait' });
   const guildId = await foundGuild(graph);
+  graph.place('lia', 'plains_mine');
+  graph.place('blade', 'cross_light');
   const guild = await graph.guild.repository.findGuild(guildId);
   if (guild === null) {
     throw new Error('missing guild');
@@ -616,10 +616,10 @@ test('alliance notice, vassal release, and war contenders follow the domain cloc
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'n1', level: 5 },
-      { id: 'n2', level: 5 },
-      { id: 'n3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'n1', level: 5, confirmed: true },
+      { id: 'n2', level: 5, confirmed: true },
+      { id: 'n3', level: 5, confirmed: true },
     ],
   });
   expect(rival.ok).toBe(true);
@@ -834,10 +834,10 @@ test('a suzerain must defend, ally markers are stored, and a coalition channel p
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'n1', level: 5 },
-      { id: 'n2', level: 5 },
-      { id: 'n3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'n1', level: 5, confirmed: true },
+      { id: 'n2', level: 5, confirmed: true },
+      { id: 'n3', level: 5, confirmed: true },
     ],
   });
   expect(ashCreated.ok).toBe(true);
@@ -850,10 +850,10 @@ test('a suzerain must defend, ally markers are stored, and a coalition channel p
     leaderId: 'noa',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'noa', level: 5 },
-      { id: 'o1', level: 5 },
-      { id: 'o2', level: 5 },
-      { id: 'o3', level: 5 },
+      { id: 'noa', level: 5, confirmed: true },
+      { id: 'o1', level: 5, confirmed: true },
+      { id: 'o2', level: 5, confirmed: true },
+      { id: 'o3', level: 5, confirmed: true },
     ],
   });
   expect(oakCreated.ok).toBe(true);
@@ -918,13 +918,13 @@ test('a suzerain must defend, ally markers are stored, and a coalition channel p
 
 test('an escort contract completes when the mercenary walks to the destination', async () => {
   const graph = compose({ nowMs: 0 });
-  graph.enterWorld('lia', 'plains_mine');
   graph.enterCharacter('account-lia', 'lia');
-  graph.enterWorld('blade', 'plains_mine');
   graph.enterCharacter('account-blade', 'blade');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'blade', action: 'wait' });
   const guildId = await foundGuild(graph);
+  graph.place('lia', 'plains_mine');
+  graph.place('blade', 'plains_mine');
   const guild = await graph.guild.repository.findGuild(guildId);
   if (guild === null) {
     throw new Error('missing guild');
@@ -968,7 +968,6 @@ test('a suzerain who never walks to the city pays the pact-breach fine', async (
   const wolves = await foundGuild(graph);
   await winCity(graph, wolves, 'fort_humans');
   await graph.skipMs(CITY_CAPTURE_COOLDOWN_MS);
-  graph.enterWorld('kai', 'cross_light');
   graph.enterCharacter('account-kai', 'kai');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'kai', action: 'wait' });
   const ashCreated = await graph.act('guild_create', {
@@ -978,14 +977,15 @@ test('a suzerain who never walks to the city pays the pact-breach fine', async (
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'n1', level: 5 },
-      { id: 'n2', level: 5 },
-      { id: 'n3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'n1', level: 5, confirmed: true },
+      { id: 'n2', level: 5, confirmed: true },
+      { id: 'n3', level: 5, confirmed: true },
     ],
   });
   expect(ashCreated.ok).toBe(true);
   const ash = (ashCreated.value as { guildId: string }).guildId;
+  graph.place('kai', 'cross_light');
   const suzerain = await graph.guild.repository.findGuild(ash);
   if (suzerain === null) {
     throw new Error('missing suzerain');
@@ -1009,10 +1009,10 @@ test('a suzerain who never walks to the city pays the pact-breach fine', async (
     leaderId: 'noa',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'noa', level: 5 },
-      { id: 'o1', level: 5 },
-      { id: 'o2', level: 5 },
-      { id: 'o3', level: 5 },
+      { id: 'noa', level: 5, confirmed: true },
+      { id: 'o1', level: 5, confirmed: true },
+      { id: 'o2', level: 5, confirmed: true },
+      { id: 'o3', level: 5, confirmed: true },
     ],
   });
   expect(oakCreated.ok).toBe(true);

@@ -11,10 +11,10 @@ import { expect, test } from 'vitest';
 import { compose } from './compose';
 
 const founders = [
-  { id: 'lia', level: 5 },
-  { id: 'm1', level: 5 },
-  { id: 'm2', level: 5 },
-  { id: 'm3', level: 5 },
+  { id: 'lia', level: 5, confirmed: true },
+  { id: 'm1', level: 5, confirmed: true },
+  { id: 'm2', level: 5, confirmed: true },
+  { id: 'm3', level: 5, confirmed: true },
 ];
 
 const appearance: Appearance = {
@@ -127,6 +127,16 @@ test('cycle 11 hooks are called from tickOnce, skipMs, or the live route', () =>
   expect(dispatch.includes("case 'guild_ban'")).toBe(true);
   expect(dispatch.includes('banFounder(')).toBe(true);
   expect(create.includes('seatCharter(')).toBe(true);
+  expect(create.indexOf('confirmFounders(')).toBeLessThan(create.indexOf('ports.guild.create('));
+  expect(create.indexOf('registerAtHall(')).toBeLessThan(create.indexOf('ports.guild.create('));
+  expect(create.includes("emblem: ''")).toBe(true);
+  const opened = composeSource.slice(
+    composeSource.indexOf('function openLeaderPoll'),
+    composeSource.indexOf('async function finishLeaderPoll'),
+  );
+  expect(opened.includes('emblem')).toBe(true);
+  expect(finish.includes('poll.emblem')).toBe(true);
+  expect(finish.includes('poll.description')).toBe(true);
   expect(create.includes('seatFounders(')).toBe(false);
   expect(create.includes('leadershipBlocked(')).toBe(true);
   const join = dispatch.slice(dispatch.indexOf("case 'guild_join'"), dispatch.indexOf("case 'guild_dissolve'"));
@@ -217,10 +227,10 @@ test('a second bot of one carrier is refused on create and on join', async () =>
     leaderId: 'lia',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'lia', level: 5 },
-      { id: first.value.characterId, level: 5 },
-      { id: second.value.characterId, level: 5 },
-      { id: 'm3', level: 5 },
+      { id: 'lia', level: 5, confirmed: true },
+      { id: first.value.characterId, level: 5, confirmed: true },
+      { id: second.value.characterId, level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
   });
   expect(refused).toMatchObject({ ok: false, code: 'carrier' });
@@ -243,10 +253,10 @@ test('a second bot of one carrier is refused on create and on join', async () =>
 
 test('a guild that does not own the node can strike the flag and pocket the chest', async () => {
   const graph = compose({ nowMs: 0 });
-  graph.enterWorld('lia', 'plains_mine');
   graph.enterCharacter('account-lia', 'lia');
   graph.enterCharacter('account-kai', 'kai');
   const wolves = await foundGuild(graph);
+  graph.place('lia', 'plains_mine');
   graph.creditGold('kai', GUILD_CREATE_GOLD);
   const ash = await graph.act('guild_create', {
     name: 'Ash Guard',
@@ -255,10 +265,10 @@ test('a guild that does not own the node can strike the flag and pocket the ches
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'a1', level: 5 },
-      { id: 'a2', level: 5 },
-      { id: 'a3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'a1', level: 5, confirmed: true },
+      { id: 'a2', level: 5, confirmed: true },
+      { id: 'a3', level: 5, confirmed: true },
     ],
   });
   expect(ash.ok).toBe(true);
@@ -335,10 +345,10 @@ test('an AI cannot take a second leadership post', async () => {
     leaderId: bot.value.characterId,
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: bot.value.characterId, level: 5 },
-      { id: 'lia', level: 5 },
-      { id: 'm2', level: 5 },
-      { id: 'm3', level: 5 },
+      { id: bot.value.characterId, level: 5, confirmed: true },
+      { id: 'lia', level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
   });
   expect(second).toMatchObject({ ok: false, code: 'limit' });
@@ -349,9 +359,15 @@ test('the charter stores an emblem and description, and withdraw caps items', as
   const graph = compose({ nowMs: 0 });
   graph.enterCharacter('account-lia', 'lia');
   const guildId = await foundGuild(graph);
+  const pending = await graph.guild.repository.findGuild(guildId);
+  expect(pending?.emblem).toBe('');
+  expect(pending?.description).toBe('');
+  expect(await graph.act('guild_vote', { guildId, voterId: 'm1', candidateId: 'lia' })).toMatchObject({ ok: true });
+  expect(await graph.act('guild_vote', { guildId, voterId: 'm2', candidateId: 'lia' })).toMatchObject({ ok: true });
   const stored = await graph.guild.repository.findGuild(guildId);
   expect(stored?.emblem).toBe('wolf');
   expect(stored?.description).toBe('the red pack');
+  expect(stored?.leaderId).toBe('lia');
   expect(WITHDRAW_ITEMS.leader).toBe(10);
   graph.seedTrader({ characterId: 'lia', gold: 100, itemId: 'blade', qty: 11 });
   const deposited = await graph.act('guild_deposit', {
@@ -385,6 +401,39 @@ test('the charter stores an emblem and description, and withdraw caps items', as
   expect(extra).toMatchObject({ ok: false, code: 'limit' });
 });
 
+test('creation refuses an unconfirmed founder and a founder outside the city hall', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  const unconfirmed = await graph.act('guild_create', {
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'lia', level: 5, confirmed: true },
+      { id: 'm1', level: 5 },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
+    ],
+  });
+  expect(unconfirmed).toMatchObject({ ok: false, code: 'confirm' });
+  expect(graph.economy.service.balance('lia')).toBe(GUILD_CREATE_GOLD);
+  graph.place('lia', 'plains_mine');
+  const away = await graph.act('guild_create', {
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    gold: GUILD_CREATE_GOLD,
+    members: founders,
+  });
+  expect(away).toMatchObject({ ok: false, code: 'place' });
+  graph.place('lia', 'fort_humans');
+  const guildId = await foundGuild(graph);
+  expect((await graph.guild.repository.findGuild(guildId))?.emblem).toBe('');
+});
+
 test('creation refuses a moderated name, a founder still in office, and an abuse ban', async () => {
   const graph = compose({ nowMs: 0 });
   graph.enterCharacter('account-lia', 'lia');
@@ -411,10 +460,10 @@ test('creation refuses a moderated name, a founder still in office, and an abuse
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'm1', level: 5 },
-      { id: 'a2', level: 5 },
-      { id: 'a3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'm1', level: 5, confirmed: true },
+      { id: 'a2', level: 5, confirmed: true },
+      { id: 'a3', level: 5, confirmed: true },
     ],
   });
   expect(seated).toMatchObject({ ok: false, code: 'cooldown' });
@@ -434,10 +483,10 @@ test('creation refuses a moderated name, a founder still in office, and an abuse
     leaderId: 'kai',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'kai', level: 5 },
-      { id: 'a2', level: 5 },
-      { id: 'b2', level: 5 },
-      { id: 'b3', level: 5 },
+      { id: 'kai', level: 5, confirmed: true },
+      { id: 'a2', level: 5, confirmed: true },
+      { id: 'b2', level: 5, confirmed: true },
+      { id: 'b3', level: 5, confirmed: true },
     ],
   });
   expect(banned).toMatchObject({ ok: false, code: 'ban' });

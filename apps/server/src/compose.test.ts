@@ -71,10 +71,10 @@ test('guild, auction, mail, and titles follow the live domain rules', async () =
     tag: 'RW',
     initiatorId: 'm0',
     members: [
-      { id: 'm0', level: 5 },
-      { id: 'm1', level: 5 },
-      { id: 'm2', level: 5 },
-      { id: 'm3', level: 5 },
+      { id: 'm0', level: 5, confirmed: true },
+      { id: 'm1', level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
     gold: 10_000,
   });

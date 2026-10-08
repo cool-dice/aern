@@ -36,6 +36,8 @@ import {
   dissolveShares,
   doctrineMultiplier,
   founderRanks,
+  foundersConfirmed,
+  registrationPlace,
   holdWins,
   postContract,
   registerContender,
@@ -256,6 +258,31 @@ test('names are 3..24 letters and spaces, tags are 2..4 uppercase latin letters'
   expect(() => createGuild(draftInput({ tag: 'R' }))).toThrow(RangeError);
   expect(() => createGuild(draftInput({ tag: 'ABCDE' }))).toThrow(RangeError);
   expect(createGuild(draftInput({ tag: 'ABCD' })).ok).toBe(true);
+});
+
+test('every founder confirms, and registration is a city hall', () => {
+  expect(foundersConfirmed([])).toEqual({ ok: false, code: 'confirm' });
+  expect(
+    foundersConfirmed([
+      { id: 'a', confirmed: true },
+      { id: 'b', confirmed: false },
+    ]),
+  ).toEqual({ ok: false, code: 'confirm' });
+  expect(
+    foundersConfirmed([
+      { id: 'a', confirmed: true },
+      { id: 'b', confirmed: true },
+      { id: 'c', confirmed: true },
+      { id: 'd', confirmed: true },
+    ]).ok,
+  ).toBe(true);
+  expect(registrationPlace({ nodeKind: 'resource' })).toEqual({ ok: false, code: 'place' });
+  expect(registrationPlace({ nodeKind: 'city' })).toEqual({ ok: true, value: 'hall' });
+  expect(registrationPlace({ nodeKind: 'city', place: 'registrar' })).toEqual({
+    ok: true,
+    value: 'registrar',
+  });
+  expect(registrationPlace({ nodeKind: 'city', place: 'street' })).toEqual({ ok: false, code: 'place' });
 });
 
 test('the elected leader starts as leader and the other founders as novices', () => {

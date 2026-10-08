@@ -25,10 +25,10 @@ import { expect, test } from 'vitest';
 import { compose } from './compose';
 
 const founders = [
-  { id: 'lia', level: 5 },
-  { id: 'm1', level: 5 },
-  { id: 'm2', level: 5 },
-  { id: 'm3', level: 5 },
+  { id: 'lia', level: 5, confirmed: true },
+  { id: 'm1', level: 5, confirmed: true },
+  { id: 'm2', level: 5, confirmed: true },
+  { id: 'm3', level: 5, confirmed: true },
 ];
 
 const appearance: Appearance = {
@@ -206,10 +206,10 @@ test('a leader vote is one ballot per character and an offline carrier cannot vo
     leaderId: 'lia',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'lia', level: 5 },
-      { id: bot.value.characterId, level: 5 },
-      { id: 'm2', level: 5 },
-      { id: 'm3', level: 5 },
+      { id: 'lia', level: 5, confirmed: true },
+      { id: bot.value.characterId, level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
   });
   expect(created.ok).toBe(true);
@@ -326,10 +326,10 @@ test('a multibox carrier is refused before the war is saved or charged', async (
     leaderId: 'lia',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'lia', level: 5 },
-      { id: first.value.characterId, level: 5 },
-      { id: second.value.characterId, level: 5 },
-      { id: 'm3', level: 5 },
+      { id: 'lia', level: 5, confirmed: true },
+      { id: first.value.characterId, level: 5, confirmed: true },
+      { id: second.value.characterId, level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
   });
   expect(created).toMatchObject({ ok: false, code: 'carrier' });
@@ -341,10 +341,10 @@ test('a multibox carrier is refused before the war is saved or charged', async (
     leaderId: 'lia',
     gold: GUILD_CREATE_GOLD,
     members: [
-      { id: 'lia', level: 5 },
-      { id: first.value.characterId, level: 5 },
-      { id: 'm2', level: 5 },
-      { id: 'm3', level: 5 },
+      { id: 'lia', level: 5, confirmed: true },
+      { id: first.value.characterId, level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
     ],
   });
   expect(seated.ok).toBe(true);
@@ -434,10 +434,10 @@ test('a withdrawal during review stays held until a reviewer releases it into th
 
 test('taking the flag down pockets the chest and does not leave it for the next planter', async () => {
   const graph = compose({ nowMs: 0 });
-  graph.enterWorld('lia', 'plains_mine');
   graph.enterCharacter('account-lia', 'lia');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
   const guildId = await foundGuild(graph);
+  graph.place('lia', 'plains_mine');
   await graph.skipMs(NODE_PLANT_MS);
   expect(await graph.act('node_tax', { guildId, nodeId: 'plains_mine', characterId: 'lia', taxPercent: 30 })).toMatchObject({
     ok: true,
