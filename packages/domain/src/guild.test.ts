@@ -1012,8 +1012,8 @@ test('a resource node plants in 60 seconds and drops after 30 minutes', () => {
   const droppedEarly = advanceResourceNode({ node, presentGuildIds: [], deltaMs: 1 });
   node = droppedEarly.node;
   expect(node.guildId).toBeNull();
-  expect(node.chest).toBe(0);
-  expect(droppedEarly.seized).toEqual({ guildId: 'wolves', amount: 40 });
+  expect(node.chest).toBe(40);
+  expect(droppedEarly.seized).toBeNull();
   expect(depositNodeChest(node.chest, NODE_CHEST_CAP)).toBe(NODE_CHEST_CAP);
   expect(setNodeTax({ next: 15, nowMs: 0, taxSetAtMs: null })).toEqual({
     ok: true,
@@ -1064,7 +1064,7 @@ test('a resource node plants in 60 seconds and drops after 30 minutes', () => {
   });
 });
 
-test('a dropped resource-node flag seizes the chest onto the capturing guild', () => {
+test('a dropped resource-node flag leaves the chest for the next planter', () => {
   let node = freshResourceNode('plains_mine');
   node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: NODE_PLANT_MS }).node;
   node = { ...node, chest: 40 };
@@ -1073,9 +1073,13 @@ test('a dropped resource-node flag seizes the chest onto the capturing guild', (
   expect(held.chest).toBe(40);
   const dropped = advanceResourceNode({ node: held, presentGuildIds: [], deltaMs: 1 });
   expect(dropped.node.guildId).toBeNull();
-  expect(dropped.node.chest).toBe(0);
-  expect(dropped.seized).toEqual({ guildId: 'wolves', amount: 40 });
-  expect(settleNodeDrop(held, { ...dropped.node, chest: held.chest }).seized).toEqual(dropped.seized);
+  expect(dropped.node.chest).toBe(40);
+  expect(dropped.seized).toBeNull();
+  expect(settleNodeDrop(held, dropped.node)).toEqual(dropped);
+  const planted = advanceResourceNode({ node: dropped.node, presentGuildIds: ['ash'], deltaMs: NODE_PLANT_MS });
+  expect(planted.node.guildId).toBe('ash');
+  expect(planted.node.chest).toBe(0);
+  expect(planted.seized).toEqual({ guildId: 'ash', amount: 40 });
 });
 
 test('pacts make two guilds allies and a vassal cannot declare war alone', () => {

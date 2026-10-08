@@ -963,7 +963,7 @@ export function nodeAccessAllows(input: {
  * Plant while exactly one guild stands on a neutral node.
  * Two guilds, or none, reset the plant timer.
  * An owned node drops only after the owning guild has been absent for 30 minutes.
- * The same call seizes the chest. The tick must not leave it on the node.
+ * The drop leaves the chest. The next planter takes it. This call owns that.
  */
 export function advanceResourceNode(input: {
   node: ResourceNode;
@@ -1059,20 +1059,16 @@ export function setNodeAccess(input: {
 }
 
 /**
- * When the flag drops, the guild that held the node seizes the chest.
- * The chest is not left on the node. A later planter who finds a chest
- * still on a neutral node (the drop did not run) takes that chest instead.
+ * Artifact 17 §8.4. When the flag drops, the chest stays for the next planter.
+ * The guild that lost the flag does not seize it. Planting on a chest takes it.
  */
 export function settleNodeDrop(
   before: ResourceNode,
   after: ResourceNode,
 ): { node: ResourceNode; seized: { guildId: string; amount: number } | null } {
   const dropped = before.guildId !== null && after.guildId === null;
-  if (dropped && before.guildId !== null && before.chest > 0) {
-    return {
-      node: { ...after, chest: 0 },
-      seized: { guildId: before.guildId, amount: before.chest },
-    };
+  if (dropped) {
+    return { node: { ...after, chest: before.chest }, seized: null };
   }
   const planted = before.guildId === null && after.guildId !== null && after.chest > 0;
   if (planted && after.guildId !== null) {
