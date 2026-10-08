@@ -77,8 +77,13 @@ import {
   setNodeAccess,
   setNodeTax,
   settleNodeDrop,
+  strikeNodeFlag,
   tickContract,
   reviewSection11,
+  rewardFreezeEnds,
+  SECTION12,
+  measureSection12,
+  voteQuorum,
   vassalMayDeclare,
   type GuildFounder,
 } from './guild';
@@ -1378,4 +1383,99 @@ test('section 11 freezes repeated unfought wars and lifts a stale portal block',
     withdrawalsLogged: 0,
   });
   expect(swapped.reasons).toContain('city_swap');
+});
+
+test('a creation vote needs half the eligible members', () => {
+  expect(voteQuorum(1, 4)).toBe(false);
+  expect(voteQuorum(2, 4)).toBe(true);
+  expect(voteQuorum(0, 0)).toBe(false);
+});
+
+test('taking the flag down pockets the chest and an absence drop does not', () => {
+  const owned = { ...freshResourceNode('plains_mine'), guildId: 'wolves', chest: 40 };
+  expect(strikeNodeFlag({ node: owned, guildId: 'ash', rank: 'leader' })).toEqual({
+    ok: false,
+    code: 'owner',
+  });
+  expect(strikeNodeFlag({ node: owned, guildId: 'wolves', rank: 'veteran' })).toEqual({
+    ok: false,
+    code: 'rank',
+  });
+  expect(strikeNodeFlag({ node: owned, guildId: 'wolves', rank: 'novice' })).toEqual({
+    ok: false,
+    code: 'rank',
+  });
+  const struck = strikeNodeFlag({ node: owned, guildId: 'wolves', rank: 'officer' });
+  expect(struck).toEqual({
+    ok: true,
+    value: {
+      pocketed: 40,
+      node: { ...owned, guildId: null, chest: 0 },
+    },
+  });
+  expect(settleNodeDrop(owned, { ...owned, guildId: null }).seized).toBeNull();
+  expect(settleNodeDrop(owned, { ...owned, guildId: null }).node.chest).toBe(40);
+});
+
+test('a reward freeze ends only after the review that opened it', () => {
+  expect(rewardFreezeEnds(1_000, 1_000)).toBe(false);
+  expect(rewardFreezeEnds(1_000, 1_001)).toBe(true);
+});
+
+test('section 12 scores the named targets and does not invent a gate', () => {
+  expect(SECTION12.guildsPerThousandMin).toBe(30);
+  expect(SECTION12.guildsPerThousandMax).toBe(50);
+  expect(SECTION12.warDurationMinMs).toBe(3_600_000);
+  expect(SECTION12.warDurationMaxMs).toBe(5_400_000);
+  expect(SECTION12.bankTurnoverGold).toBe(100_000);
+  const empty = measureSection12({
+    online: 0,
+    guilds: 0,
+    members: 0,
+    players: 0,
+    playersInGuilds: 0,
+    ai: 0,
+    aiInGuilds: 0,
+    warsToday: 0,
+    warParticipants: null,
+    warDurationMs: null,
+    sieges: 0,
+    siegeWins: 0,
+    draws: 0,
+    taxPercentSum: 0,
+    taxedNodes: 0,
+    capturesToday: 0,
+    turnoverToday: 0,
+  });
+  expect(empty.guildsPerThousandOnline).toEqual({ observed: null, onTarget: null });
+  expect(empty.playersInGuilds).toEqual({ observed: null, onTarget: null });
+  expect(empty.warsPerDay).toEqual({ observed: 0, onTarget: false });
+  expect(empty.guildBankTurnover).toEqual({ observed: 0, onTarget: false });
+  const hit = measureSection12({
+    online: 1000,
+    guilds: 40,
+    members: 1000,
+    players: 10,
+    playersInGuilds: 6,
+    ai: 4,
+    aiInGuilds: 2,
+    warsToday: 2,
+    warParticipants: 20,
+    warDurationMs: SECTION12.warDurationMinMs,
+    sieges: 10,
+    siegeWins: 3,
+    draws: 1,
+    taxPercentSum: 30,
+    taxedNodes: 2,
+    capturesToday: 5,
+    turnoverToday: 100_000,
+  });
+  expect(hit.guildsPerThousandOnline.onTarget).toBe(true);
+  expect(hit.averageGuildSize).toEqual({ observed: 25, onTarget: true });
+  expect(hit.playersInGuilds).toEqual({ observed: 60, onTarget: true });
+  expect(hit.aiInGuilds).toEqual({ observed: 50, onTarget: true });
+  expect(hit.successfulSieges).toEqual({ observed: 30, onTarget: true });
+  expect(hit.draws).toEqual({ observed: 10, onTarget: true });
+  expect(hit.averageNodeTax).toEqual({ observed: 15, onTarget: true });
+  expect(hit.guildBankTurnover.onTarget).toBe(true);
 });

@@ -310,6 +310,19 @@ export function castLeaderVote(input: {
   return ok({ status: 'elected', leaderId: picked, votes: top, method: 'rng' });
 }
 
+/**
+ * Artifact 17 §3.3. A vote needs half of the members who are allowed to vote.
+ * `ballots * 2 >= eligible` is that half, in integers.
+ */
+export function voteQuorum(ballots: number, eligible: number): boolean {
+  assertNonNegativeInteger(ballots, 'ballots');
+  assertNonNegativeInteger(eligible, 'eligible');
+  if (eligible === 0) {
+    return false;
+  }
+  return ballots * 2 >= eligible;
+}
+
 /** Novices do not vote. Probation ending does not grant a vote until promotion. */
 export function canVote(rank: GuildRank): Result<true, 'rank'> {
   if (!isRank(rank)) {
@@ -1080,6 +1093,39 @@ export function settleNodeDrop(
   return { node: after, seized: null };
 }
 
+const NODE_CHEST_RANKS = new Set<GuildRank>(['leader', 'council', 'officer']);
+
+/**
+ * Artifact 17 §8.3. The capturer takes the flag down and pockets the chest.
+ * This is not §8.4: an absence drop leaves the chest for the next planter.
+ */
+export function strikeNodeFlag(input: {
+  node: ResourceNode;
+  guildId: string;
+  rank: GuildRank;
+}): Result<{ node: ResourceNode; pocketed: number }, 'owner' | 'rank'> {
+  if (!isRank(input.rank)) {
+    throw new RangeError(`unknown rank: ${String(input.rank)}`);
+  }
+  if (input.guildId.length === 0 || input.node.guildId === null || input.node.guildId !== input.guildId) {
+    return err('owner');
+  }
+  if (!NODE_CHEST_RANKS.has(input.rank)) {
+    return err('rank');
+  }
+  return ok({
+    pocketed: input.node.chest,
+    node: {
+      ...input.node,
+      guildId: null,
+      plantingGuildId: null,
+      plantMs: 0,
+      absentMs: 0,
+      chest: 0,
+    },
+  });
+}
+
 /** Artifact 17 §9. Alliances and non-aggression pacts last 7 real days. */
 export const PACT_MS = 7 * DAY_MS;
 /** An alliance ends 24 real hours after the break notice. */
@@ -1795,5 +1841,159 @@ export function reviewSection11(input: {
     vote,
     multibox,
     withdrawalsLogged: input.withdrawalsLogged,
+  };
+}
+
+/**
+ * Artifact 17 §11. Rewards stay frozen until a review later than the one that
+ * opened the case. The opening timestamp itself is not the end of the freeze.
+ */
+export function rewardFreezeEnds(frozenAtMs: number, nowMs: number): boolean {
+  assertMs(frozenAtMs, 'frozenAtMs');
+  assertMs(nowMs, 'nowMs');
+  return nowMs > frozenAtMs;
+}
+
+/** Artifact 17 §12 target bands. These score observations. They do not refuse an action. */
+export const SECTION12 = {
+  guildsPerThousandMin: 30,
+  guildsPerThousandMax: 50,
+  guildSizeMin: 20,
+  guildSizeMax: 30,
+  playersInGuildsPercent: 60,
+  aiInGuildsPercent: 50,
+  warsPerDayMin: 1,
+  warsPerDayMax: 2,
+  warParticipantsMin: 20,
+  warParticipantsMax: 80,
+  warDurationMinMs: 60 * 60 * 1000,
+  warDurationMaxMs: 90 * 60 * 1000,
+  siegeWinPercent: 30,
+  drawPercent: 10,
+  nodeTaxPercent: 15,
+  nodeCapturesMin: 5,
+  nodeCapturesMax: 10,
+  bankTurnoverGold: 100_000,
+} as const;
+
+export interface Section12Input {
+  online: number;
+  guilds: number;
+  members: number;
+  players: number;
+  playersInGuilds: number;
+  ai: number;
+  aiInGuilds: number;
+  warsToday: number;
+  warParticipants: number | null;
+  warDurationMs: number | null;
+  sieges: number;
+  siegeWins: number;
+  draws: number;
+  taxPercentSum: number;
+  taxedNodes: number;
+  capturesToday: number;
+  turnoverToday: number;
+}
+
+export interface Section12Metric {
+  observed: number | null;
+  onTarget: boolean | null;
+}
+
+export interface Section12Report {
+  guildsPerThousandOnline: Section12Metric;
+  averageGuildSize: Section12Metric;
+  playersInGuilds: Section12Metric;
+  aiInGuilds: Section12Metric;
+  warsPerDay: Section12Metric;
+  warParticipants: Section12Metric;
+  warDurationMs: Section12Metric;
+  successfulSieges: Section12Metric;
+  draws: Section12Metric;
+  averageNodeTax: Section12Metric;
+  nodeCapturesPerDay: Section12Metric;
+  guildBankTurnover: Section12Metric;
+}
+
+function scoredCount(value: number, label: string): number {
+  assertNonNegativeInteger(value, label);
+  return value;
+}
+
+function band(value: number, min: number, max: number): Section12Metric {
+  return { observed: value, onTarget: value >= min && value <= max };
+}
+
+function point(value: number | null, target: number): Section12Metric {
+  if (value === null) {
+    return { observed: null, onTarget: null };
+  }
+  return { observed: value, onTarget: value === target };
+}
+
+function share(part: number, whole: number, target: number): Section12Metric {
+  if (whole <= 0) {
+    return { observed: null, onTarget: null };
+  }
+  const observed = Math.floor((part * 100) / whole);
+  return { observed, onTarget: observed === target };
+}
+
+/**
+ * Artifact 17 §12. Each row is a target value for the live sample.
+ * A zero denominator is not scored. Nothing in this function refuses play.
+ */
+export function measureSection12(input: Section12Input): Section12Report {
+  const online = scoredCount(input.online, 'online');
+  const guilds = scoredCount(input.guilds, 'guilds');
+  const members = scoredCount(input.members, 'members');
+  const players = scoredCount(input.players, 'players');
+  const playersInGuilds = scoredCount(input.playersInGuilds, 'playersInGuilds');
+  const ai = scoredCount(input.ai, 'ai');
+  const aiInGuilds = scoredCount(input.aiInGuilds, 'aiInGuilds');
+  const warsToday = scoredCount(input.warsToday, 'warsToday');
+  const sieges = scoredCount(input.sieges, 'sieges');
+  const siegeWins = scoredCount(input.siegeWins, 'siegeWins');
+  const draws = scoredCount(input.draws, 'draws');
+  const taxPercentSum = scoredCount(input.taxPercentSum, 'taxPercentSum');
+  const taxedNodes = scoredCount(input.taxedNodes, 'taxedNodes');
+  const capturesToday = scoredCount(input.capturesToday, 'capturesToday');
+  const turnoverToday = scoredCount(input.turnoverToday, 'turnoverToday');
+  if (input.warParticipants !== null) {
+    assertNonNegativeInteger(input.warParticipants, 'warParticipants');
+  }
+  if (input.warDurationMs !== null) {
+    assertNonNegativeInteger(input.warDurationMs, 'warDurationMs');
+  }
+  const guildsPerThousand =
+    online === 0 ? null : Math.floor((guilds * 1000) / online);
+  const averageSize = guilds === 0 ? null : Math.floor(members / guilds);
+  const averageTax = taxedNodes === 0 ? null : Math.floor(taxPercentSum / taxedNodes);
+  return {
+    guildsPerThousandOnline:
+      guildsPerThousand === null
+        ? { observed: null, onTarget: null }
+        : band(guildsPerThousand, SECTION12.guildsPerThousandMin, SECTION12.guildsPerThousandMax),
+    averageGuildSize:
+      averageSize === null
+        ? { observed: null, onTarget: null }
+        : band(averageSize, SECTION12.guildSizeMin, SECTION12.guildSizeMax),
+    playersInGuilds: share(playersInGuilds, players, SECTION12.playersInGuildsPercent),
+    aiInGuilds: share(aiInGuilds, ai, SECTION12.aiInGuildsPercent),
+    warsPerDay: band(warsToday, SECTION12.warsPerDayMin, SECTION12.warsPerDayMax),
+    warParticipants:
+      input.warParticipants === null
+        ? { observed: null, onTarget: null }
+        : band(input.warParticipants, SECTION12.warParticipantsMin, SECTION12.warParticipantsMax),
+    warDurationMs:
+      input.warDurationMs === null
+        ? { observed: null, onTarget: null }
+        : band(input.warDurationMs, SECTION12.warDurationMinMs, SECTION12.warDurationMaxMs),
+    successfulSieges: share(siegeWins, sieges, SECTION12.siegeWinPercent),
+    draws: share(draws, sieges, SECTION12.drawPercent),
+    averageNodeTax: point(averageTax, SECTION12.nodeTaxPercent),
+    nodeCapturesPerDay: band(capturesToday, SECTION12.nodeCapturesMin, SECTION12.nodeCapturesMax),
+    guildBankTurnover: point(turnoverToday, SECTION12.bankTurnoverGold),
   };
 }
