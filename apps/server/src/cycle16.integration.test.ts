@@ -207,3 +207,44 @@ test('refine spends 3 ordinary resource and 10 gold from the live route', async 
   });
   expect(await graph.materialQty('lia', 'metal_cleaned')).toBe(2);
 });
+
+test('relic implant categories are four body slots and echo sockets stay 1/2/3/3', async () => {
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const relic = dispatch.slice(dispatch.indexOf('async function relic'), dispatch.indexOf('async function echo'));
+  expect(relic.includes('IMPLANT_SLOTS')).toBe(true);
+  expect(relic.includes('socketCount(')).toBe(true);
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-slots',
+    controller: 'player',
+    name: 'Slot',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  graph.creditGold(characterId, 5000);
+  const rare = await graph.act('relic_install', { characterId, subtype: 'plate', grade: 'rare' });
+  expect(rare).toMatchObject({ ok: true, value: { sockets: 2, implantSlot: 'implant_head' } });
+  expect(await graph.act('relic_install', { characterId, subtype: 'plate', implantSlot: 'implant_head' })).toMatchObject({
+    ok: false,
+    code: 'slot',
+  });
+  expect(await graph.act('relic_install', { characterId, subtype: 'plate', implantSlot: 'implant_torso' })).toMatchObject({
+    ok: true,
+  });
+  expect(await graph.act('relic_install', { characterId, subtype: 'plate', implantSlot: 'implant_hands' })).toMatchObject({
+    ok: true,
+  });
+  expect(await graph.act('relic_install', { characterId, subtype: 'plate', implantSlot: 'implant_legs' })).toMatchObject({
+    ok: true,
+  });
+  expect(await graph.act('relic_install', { characterId, subtype: 'plate' })).toMatchObject({
+    ok: false,
+    code: 'slot',
+  });
+});

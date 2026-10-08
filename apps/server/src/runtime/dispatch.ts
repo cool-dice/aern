@@ -8,6 +8,7 @@ import type { KeeperKind } from '@rift/domain/hack';
 import type { GradeId } from '@rift/domain/items';
 import type { RelicState, RelicSubtype } from '@rift/domain/relics';
 import { canCraftLanguage, questLanguageAccess } from '@rift/domain/language';
+import { IMPLANT_SLOTS } from '@rift/domain/items';
 import { socketCount } from '@rift/domain/relics';
 import type { QuestObjectiveKind } from '@rift/domain/quests';
 import { derive, emptyPoints } from '@rift/domain/stats';
@@ -592,6 +593,18 @@ async function relic(body: Record<string, unknown>, ports: LivePorts): Promise<L
   }
   const subtype = enumOf(text(body, 'subtype'), RELICS) ?? 'spore';
   const grade = enumOf(text(body, 'grade'), GRADES) ?? 'common';
+  const worn = await ports.relicStack(characterId);
+  const occupied = new Set(
+    worn.flatMap((row) => (row.implantSlot === undefined ? [] : [row.implantSlot])),
+  );
+  const requested = enumOf(text(body, 'implantSlot'), IMPLANT_SLOTS);
+  if (requested !== undefined && occupied.has(requested)) {
+    return { ok: false, code: 'slot' };
+  }
+  const slot = requested ?? IMPLANT_SLOTS.find((candidate) => !occupied.has(candidate));
+  if (slot === undefined || worn.length >= IMPLANT_SLOTS.length) {
+    return { ok: false, code: 'slot' };
+  }
   const state = await ports.loadBuild(characterId);
   const installed = ports.build.installRelic({
     characterId,
@@ -608,15 +621,19 @@ async function relic(body: Record<string, unknown>, ports: LivePorts): Promise<L
   }
   const echoes = state.programs.filter((program) => program.kind === 'echo').length;
   const next = { ...state, relicSocketFree: Math.max(0, socketCount(grade) - echoes) };
-  const worn = await ports.relicStack(characterId);
   ports.setGold(characterId, installed.value.gold);
   await ports.saveBuild(characterId, next, grade, installed.value.relic.echoIds, [
     ...worn,
-    installed.value.relic,
+    { ...installed.value.relic, implantSlot: slot },
   ]);
   return {
     ok: true,
-    value: { gold: installed.value.gold, readyAtMs: installed.value.readyAtMs, sockets: next.relicSocketFree },
+    value: {
+      gold: installed.value.gold,
+      readyAtMs: installed.value.readyAtMs,
+      sockets: next.relicSocketFree,
+      implantSlot: slot,
+    },
   };
 }
 

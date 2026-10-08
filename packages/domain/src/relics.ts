@@ -1,4 +1,4 @@
-import { applyWear, type GradeId } from './items';
+import { applyWear, type GradeId, type ImplantSlot } from './items';
 import { err, ok, type Result } from './result';
 import type { Rng } from './rng';
 import { MAX_LEVEL, STAT_IDS, type StatId } from './stats';
@@ -77,6 +77,11 @@ export interface RelicState {
   bonusStat?: StatId;
   penaltyStat?: StatId;
   echoIds: string[];
+  /**
+   * Artifact 4 §3. One relic per body category: head, torso, hands, legs.
+   * Echo sockets are `socketCount` (1/2/3/3) and are not this field.
+   */
+  implantSlot?: ImplantSlot;
 }
 
 /**

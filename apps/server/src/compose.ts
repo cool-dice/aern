@@ -3561,9 +3561,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       return { ok: false, code: 'character' };
     }
     const relics = record.build?.relics ?? [];
+    const requestedSlot = typeof body.implantSlot === 'string' ? body.implantSlot : '';
     const requested = body.index;
     const index =
-      typeof requested === 'number' && Number.isInteger(requested) ? requested : relics.length - 1;
+      requestedSlot.length > 0
+        ? relics.findIndex((row) => row.implantSlot === requestedSlot)
+        : typeof requested === 'number' && Number.isInteger(requested)
+          ? requested
+          : relics.length - 1;
     const relic = relics[index];
     if (relic === undefined) {
       return { ok: false, code: 'relic' };
