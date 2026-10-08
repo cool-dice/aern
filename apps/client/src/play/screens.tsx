@@ -86,6 +86,7 @@ export function PlayPanels({
   onRecoverPath,
   onUnequipCore,
   onBreakClean,
+  onOpenChest,
   onVote,
   onChoice,
   onEmblem,
@@ -129,6 +130,7 @@ export function PlayPanels({
   onRecoverPath?: () => void;
   onUnequipCore?: () => void;
   onBreakClean?: () => void;
+  onOpenChest?: () => void;
   onVote?: () => void;
   onChoice?: () => void;
   onEmblem?: () => void;
@@ -258,6 +260,9 @@ export function PlayPanels({
         </button>
         <button type="button" data-coalition="read" onClick={() => onCoalitionRead?.()}>
           read
+        </button>
+        <button type="button" data-chest="open" onClick={() => onOpenChest?.()}>
+          chest
         </button>
         <button type="button" data-purity="break" onClick={() => onBreakClean?.()}>
           break clean

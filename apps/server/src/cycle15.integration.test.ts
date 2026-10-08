@@ -511,3 +511,69 @@ test('breaking purity stores clean false and keeps the path so a relic can then 
   });
   expect(await graph.act('relic_install', { characterId, subtype: 'spore' })).toMatchObject({ ok: true });
 });
+
+test('openChest runs from the live route', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const chest = composeSource.slice(
+    composeSource.indexOf('function openLiveChest'),
+    composeSource.indexOf('function regionLevelOf'),
+  );
+  expect(chest.includes('openChest(')).toBe(true);
+  expect(dispatch.includes('openLiveChest(')).toBe(true);
+  expect(app.includes('postOpenChest(')).toBe(true);
+});
+
+test('a rare chest spends one key and an epic chest spends two', async () => {
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-chest',
+    controller: 'player',
+    name: 'Chest',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  graph.enterWorld(characterId, 'fort_humans');
+  graph.seedTrader({ characterId, gold: 0, itemId: 'key', qty: 0 });
+  expect(await graph.act('chest_open', { characterId, tier: 'rare' })).toMatchObject({
+    ok: false,
+    code: 'keys',
+  });
+  expect(graph.heldItemQty(characterId, 'key')).toBe(0);
+  graph.seedTrader({ characterId, gold: 0, itemId: 'key', qty: 1 });
+  const rare = await graph.act('chest_open', { characterId, tier: 'rare' });
+  expect(rare.ok).toBe(true);
+  if (!rare.ok) {
+    return;
+  }
+  const rareValue = rare.value as { gold: number; keys: number; regionLevel: number; stacks: { itemId: string }[] };
+  expect(rareValue.keys).toBe(0);
+  expect(rareValue.regionLevel).toBe(1);
+  expect(rareValue.gold).toBeGreaterThanOrEqual(50);
+  expect(rareValue.gold).toBeLessThanOrEqual(200);
+  expect(rareValue.stacks.some((stack) => stack.itemId.startsWith('gear_'))).toBe(true);
+  expect(graph.heldItemQty(characterId, 'key')).toBe(0);
+  graph.seedTrader({ characterId, gold: rareValue.gold, itemId: 'key', qty: 1 });
+  expect(await graph.act('chest_open', { characterId, tier: 'epic' })).toMatchObject({
+    ok: false,
+    code: 'keys',
+  });
+  expect(graph.heldItemQty(characterId, 'key')).toBe(1);
+  graph.seedTrader({ characterId, gold: rareValue.gold, itemId: 'key', qty: 2 });
+  const epic = await graph.act('chest_open', { characterId, tier: 'epic' });
+  expect(epic.ok).toBe(true);
+  if (!epic.ok) {
+    return;
+  }
+  const epicValue = epic.value as { keys: number; stacks: { itemId: string; qty: number }[] };
+  expect(epicValue.keys).toBe(0);
+  expect(epicValue.stacks).toContainEqual({ itemId: 'unique_component', qty: 1 });
+  expect(graph.heldItemQty(characterId, 'unique_component')).toBe(1);
+});

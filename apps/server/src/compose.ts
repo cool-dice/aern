@@ -19,7 +19,8 @@ import {
   sanctionForCheatStrikes,
 } from '@rift/domain/moderation';
 import { mulberry32 } from '@rift/domain/rng';
-import { EQUIP_SLOTS, type EquipSlot, type GradeId } from '@rift/domain/items';
+import { EQUIP_SLOTS, STARTING_DURABILITY, type EquipSlot, type GradeId } from '@rift/domain/items';
+import { openChest, type ChestTier } from '@rift/domain/loot';
 import { STAT_IDS, derive, emptyPoints, type StatBlock } from '@rift/domain/stats';
 import type { Appearance, RaceId } from '@rift/domain/character';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -74,6 +75,7 @@ import {
   askHostilePortal,
   isCityService,
   ownedCrossingFee,
+  deposit,
   rentStorage,
   serviceCut,
   setCityFee,
@@ -956,6 +958,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     markPathUsed,
     recoverPath,
     breakPurity,
+    openLiveChest,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -3818,6 +3821,104 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return { ok: true, value: { clean: broken.clean, programs: broken.programs.length } };
   }
 
+  /**
+   * Artifact 11 §9. A common chest needs no key, a rare chest needs one, an epic chest needs two.
+   * Gold is `roll × region level`. Epic also drops one unique component.
+   */
+  function openLiveChest(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const tier = body.tier;
+    if (characterId.length === 0 || (tier !== 'common' && tier !== 'rare' && tier !== 'epic')) {
+      return { ok: false, code: 'chest' };
+    }
+    const wallet =
+      repos.economy.getCharacter(characterId) ??
+      newEconomyCharacter({ characterId, side: 'light', gold: 0 });
+    const keys = wallet.items.key?.qty ?? 0;
+    const regionLevel = regionLevelOf(characterId);
+    const opened = openChest({
+      tier,
+      keys,
+      regionLevel,
+      rng: mulberry32(chestSeed(characterId, clock.now())),
+    });
+    if (!opened.ok) {
+      return { ok: false, code: opened.code };
+    }
+    const cost = CHEST_KEY_COST[tier];
+    const items = { ...wallet.items };
+    const key = items.key;
+    if (cost > 0) {
+      if (key === undefined || key.qty < cost) {
+        return { ok: false, code: 'keys' };
+      }
+      if (key.qty === cost) {
+        delete items.key;
+      } else {
+        items.key = { ...key, qty: key.qty - cost };
+      }
+    }
+    let gold = wallet.gold;
+    for (const stack of opened.value) {
+      if (stack.itemId === 'gold') {
+        gold = deposit(gold, stack.qty).wallet;
+        continue;
+      }
+      const existing = items[stack.itemId];
+      const grade = chestGrade(stack.itemId);
+      if (existing === undefined) {
+        items[stack.itemId] = {
+          itemId: stack.itemId,
+          level: stack.itemLevel ?? regionLevel,
+          grade,
+          unique: stack.itemId === 'unique_component',
+          durability: STARTING_DURABILITY,
+          qty: stack.qty,
+        };
+      } else {
+        items[stack.itemId] = { ...existing, qty: existing.qty + stack.qty };
+      }
+    }
+    repos.economy.saveCharacter({ ...wallet, gold, items });
+    return {
+      ok: true,
+      value: { gold, keys: items.key?.qty ?? 0, regionLevel, stacks: opened.value },
+    };
+  }
+
+  /** Artifact 11 §9.3. The same counts `openChest` checks and does not export. */
+  const CHEST_KEY_COST: Record<ChestTier, number> = { common: 0, rare: 1, epic: 2 };
+
+  function chestGrade(itemId: string): GradeId {
+    if (itemId === 'gear_epic' || itemId === 'unique_component') {
+      return itemId === 'unique_component' ? 'unique' : 'epic';
+    }
+    if (itemId === 'gear_rare') {
+      return 'rare';
+    }
+    return 'common';
+  }
+
+  function chestSeed(characterId: string, nowMs: number): number {
+    let hash = nowMs >>> 0;
+    for (let index = 0; index < characterId.length; index += 1) {
+      hash = Math.imul(hash ^ characterId.charCodeAt(index), 0x5bd1e995);
+    }
+    return hash >>> 0;
+  }
+
+  function regionLevelOf(characterId: string): number {
+    const entity = simWorld.entities.find((row) => row.id === characterId);
+    const nodeId = entity?.nodeId ?? entity?.bindNodeId;
+    const node =
+      catalog.world.nodes.find((row) => row.id === nodeId) ??
+      catalog.world.sites?.find((row) => row.id === nodeId);
+    const region = catalog.world.regions.find((row) => row.id === node?.regionId);
+    return region?.levelMin ?? 1;
+  }
+
   function noteWarBlow(attackerId: string, targetId: string): void {
     const attacker = simWorld.entities.find((entity) => entity.id === attackerId);
     const target = simWorld.entities.find((entity) => entity.id === targetId);
@@ -6529,6 +6630,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/path/recover', action: 'path_recover' },
   { path: '/core/unequip', action: 'core_unequip' },
   { path: '/purity/break', action: 'purity_break' },
+  { path: '/chest', action: 'chest_open' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

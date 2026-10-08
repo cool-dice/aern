@@ -576,6 +576,24 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/chest`. Common needs no key, rare needs one, epic needs two. */
+export async function postOpenChest(input: {
+  server: string;
+  characterId: string;
+  tier: 'common' | 'rare' | 'epic';
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/chest',
+    body: { characterId: input.characterId, tier: input.tier },
+    store: input.store,
+    log: 'chest-open',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/purity/break`. Stores `clean: false` and leaves installed paths in place. */
 export async function postBreakClean(input: {
   server: string;

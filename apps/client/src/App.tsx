@@ -40,6 +40,7 @@ import {
   postRecoverPath,
   postUnequipCore,
   postBreakClean,
+  postOpenChest,
   readBankLog,
   registerContender,
   renewPact,
@@ -773,6 +774,18 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onOpenChest={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postOpenChest({
+                server: SERVER,
+                characterId,
+                tier: 'common',
                 store: plan.store,
               });
             }}
