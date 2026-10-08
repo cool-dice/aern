@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { ALLIANCE_BREAK_MS, CONTENDER_GOLD, GUILD_CREATE_GOLD, NODE_DROP_MS, NODE_PLANT_MS, NODE_TAX_OFFICER_MAX, NOVICE_LOCK_MS, PACT_MS, PATROL_QUEST_GOLD, PATROL_QUEST_MS, VASSAL_RELEASE_MS, VASSAL_TAX_MIN, WAR_HOLD_MS } from '@rift/domain/guild';
+import { ALLIANCE_BREAK_MS, CONTENDER_CLOSE_MS, CONTENDER_GOLD, GUILD_CREATE_GOLD, NODE_DROP_MS, NODE_PLANT_MS, NODE_TAX_OFFICER_MAX, NOVICE_LOCK_MS, PACT_MS, PATROL_QUEST_GOLD, PATROL_QUEST_MS, VASSAL_RELEASE_MS, VASSAL_TAX_MIN, WAR_HOLD_MS, WAR_MUSTER_MS } from '@rift/domain/guild';
 import { PORTAL_BLOCK_MS, STORAGE_GOLD_PER_SLOT_DAY } from '@rift/domain/economy';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
@@ -24,17 +24,25 @@ async function foundGuild(graph: ReturnType<typeof compose>, name = 'Red Wolves'
   return (created.value as { guildId: string }).guildId;
 }
 
-/** The first tick a guild steps onto a city only starts the hold. The next span counts. */
+/** Register, wait out muster, then hold the center for 10 minutes during the assault. */
 async function winCity(graph: ReturnType<typeof compose>, guildId: string, cityId: string): Promise<void> {
+  const startsAtMs = CONTENDER_CLOSE_MS + 1;
   await graph.guild.repository.saveWar({
     id: `war-${cityId}`,
     attackerGuildId: guildId,
     cityId,
-    startsAtMs: 0,
+    startsAtMs,
     gold: 0,
     resources: 0,
   });
-  await graph.skipMs(0);
+  const guild = await graph.guild.repository.findGuild(guildId);
+  if (guild === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...guild, bank: (guild.bank ?? 0) + CONTENDER_GOLD });
+  const contended = await graph.act('war_contend', { guildId, warId: `war-${cityId}`, characterId: 'lia' });
+  expect(contended.ok).toBe(true);
+  await graph.skipMs(startsAtMs + WAR_MUSTER_MS);
   await graph.skipMs(WAR_HOLD_MS);
 }
 
@@ -280,14 +288,6 @@ test('the 24 hour portal lift uses the domain clock skip', async () => {
   graph.enterCharacter('account-lia', 'lia');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
   const guildId = await foundGuild(graph);
-  await graph.guild.repository.saveWar({
-    id: 'war-fort',
-    attackerGuildId: guildId,
-    cityId: 'fort_humans',
-    startsAtMs: 0,
-    gold: 0,
-    resources: 0,
-  });
   await winCity(graph, guildId, 'fort_humans');
   graph.enterCharacter('account-noa', 'noa');
   expect(await graph.act('portal_ask', { characterId: 'noa', toNodeId: 'fort_humans' })).toMatchObject({

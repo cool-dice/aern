@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import type { Appearance } from '@rift/domain/character';
 import { DAY_MS, EPOCH_MS, seasonAt, seasonSpawnTag, spawnMultiplier } from '@rift/domain/events';
-import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
+import { GUILD_CREATE_GOLD, WAR_MUSTER_MS } from '@rift/domain/guild';
 import { emptyPoints } from '@rift/domain/stats';
 import { expect, test } from 'vitest';
 import { buildApp, compose } from './compose';
@@ -994,7 +994,7 @@ test('cities block attacks until war or an invasion wave, and disconnect removes
     id: 'war-fort',
     attackerGuildId: 'wolves',
     cityId: 'fort_humans',
-    startsAtMs: 0,
+    startsAtMs: -WAR_MUSTER_MS,
     gold: 1,
     resources: 0,
   });
@@ -1064,12 +1064,16 @@ test('boot restores guild membership from the guild table and the hold uses it',
   await first.flush();
 
   const snap = await db.storage.findUnique({ where: { id: 'world:sim' } });
-  const blob = snap?.items as { world?: { entities?: { id: string; guildId?: string; monsterId?: string }[] } };
+  const blob = snap?.items as {
+    world?: { entities?: { id: string; guildId?: string; monsterId?: string }[] };
+    contenders?: { warId: string; guildId: string }[];
+  };
   const lia = blob.world?.entities?.find((entity) => entity.id === 'lia');
   expect(lia?.guildId).toBe(guildId);
   if (lia !== undefined) {
     lia.guildId = 'stale';
   }
+  blob.contenders = [{ warId: 'war-fort', guildId }];
   await db.storage.upsert({
     where: { id: 'world:sim' },
     create: { id: 'world:sim', ownerId: 'world', items: blob, gold: 0, slots: 0 },
@@ -1085,7 +1089,7 @@ test('boot restores guild membership from the guild table and the hold uses it',
     id: 'war-fort',
     attackerGuildId: guildId,
     cityId: 'fort_humans',
-    startsAtMs: 0,
+    startsAtMs: -WAR_MUSTER_MS,
     gold: 0,
     resources: 0,
   });

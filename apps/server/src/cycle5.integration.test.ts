@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
+import { CONTENDER_CLOSE_MS, CONTENDER_GOLD, GUILD_CREATE_GOLD, WAR_MUSTER_MS } from '@rift/domain/guild';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
 
@@ -90,20 +90,32 @@ test('the tick accrues a guild hold that the client snapshot can read', async ()
   });
   expect(created.ok).toBe(true);
   const guildId = (created.value as { guildId: string }).guildId;
+  const startsAtMs = CONTENDER_CLOSE_MS + 1;
   await graph.guild.repository.saveWar({
     id: 'war-fort',
     attackerGuildId: guildId,
     cityId: 'fort_humans',
-    startsAtMs: 0,
+    startsAtMs,
     gold: 0,
     resources: 0,
   });
+  const funded = await graph.guild.repository.findGuild(guildId);
+  if (funded === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...funded, bank: CONTENDER_GOLD });
+  expect(await graph.act('war_contend', { guildId, warId: 'war-fort', characterId: 'lia' })).toMatchObject({
+    ok: true,
+  });
+  await graph.skipMs(startsAtMs + WAR_MUSTER_MS);
   graph.tickOnce();
   graph.tickOnce();
   const held = graph.state() as {
     captures: { cityId: string; guildId: string | null; heldMs: number; won: boolean }[];
   };
-  expect(held.captures).toEqual([{ cityId: 'fort_humans', guildId, heldMs: 100, won: false }]);
+  expect(held.captures).toEqual([
+    { cityId: 'fort_humans', guildId, heldMs: 200, won: false, ownerGuildId: null },
+  ]);
   const rival = await graph.act('guild_create', {
     name: 'Ash Keepers',
     tag: 'ASH',

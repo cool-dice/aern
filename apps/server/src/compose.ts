@@ -258,6 +258,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   let mercenaries: StoredMercenary[] = [];
   let patrols: StoredPatrol[] = [];
   let contenders: { warId: string; guildId: string }[] = [];
+  const declaredAtMs = new Map<string, number>();
   const guildVaults = new Map<string, number>();
   let diplomacySeq = 0;
   const saveWar = repos.guilds.saveWar.bind(repos.guilds);
@@ -712,6 +713,17 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     postMercenaryContract,
     postPatrol,
     memberRank,
+    rememberDeclaration(guildId) {
+      declaredAtMs.set(guildId, clock.now());
+    },
+    warLimits(cityId, guildId) {
+      const hold = captures.find((row) => row.cityId === cityId);
+      return {
+        cityCapturedAtMs: hold?.wonAtMs ?? null,
+        drawEndedAtMs: hold?.drawEndedAtMs ?? null,
+        lastDeclaredAtMs: declaredAtMs.get(guildId) ?? null,
+      };
+    },
     vassalMayWar(guildId, suzerainConsent) {
       const allowed = vassalMayDeclare({
         pacts,
@@ -1717,10 +1729,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     simWorld = { ...simWorld, nowMs: clock.now() };
     captures = tickCaptures({
       holds: captures,
-      wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs })),
+      wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs, attackerGuildId: war.attackerGuildId })),
       nowMs: simWorld.nowMs,
       deltaMs: ms,
       present: presentGuilds(),
+      contenders: contenderRows(),
+      guardsRemaining: guardRows(),
     });
     applyOwnedCityFees();
     const ticked = tickResourceNodes({
@@ -1764,7 +1778,25 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await repos.guilds.saveGuild({ ...guild, bank: breached.bank });
   }
 
-  function presentGuilds(): { cityId: string; guildId: string }[] {
+  function contenderRows(): { cityId: string; guildId: string }[] {
+    return contenders.flatMap((row) => {
+      const war = openWars.find((item) => item.id === row.warId);
+      return war === undefined ? [] : [{ cityId: war.cityId, guildId: row.guildId }];
+    });
+  }
+
+  function guardRows(): { cityId: string; remaining: number }[] {
+    const counts = new Map<string, number>();
+    for (const entity of simWorld.entities) {
+      if (entity.cityGuard === undefined || entity.hp <= 0 || entity.phase === 'downed') {
+        continue;
+      }
+      counts.set(entity.cityGuard, (counts.get(entity.cityGuard) ?? 0) + 1);
+    }
+    return [...counts.entries()].map(([cityId, remaining]) => ({ cityId, remaining }));
+  }
+
+  function presentGuilds(): { cityId: string; guildId: string; mercenary?: boolean }[] {
     return simWorld.entities.flatMap((entity) => {
       if (
         entity.monsterId !== undefined ||
@@ -1775,7 +1807,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ) {
         return [];
       }
-      return [{ cityId: entity.nodeId, guildId: entity.guildId }];
+      const mercenary = mercenaries.some(
+        (row) => row.status === 'open' && row.mercenaryId === entity.id,
+      );
+      return [{ cityId: entity.nodeId, guildId: entity.guildId, ...(mercenary ? { mercenary: true } : {}) }];
     });
   }
 
@@ -1927,7 +1962,15 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     const live = event.service.snapshot(clock.now(), 'plains', simWorld.safeZone === true);
     const seasonSpawn = live.spawnTagMultiplier;
-    const warCities = openWars.filter((war) => war.startsAtMs <= clock.now()).map((war) => war.cityId);
+    const warCities = openWars
+      .filter((war) => {
+        if (war.startsAtMs > clock.now()) {
+          return false;
+        }
+        const phase = warPhase(Math.max(0, clock.now() - war.startsAtMs));
+        return phase === 'assault' || phase === 'finish';
+      })
+      .map((war) => war.cityId);
     simWorld = {
       ...simWorld,
       seasonSpawn,
@@ -1989,10 +2032,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
     captures = tickCaptures({
       holds: captures,
-      wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs })),
+      wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs, attackerGuildId: war.attackerGuildId })),
       nowMs: simWorld.nowMs,
       deltaMs: SIM_TICK_MS,
       present: presentGuilds(),
+      contenders: contenderRows(),
+      guardsRemaining: guardRows(),
     });
     applyOwnedCityFees();
     const tickedNodes = tickResourceNodes({

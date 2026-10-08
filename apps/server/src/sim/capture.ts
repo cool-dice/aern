@@ -1,4 +1,12 @@
-import { advanceHold, holdWins } from '@rift/domain/guild';
+import {
+  advanceHold,
+  assaultWindowMs,
+  holdWins,
+  settleWar,
+  warPhase,
+  warWinner,
+  type WarOutcome,
+} from '@rift/domain/guild';
 
 export function readCaptures(value: unknown): CaptureHold[] {
   if (typeof value !== 'object' || value === null || !('captures' in value)) {
@@ -19,6 +27,9 @@ export function readCaptures(value: unknown): CaptureHold[] {
       heldMs?: unknown;
       won?: unknown;
       wonAtMs?: unknown;
+      drawEndedAtMs?: unknown;
+      settled?: unknown;
+      ownerGuildId?: unknown;
     };
     if (typeof hold.cityId !== 'string' || typeof hold.heldMs !== 'number') {
       continue;
@@ -29,6 +40,11 @@ export function readCaptures(value: unknown): CaptureHold[] {
       heldMs: hold.heldMs,
       won: hold.won === true,
       ...(typeof hold.wonAtMs === 'number' ? { wonAtMs: hold.wonAtMs } : {}),
+      ...(typeof hold.drawEndedAtMs === 'number' ? { drawEndedAtMs: hold.drawEndedAtMs } : {}),
+      ...(hold.settled === true ? { settled: true } : {}),
+      ...(typeof hold.ownerGuildId === 'string' || hold.ownerGuildId === null
+        ? { ownerGuildId: hold.ownerGuildId }
+        : {}),
     });
   }
   return holds;
@@ -41,50 +57,130 @@ export interface CaptureHold {
   won: boolean;
   /** Sim time when this guild first won the city. Griefing lift counts from here. */
   wonAtMs?: number;
+  /** Set when `settleWar` records a draw. The next war for this city waits 3 days. */
+  drawEndedAtMs?: number;
+  /** This war has already called `settleWar`. Later ticks keep the row. */
+  settled?: boolean;
+  /** Owner before this war. A draw keeps this guild. */
+  ownerGuildId?: string | null;
+}
+
+export interface CapturePresent {
+  cityId: string;
+  guildId: string;
+  /** A hired mercenary can fight and cannot take the city. */
+  mercenary?: boolean;
 }
 
 /**
- * One tick of a city flag. The guild standing alone on the city holds it.
- * Two guilds, or none, drop the flag and the continuous timer returns to 0.
- * Ten continuous minutes (`holdWins`) takes the city.
+ * One tick of every open city war.
+ * Muster does not award a 10-minute hold.
+ * Assault calls `warWinner` when the hold reaches 10 minutes.
+ * The finish calls `warWinner` and `settleWar`, including a draw.
+ * Only contender guilds can take the city.
  */
 export function tickCaptures(input: {
   holds: readonly CaptureHold[];
-  wars: readonly { cityId: string; startsAtMs: number }[];
+  wars: readonly { cityId: string; startsAtMs: number; attackerGuildId?: string }[];
   nowMs: number;
   deltaMs: number;
-  present: readonly { cityId: string; guildId: string }[];
+  present: readonly CapturePresent[];
+  contenders?: readonly { cityId: string; guildId: string }[];
+  guardsRemaining?: readonly { cityId: string; remaining: number }[];
 }): CaptureHold[] {
   const next: CaptureHold[] = [];
   for (const war of input.wars) {
     if (war.startsAtMs > input.nowMs) {
       continue;
     }
-    const guilds = new Set(
-      input.present.filter((row) => row.cityId === war.cityId).map((row) => row.guildId),
-    );
-    const holder = guilds.size === 1 ? [...guilds][0] ?? null : null;
     const previous = input.holds.find((row) => row.cityId === war.cityId);
+    if (previous?.settled === true) {
+      next.push(previous);
+      continue;
+    }
+    const ownerGuildId = previous?.ownerGuildId ?? (previous?.won === true ? previous.guildId : null);
+    const elapsed = Math.max(0, input.nowMs - war.startsAtMs);
+    const phase = warPhase(elapsed);
+    const guards =
+      input.guardsRemaining?.find((row) => row.cityId === war.cityId)?.remaining ?? 0;
+    const contenderIds = new Set(
+      (input.contenders ?? [])
+        .filter((row) => row.cityId === war.cityId)
+        .map((row) => row.guildId),
+    );
+    const claimants = input.present.filter(
+      (row) => row.cityId === war.cityId && row.mercenary !== true && contenderIds.has(row.guildId),
+    );
+    const standingGuilds = new Set(
+      input.present
+        .filter((row) => row.cityId === war.cityId && row.mercenary !== true)
+        .map((row) => row.guildId),
+    );
+    const sole = standingGuilds.size === 1 ? ([...standingGuilds][0] ?? null) : null;
+    const holder = sole !== null && contenderIds.has(sole) ? sole : null;
+    const fighters = new Map<string, number>();
+    for (const row of claimants) {
+      fighters.set(row.guildId, (fighters.get(row.guildId) ?? 0) + 1);
+    }
+    const guilds = [...fighters.entries()].map(([guildId, count]) => ({ guildId, fighters: count }));
+
+    if (guards > 0 || phase === 'muster') {
+      next.push({
+        cityId: war.cityId,
+        guildId: holder,
+        heldMs: 0,
+        won: false,
+        ownerGuildId,
+      });
+      continue;
+    }
+
+    const holdDelta = phase === 'assault' ? assaultWindowMs({
+      startsAtMs: war.startsAtMs,
+      nowMs: input.nowMs,
+      deltaMs: input.deltaMs,
+    }) : 0;
     const advanced = advanceHold({
       holderGuildId: holder,
-      previousHolderGuildId: previous?.guildId ?? null,
-      heldMs: previous?.won === true ? previous.heldMs : (previous?.heldMs ?? 0),
-      deltaMs: input.deltaMs,
+      previousHolderGuildId: previous?.won === true ? null : (previous?.guildId ?? null),
+      heldMs: previous?.won === true ? 0 : (previous?.heldMs ?? 0),
+      deltaMs: holdDelta,
     });
-    const already = previous?.won === true;
-    const won = already || holdWins(advanced.heldMs);
-    const wonAtMs = won
-      ? previous?.won === true
-        ? previous.wonAtMs
-        : input.nowMs
-      : undefined;
+    const heldLongEnough = phase === 'assault' && holdWins(advanced.heldMs);
+    const finishing = phase === 'finish' || phase === 'closed';
+    if (!heldLongEnough && !finishing) {
+      next.push({
+        cityId: war.cityId,
+        guildId: advanced.holderGuildId,
+        heldMs: advanced.heldMs,
+        won: false,
+        ownerGuildId,
+      });
+      continue;
+    }
+    const outcome: WarOutcome = warWinner({
+      heldCenterGuildId: heldLongEnough ? advanced.holderGuildId : null,
+      heldMs: heldLongEnough ? advanced.heldMs : 0,
+      guilds: finishing && !heldLongEnough ? guilds : guilds,
+    });
+    const settled = settleWar({ outcome, ownerGuildId });
+    const won = settled.ownerGuildId !== null && outcome.result === 'win';
+    const draw = outcome.result === 'draw';
     next.push({
       cityId: war.cityId,
-      guildId: won ? (previous?.won === true ? previous.guildId : advanced.holderGuildId) : advanced.holderGuildId,
-      heldMs: won && previous?.won === true ? previous.heldMs : advanced.heldMs,
-      won,
-      ...(wonAtMs !== undefined ? { wonAtMs } : {}),
+      guildId: won ? settled.ownerGuildId : ownerGuildId,
+      heldMs: heldLongEnough ? advanced.heldMs : (previous?.heldMs ?? 0),
+      won: won || (draw && ownerGuildId !== null),
+      ownerGuildId: draw ? ownerGuildId : settled.ownerGuildId,
+      settled: true,
+      ...(won ? { wonAtMs: input.nowMs } : {}),
+      ...(draw ? { drawEndedAtMs: input.nowMs } : {}),
     });
+  }
+  for (const hold of input.holds) {
+    if (!next.some((row) => row.cityId === hold.cityId)) {
+      next.push(hold);
+    }
   }
   return next;
 }

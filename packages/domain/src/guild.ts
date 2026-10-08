@@ -539,6 +539,22 @@ export function warPhase(elapsedMs: number): WarPhase {
   return 'closed';
 }
 
+/**
+ * Milliseconds of `deltaMs` that fall inside the assault window.
+ * Muster and the finish do not add to the center hold.
+ */
+export function assaultWindowMs(input: { startsAtMs: number; nowMs: number; deltaMs: number }): number {
+  assertMs(input.startsAtMs, 'startsAtMs');
+  assertMs(input.nowMs, 'nowMs');
+  assertNonNegativeInteger(input.deltaMs, 'deltaMs');
+  const from = input.nowMs - input.deltaMs;
+  const assaultStart = input.startsAtMs + WAR_MUSTER_MS;
+  const assaultEnd = assaultStart + WAR_ASSAULT_MS;
+  const overlapStart = Math.max(from, assaultStart);
+  const overlapEnd = Math.min(input.nowMs, assaultEnd);
+  return Math.max(0, overlapEnd - overlapStart);
+}
+
 /** Continuous center hold. 599_999 ms is not yet a win; 600_000 ms is. */
 export function holdWins(heldMs: number): boolean {
   assertNonNegativeInteger(heldMs, 'heldMs');

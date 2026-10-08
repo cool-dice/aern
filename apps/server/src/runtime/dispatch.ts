@@ -83,6 +83,12 @@ export interface LivePorts {
   postPatrol(body: Record<string, unknown>): Promise<LiveResult>;
   memberRank(guildId: string, characterId: string): GuildRank | null;
   vassalMayWar(guildId: string, suzerainConsent: boolean): LiveResult;
+  warLimits(cityId: string, guildId: string): {
+    cityCapturedAtMs: number | null;
+    drawEndedAtMs: number | null;
+    lastDeclaredAtMs: number | null;
+  };
+  rememberDeclaration(guildId: string): void;
   seatFounders(guildId: string, leaderId: string, memberIds: readonly string[]): void;
   seatMember(guildId: string, actorId: string, memberId: string, rank: string): LiveResult;
   placeQuest(characterId: string, questId: string): Promise<void>;
@@ -887,6 +893,7 @@ async function guildWar(body: Record<string, unknown>, ports: LivePorts): Promis
   if (!vassal.ok) {
     return vassal;
   }
+  const limits = ports.warLimits(cityId, attackerGuildId);
   const declared = await ports.guild.declareWar({
     attackerGuildId,
     cityId,
@@ -895,13 +902,16 @@ async function guildWar(body: Record<string, unknown>, ports: LivePorts): Promis
     ...(typeof body.leaderAbsent === 'boolean' ? { leaderAbsent: body.leaderAbsent } : {}),
     ...(typeof body.leaderConsent === 'boolean' ? { leaderConsent: body.leaderConsent } : {}),
     ...(typeof body.councilConsents === 'number' ? { councilConsents: body.councilConsents } : {}),
-    ...(typeof body.cityCapturedAtMs === 'number' ? { cityCapturedAtMs: body.cityCapturedAtMs } : {}),
-    ...(typeof body.drawEndedAtMs === 'number' ? { drawEndedAtMs: body.drawEndedAtMs } : {}),
-    ...(typeof body.lastDeclaredAtMs === 'number' ? { lastDeclaredAtMs: body.lastDeclaredAtMs } : {}),
+    cityCapturedAtMs:
+      typeof body.cityCapturedAtMs === 'number' ? body.cityCapturedAtMs : limits.cityCapturedAtMs,
+    drawEndedAtMs: typeof body.drawEndedAtMs === 'number' ? body.drawEndedAtMs : limits.drawEndedAtMs,
+    lastDeclaredAtMs:
+      typeof body.lastDeclaredAtMs === 'number' ? body.lastDeclaredAtMs : limits.lastDeclaredAtMs,
   });
   if (!declared.ok) {
     return { ok: false, code: declared.code };
   }
+  ports.rememberDeclaration(attackerGuildId);
   return { ok: true, value: declared.value };
 }
 

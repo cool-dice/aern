@@ -3,11 +3,35 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Appearance } from '@rift/domain/character';
 import { SERVICE_CUT_PERCENT } from '@rift/domain/economy';
-import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
+import { CONTENDER_CLOSE_MS, CONTENDER_GOLD, GUILD_CREATE_GOLD, WAR_HOLD_MS, WAR_MUSTER_MS } from '@rift/domain/guild';
 import { emptyPoints } from '@rift/domain/stats';
 import { loadCatalog } from '@rift/content';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
+
+async function winFort(graph: ReturnType<typeof compose>, guildId: string): Promise<void> {
+  const startsAtMs = CONTENDER_CLOSE_MS + 1;
+  await graph.guild.repository.saveWar({
+    id: 'war-fort',
+    attackerGuildId: guildId,
+    cityId: 'fort_humans',
+    startsAtMs,
+    gold: 0,
+    resources: 0,
+  });
+  const guild = await graph.guild.repository.findGuild(guildId);
+  if (guild === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...guild, bank: CONTENDER_GOLD });
+  expect(await graph.act('war_contend', { guildId, warId: 'war-fort', characterId: 'lia' })).toMatchObject({
+    ok: true,
+  });
+  await graph.skipMs(startsAtMs + WAR_MUSTER_MS);
+  await graph.skipMs(WAR_HOLD_MS);
+  const held = graph.state() as { captures: { cityId: string; won: boolean }[] };
+  expect(held.captures.some((row) => row.cityId === 'fort_humans' && row.won)).toBe(true);
+}
 
 const appearance: Appearance = {
   skin: 'fair',
@@ -54,21 +78,7 @@ test('a guild-owned city debits the crossing fee and the repair cut', async () =
   });
   expect(created.ok).toBe(true);
   const guildId = (created.value as { guildId: string }).guildId;
-  await graph.guild.repository.saveWar({
-    id: 'war-fort',
-    attackerGuildId: guildId,
-    cityId: 'fort_humans',
-    startsAtMs: 0,
-    gold: 0,
-    resources: 0,
-  });
-  let won = false;
-  for (let i = 0; i < 7_000 && !won; i += 1) {
-    graph.tickOnce();
-    const held = graph.state() as { captures: { cityId: string; won: boolean }[] };
-    won = held.captures.some((row) => row.cityId === 'fort_humans' && row.won);
-  }
-  expect(won).toBe(true);
+  await winFort(graph, guildId);
 
   graph.seedTrader({
     characterId: 'lia',
@@ -136,21 +146,7 @@ test('a neutral asking a hostile city is refused and an enemy is blocked', async
   });
   expect(created.ok).toBe(true);
   const guildId = (created.value as { guildId: string }).guildId;
-  await graph.guild.repository.saveWar({
-    id: 'war-fort',
-    attackerGuildId: guildId,
-    cityId: 'fort_humans',
-    startsAtMs: 0,
-    gold: 0,
-    resources: 0,
-  });
-  let won = false;
-  for (let i = 0; i < 7_000 && !won; i += 1) {
-    graph.tickOnce();
-    const held = graph.state() as { captures: { cityId: string; won: boolean }[] };
-    won = held.captures.some((row) => row.cityId === 'fort_humans' && row.won);
-  }
-  expect(won).toBe(true);
+  await winFort(graph, guildId);
 
   graph.enterCharacter('account-noa', 'noa');
   const refused = await graph.act('portal_ask', { characterId: 'noa', toNodeId: 'fort_humans' });

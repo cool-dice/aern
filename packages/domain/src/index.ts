@@ -362,6 +362,7 @@ export {
   declareWar,
   registerContender,
   warPhase,
+  assaultWindowMs,
   holdWins,
   advanceHold,
   warWinner,

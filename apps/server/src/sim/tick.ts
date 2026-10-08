@@ -110,6 +110,8 @@ export interface SimEntity {
   reputation?: Record<string, number>;
   /** Guild this character holds a flag for. */
   guildId?: string;
+  /** City whose neutral-capture guard this monster is. */
+  cityGuard?: string;
   /** Cells still left on the current world edge. */
   travel?: { nodeId: string; cell: Cell; remaining: number; running: boolean };
 }
