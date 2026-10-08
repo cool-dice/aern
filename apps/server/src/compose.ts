@@ -59,6 +59,9 @@ import {
   allianceFriendlyFire,
   applyVassalTithe,
   breakAlliance,
+  escortArrived,
+  failSuzerainDefense,
+  releaseVassal,
   breachNonAggression,
   declareNeutralCapture,
   depositBank,
@@ -79,6 +82,8 @@ import {
   postPatrolQuest,
   registerContender,
   renewPact,
+  reviewSection11,
+  type WarStamp,
   seatRank,
   nodeAccessAllows,
   nodeAccessCategory,
@@ -228,6 +233,8 @@ interface StoredMercenary {
   durationMs: number;
   presentMs: number;
   status: ContractStatus;
+  destinationId: string | null;
+  trail: string[];
 }
 
 interface StoredPatrol {
@@ -261,7 +268,30 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   let captures: CaptureHold[] = [];
   let resourceNodes: ResourceNode[] = [];
   let pacts: StoredPact[] = [];
-  let defenseDuties: { warId: string; cityId: string; suzerainId: string; vassalId: string }[] = [];
+  let defenseDuties: {
+    warId: string;
+    cityId: string;
+    suzerainId: string;
+    vassalId: string;
+    appeared: boolean;
+    penalized: boolean;
+  }[] = [];
+  let suzerainFlags: { guildId: string; untilMs: number; fine: number }[] = [];
+  let warHistory: WarStamp[] = [];
+  const warBlows = new Map<string, number>();
+  const warRosters = new Map<string, Set<string>>();
+  const frozenGuilds = new Set<string>();
+  const settledReviewed = new Set<string>();
+  const officeHeldAt = new Map<string, { atMs: number; guildId: string }>();
+  const bankLog: { guildId: string; characterId: string; amount: number; atMs: number }[] = [];
+  let abuse: {
+    reasons: string[];
+    frozen: string[];
+    portalsLifted: string[];
+    vote: string;
+    multibox: string;
+    altGuild: string;
+  } = { reasons: [], frozen: [], portalsLifted: [], vote: 'ok', multibox: 'ok', altGuild: 'ok' };
   let diplomacy: { pactId: string; guildId: string; characterId: string; text: string; atMs: number }[] = [];
   let mercenaries: StoredMercenary[] = [];
   let patrols: StoredPatrol[] = [];
@@ -720,6 +750,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     renewPact: renewStoredPact,
     breakPact: breakStoredPact,
     rememberDefense,
+    previousOffice,
+    reviewDeclaredWar,
+    rewardsFrozen(guildId: string) {
+      return frozenGuilds.has(guildId);
+    },
+    logWithdrawal,
     postCoalition,
     registerContender: registerWarContender,
     postMercenaryContract,
@@ -1032,6 +1068,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   }
 
   async function creditGuildBank(guildId: string, amount: number): Promise<void> {
+    if (frozenGuilds.has(guildId)) {
+      return;
+    }
     if (!Number.isInteger(amount) || amount <= 0) {
       return;
     }
@@ -1250,6 +1289,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       return { ok: false, code: seated.code };
     }
     table.set(memberId, seated.value.rank);
+    if (seated.value.rank === 'leader' || seated.value.rank === 'council') {
+      rememberOffice(memberId, guildId);
+    }
     return { ok: true, value: { guildId, memberId, rank: seated.value.rank } };
   }
 
@@ -1259,6 +1301,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       table.set(row.id, row.rank);
     }
     guildRanks.set(guildId, table);
+    rememberOffice(leaderId, guildId);
   }
 
   function nextDiplomacyId(prefix: string): string {
@@ -1492,7 +1535,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (!pactDiplomat(pact.guildIds, characterId)) {
       return { ok: false, code: 'rank' };
     }
-    const broken = breakAlliance(pact, clock.now());
+    const broken = pact.kind === 'vassal' ? releaseVassal(pact, clock.now()) : breakAlliance(pact, clock.now());
     if (!broken.ok) {
       return { ok: false, code: broken.code };
     }
@@ -1546,6 +1589,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const kind = typeof body.kind === 'string' ? body.kind : '';
     const rewardGold = typeof body.rewardGold === 'number' ? body.rewardGold : 0;
     const durationMs = typeof body.durationMs === 'number' ? body.durationMs : PATROL_QUEST_MS;
+    const destinationId = typeof body.destinationId === 'string' ? body.destinationId : undefined;
     const rank = memberRank(guildId, characterId);
     if (rank === null) {
       return { ok: false, code: 'rank' };
@@ -1564,6 +1608,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       nowMs: clock.now(),
       durationMs,
       nodeId,
+      ...(destinationId !== undefined ? { destinationId } : {}),
     });
     if (!posted.ok) {
       return { ok: false, code: posted.code };
@@ -1580,6 +1625,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       durationMs: posted.value.durationMs,
       presentMs: 0,
       status: 'open',
+      destinationId: posted.value.destinationId,
+      trail: [posted.value.nodeId],
     };
     mercenaries = [...mercenaries, stored];
     return { ok: true, value: stored };
@@ -1635,7 +1682,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       (entity) => entity.id === contract.mercenaryId && entity.monsterId === undefined,
     );
     if (contract.kind === 'escort') {
-      return actor !== undefined && actor.nodeId !== undefined && actor.nodeId !== contract.nodeId;
+      return escortArrived({
+        startId: contract.nodeId,
+        destinationId: contract.destinationId,
+        trail: contract.trail,
+        edges: simWorld.geography?.edges ?? [],
+      });
     }
     if (contract.kind === 'defend') {
       return actor !== undefined && (actor.lastAttackerId !== undefined || actor.hp < actor.maxHp);
@@ -1678,6 +1730,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const now = clock.now();
     const nextMerc: StoredMercenary[] = [];
     for (const contract of mercenaries) {
+      const actor = simWorld.entities.find(
+        (entity) => entity.id === contract.mercenaryId && entity.monsterId === undefined,
+      );
+      const trail = [...contract.trail];
+      if (actor?.nodeId !== undefined && trail[trail.length - 1] !== actor.nodeId) {
+        trail.push(actor.nodeId);
+      }
+      const walked = { ...contract, trail };
       const ticked = tickContract({
         status: contract.status,
         presentMs: contract.presentMs,
@@ -1689,7 +1749,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         bank: (await repos.guilds.findGuild(contract.guildId))?.bank ?? 0,
         rewardGold: contract.rewardGold,
         kind: contract.kind,
-        duty: contractDuty(contract),
+        duty: contractDuty(walked),
       });
       if (ticked.pay > 0) {
         const guild = await repos.guilds.findGuild(contract.guildId);
@@ -1701,7 +1761,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
           repos.economy.saveCharacter({ ...wallet, gold: wallet.gold + ticked.pay });
         }
       }
-      nextMerc.push({ ...contract, presentMs: ticked.presentMs, status: ticked.status });
+      nextMerc.push({ ...walked, presentMs: ticked.presentMs, status: ticked.status });
     }
     mercenaries = nextMerc;
     const nextPatrol: StoredPatrol[] = [];
@@ -1742,6 +1802,17 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
       const broken = breakAlliance(pact, now);
       return broken.ok ? { ...pact, ...broken.value } : pact;
+    });
+  }
+
+  function tickVassalReleases(): void {
+    const now = clock.now();
+    pacts = pacts.map((pact) => {
+      if (pact.kind !== 'vassal' || pact.breakNoticeAtMs === null || pact.brokenAtMs != null) {
+        return pact;
+      }
+      const released = releaseVassal(pact, now);
+      return released.ok ? { ...pact, ...released.value } : pact;
     });
   }
 
@@ -1790,7 +1861,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     spawnNeutralGuards();
     captures = tickCaptures({
       holds: captures,
-      wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs, attackerGuildId: war.attackerGuildId })),
+      wars: openWars.map((war) => ({
+        id: war.id,
+        cityId: war.cityId,
+        startsAtMs: war.startsAtMs,
+        attackerGuildId: war.attackerGuildId,
+      })),
       nowMs: simWorld.nowMs,
       deltaMs: ms,
       present: presentGuilds(),
@@ -1808,6 +1884,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await tickContracts(ms);
     await tickVassalTithes();
     tickAllianceBreaks();
+    tickVassalReleases();
+    noteSuzerainPresence();
+    await penalizeAbsentSuzerains();
+    noteWarRoster();
+    await reviewNewSettlements();
   }
 
   function guardAllies(command: SimCommand): SimCommand {
@@ -1839,10 +1920,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await repos.guilds.saveGuild({ ...guild, bank: breached.bank });
   }
 
-  function contenderRows(): { cityId: string; guildId: string }[] {
+  function contenderRows(): { cityId: string; guildId: string; warId: string }[] {
     return contenders.flatMap((row) => {
       const war = openWars.find((item) => item.id === row.warId);
-      return war === undefined ? [] : [{ cityId: war.cityId, guildId: row.guildId }];
+      return war === undefined ? [] : [{ cityId: war.cityId, guildId: row.guildId, warId: row.warId }];
     });
   }
 
@@ -1853,6 +1934,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     captured: boolean;
     musterNodeId: string;
   }[] {
+    spawnMusterCamps();
     return openWars.flatMap((war) => {
       if (war.startsAtMs > clock.now()) {
         return [];
@@ -1886,30 +1968,54 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
           attackerGuildIds: [...attackers],
           defenderGuildIds: [...defenders],
           captured,
-          musterNodeId: nearestHub(war.cityId),
+          musterNodeId: `muster:${war.cityId}`,
         },
       ];
     });
   }
 
-  function nearestHub(cityId: string): string {
-    const nodes = simWorld.geography?.nodes ?? [];
-    const city = nodes.find((node) => node.id === cityId);
-    const hubs = nodes.filter((node) => node.kind === 'hub');
-    const first = hubs[0];
-    if (city === undefined || first === undefined) {
-      return 'cross_light';
+  /** The 30-minute muster spawns a camp one node off the city. Attackers respawn there. */
+  function spawnMusterCamps(): void {
+    const geography = simWorld.geography;
+    if (geography === undefined) {
+      return;
     }
-    let best = first;
-    let bestDistance = Math.max(Math.abs(first.x - city.x), Math.abs(first.y - city.y));
-    for (const hub of hubs) {
-      const distance = Math.max(Math.abs(hub.x - city.x), Math.abs(hub.y - city.y));
-      if (distance < bestDistance) {
-        best = hub;
-        bestDistance = distance;
+    const nodes = [...geography.nodes];
+    const edges = [...geography.edges];
+    let changed = false;
+    const now = clock.now();
+    for (const war of openWars) {
+      if (war.startsAtMs > now) {
+        continue;
       }
+      const phase = warPhase(Math.max(0, now - war.startsAtMs));
+      if (phase === 'closed') {
+        continue;
+      }
+      const campId = `muster:${war.cityId}`;
+      if (nodes.some((node) => node.id === campId)) {
+        continue;
+      }
+      const city = nodes.find((node) => node.id === war.cityId);
+      if (city === undefined) {
+        continue;
+      }
+      nodes.push({
+        id: campId,
+        x: city.x + 1,
+        y: city.y,
+        kind: 'hub',
+        safe: false,
+        side: city.side,
+        regionId: city.regionId,
+      });
+      edges.push({ id: `${campId}__${war.cityId}`, a: war.cityId, b: campId, length: 1 });
+      changed = true;
     }
-    return best.id;
+    if (!changed) {
+      return;
+    }
+    simWorld = { ...simWorld, geography: { ...geography, nodes, edges } };
   }
 
   function spawnNeutralGuards(): void {
@@ -1989,6 +2095,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     neutralCities.add(cityId);
     declaredAtMs.set(attackerGuildId, clock.now());
     rememberDefense(cityId, warId);
+    const reviewed = await reviewDeclaredWar(attackerGuildId, cityId);
+    if (!reviewed.ok) {
+      return { ok: false, code: reviewed.code };
+    }
     return { ok: true, value: { warId, ...declared.value } };
   }
 
@@ -2002,12 +2112,237 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       cityId,
       suzerainId,
       vassalId: owner,
+      appeared: false,
+      penalized: false,
     }));
     defenseDuties = [
       ...defenseDuties.filter((row) => row.warId !== warId),
       ...obliged,
     ];
     return obliged.map((row) => ({ suzerainId: row.suzerainId, vassalId: row.vassalId }));
+  }
+
+  function noteSuzerainPresence(): void {
+    const now = clock.now();
+    defenseDuties = defenseDuties.map((duty) => {
+      if (duty.appeared) {
+        return duty;
+      }
+      const war = openWars.find((row) => row.id === duty.warId);
+      if (war === undefined || war.startsAtMs > now) {
+        return duty;
+      }
+      if (warPhase(Math.max(0, now - war.startsAtMs)) === 'closed') {
+        return duty;
+      }
+      const here = simWorld.entities.some(
+        (entity) =>
+          entity.monsterId === undefined &&
+          entity.phase === 'online' &&
+          entity.hp > 0 &&
+          entity.guildId === duty.suzerainId &&
+          entity.nodeId === duty.cityId,
+      );
+      return here ? { ...duty, appeared: true } : duty;
+    });
+  }
+
+  async function penalizeAbsentSuzerains(): Promise<void> {
+    const now = clock.now();
+    const next = [];
+    for (const duty of defenseDuties) {
+      if (duty.appeared || duty.penalized) {
+        next.push(duty);
+        continue;
+      }
+      const war = openWars.find((row) => row.id === duty.warId);
+      if (war === undefined || war.startsAtMs > now) {
+        next.push(duty);
+        continue;
+      }
+      const phase = warPhase(Math.max(0, now - war.startsAtMs));
+      const settled = captures.some((row) => row.cityId === duty.cityId && row.settled === true);
+      if (phase !== 'closed' && !settled) {
+        next.push(duty);
+        continue;
+      }
+      const guild = await repos.guilds.findGuild(duty.suzerainId);
+      if (guild === null) {
+        next.push({ ...duty, penalized: true });
+        continue;
+      }
+      const fined = failSuzerainDefense({ bank: guild.bank, nowMs: now });
+      await repos.guilds.saveGuild({ ...guild, bank: fined.bank });
+      suzerainFlags = [...suzerainFlags, { guildId: duty.suzerainId, untilMs: fined.flagUntilMs, fine: fined.fine }];
+      next.push({ ...duty, penalized: true });
+    }
+    defenseDuties = next;
+  }
+
+  function rememberOffice(characterId: string, guildId: string): void {
+    if (officeHeldAt.has(characterId)) {
+      return;
+    }
+    officeHeldAt.set(characterId, { atMs: clock.now(), guildId });
+  }
+
+  function previousOffice(characterId: string): number | null {
+    return officeHeldAt.get(characterId)?.atMs ?? null;
+  }
+
+  function logWithdrawal(guildId: string, characterId: string, amount: number): void {
+    bankLog.push({ guildId, characterId, amount, atMs: clock.now() });
+  }
+
+  function noteWarRoster(): void {
+    const now = clock.now();
+    for (const war of openWars) {
+      if (war.startsAtMs > now || warPhase(Math.max(0, now - war.startsAtMs)) === 'closed') {
+        continue;
+      }
+      const roster = warRosters.get(war.id) ?? new Set<string>();
+      for (const entity of simWorld.entities) {
+        if (
+          entity.monsterId === undefined &&
+          entity.phase === 'online' &&
+          entity.hp > 0 &&
+          entity.nodeId === war.cityId
+        ) {
+          roster.add(entity.id);
+        }
+      }
+      warRosters.set(war.id, roster);
+    }
+  }
+
+  function noteWarBlow(attackerId: string, targetId: string): void {
+    const attacker = simWorld.entities.find((entity) => entity.id === attackerId);
+    const target = simWorld.entities.find((entity) => entity.id === targetId);
+    if (attacker?.monsterId !== undefined || target?.monsterId !== undefined) {
+      return;
+    }
+    const nodeId = target?.nodeId ?? attacker?.nodeId;
+    if (nodeId === undefined) {
+      return;
+    }
+    const now = clock.now();
+    const live = openWars.some(
+      (war) =>
+        war.cityId === nodeId &&
+        war.startsAtMs <= now &&
+        warPhase(Math.max(0, now - war.startsAtMs)) !== 'closed',
+    );
+    if (!live) {
+      return;
+    }
+    warBlows.set(nodeId, (warBlows.get(nodeId) ?? 0) + 1);
+  }
+
+  async function section11For(guildId: string, next: WarStamp | null) {
+    const guild = await repos.guilds.findGuild(guildId);
+    const leaderId = guild?.leaderId ?? '';
+    const held = officeHeldAt.get(leaderId);
+    const lastOfficeMs = held !== undefined && held.guildId !== guildId ? held.atMs : null;
+    const carriers = new Map<string, string[]>();
+    const ballots: { voterId: string; ai: boolean; carrierOnline: boolean }[] = [];
+    for (const memberId of guild?.memberIds ?? []) {
+      const record = await repos.characters.findById(memberId);
+      if (record?.controller !== 'bot') {
+        continue;
+      }
+      const bots = carriers.get(record.accountId) ?? [];
+      bots.push(memberId);
+      carriers.set(record.accountId, bots);
+      const entity = simWorld.entities.find((row) => row.id === memberId);
+      ballots.push({
+        voterId: memberId,
+        ai: true,
+        carrierOnline: entity !== undefined && entity.phase === 'online' && entity.carrierOffline !== true,
+      });
+    }
+    const now = clock.now();
+    const portals = captures.flatMap((hold) => {
+      if (!hold.won || hold.guildId === null || hold.wonAtMs === undefined) {
+        return [];
+      }
+      const warActive = openWars.some(
+        (war) =>
+          war.cityId === hold.cityId &&
+          war.startsAtMs <= now &&
+          warPhase(Math.max(0, now - war.startsAtMs)) !== 'closed',
+      );
+      return [{ cityId: hold.cityId, blockedForMs: Math.max(0, now - hold.wonAtMs), warActive }];
+    });
+    const reviewed = reviewSection11({
+      nowMs: now,
+      lastOfficeMs,
+      history: warHistory,
+      next,
+      portals,
+      ballots,
+      carriers: [...carriers.entries()].map(([carrierId, botIds]) => ({ carrierId, botIds })),
+      withdrawalsLogged: bankLog.length,
+    });
+    abuse = {
+      reasons: reviewed.reasons,
+      frozen: [...frozenGuilds],
+      portalsLifted: reviewed.portalsLifted,
+      vote: reviewed.vote,
+      multibox: reviewed.multibox,
+      altGuild: reviewed.altGuild,
+    };
+    if (reviewed.freezeRewards && next !== null) {
+      frozenGuilds.add(next.attackerGuildId);
+      abuse = { ...abuse, frozen: [...frozenGuilds] };
+    }
+    return reviewed;
+  }
+
+  async function reviewDeclaredWar(attackerGuildId: string, cityId: string): Promise<{ ok: boolean; code?: string }> {
+    settledReviewed.delete(cityId);
+    const stamp: WarStamp = {
+      attackerGuildId,
+      ownerGuildId: cityOwner(cityId),
+      cityId,
+      atMs: clock.now(),
+      roster: [],
+      blows: 0,
+      elapsedMs: 0,
+      heldMs: 0,
+      result: 'declared',
+    };
+    const reviewed = await section11For(attackerGuildId, stamp);
+    warHistory = [...warHistory, stamp];
+    if (reviewed.multibox === 'carrier') {
+      return { ok: false, code: 'carrier' };
+    }
+    return { ok: true };
+  }
+
+  async function reviewNewSettlements(): Promise<void> {
+    for (const hold of captures) {
+      if (hold.settled !== true || settledReviewed.has(hold.cityId)) {
+        continue;
+      }
+      settledReviewed.add(hold.cityId);
+      const war = [...openWars].reverse().find((row) => row.cityId === hold.cityId);
+      if (war === undefined) {
+        continue;
+      }
+      const stamp: WarStamp = {
+        attackerGuildId: war.attackerGuildId,
+        ownerGuildId: hold.ownerGuildId ?? null,
+        cityId: hold.cityId,
+        atMs: clock.now(),
+        roster: [...(warRosters.get(war.id) ?? [])],
+        blows: warBlows.get(hold.cityId) ?? 0,
+        elapsedMs: Math.max(0, clock.now() - war.startsAtMs),
+        heldMs: hold.heldMs,
+        result: hold.drawEndedAtMs !== undefined ? 'draw' : 'win',
+      };
+      await section11For(war.attackerGuildId, stamp);
+      warHistory = [...warHistory, stamp];
+    }
   }
 
   function postCoalition(
@@ -2215,6 +2550,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         return phase === 'assault' || phase === 'finish';
       })
       .map((war) => war.cityId);
+    const warFronts = openWarFronts();
     simWorld = {
       ...simWorld,
       seasonSpawn,
@@ -2223,7 +2559,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       invasion: live.invasion,
       seasonResource: live.resourceBonus,
       warCities,
-      warFronts: openWarFronts(),
+      warFronts,
       ...(live.weatherId !== null ? { weatherId: live.weatherId } : {}),
     };
     topUpSeasonSpawns(Math.max(0, Math.round(PROTOTYPE_MONSTERS.length * seasonSpawn)), live.spawnTag);
@@ -2278,7 +2614,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     spawnNeutralGuards();
     captures = tickCaptures({
       holds: captures,
-      wars: openWars.map((war) => ({ cityId: war.cityId, startsAtMs: war.startsAtMs, attackerGuildId: war.attackerGuildId })),
+      wars: openWars.map((war) => ({
+        id: war.id,
+        cityId: war.cityId,
+        startsAtMs: war.startsAtMs,
+        attackerGuildId: war.attackerGuildId,
+      })),
       nowMs: simWorld.nowMs,
       deltaMs: SIM_TICK_MS,
       present: presentGuilds(),
@@ -2324,6 +2665,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
           playerAttacker: killer !== undefined && killer.monsterId === undefined,
         });
       }
+      if (corpse.killerId !== undefined) {
+        noteWarBlow(corpse.killerId, corpse.victimId);
+      }
       if (killer !== undefined && killer.monsterId === undefined) {
         void reportKind(killer.id, 'kill', monsterOf.get(corpse.victimId));
         if (corpse.victimId.includes(':elite') || corpse.victimId.includes('keeper')) {
@@ -2351,6 +2695,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         subject,
         playerAttacker: attacker !== undefined && attacker.monsterId === undefined,
       });
+      noteWarBlow(entity.lastAttackerId, entity.id);
     }
     for (const command of commands) {
       const rejected = simWorld.rejections.some((row) => row.entityId === commandActor(command));
@@ -2386,6 +2731,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await tickContracts(SIM_TICK_MS);
     await tickVassalTithes();
     tickAllianceBreaks();
+    tickVassalReleases();
+    noteSuzerainPresence();
+    await penalizeAbsentSuzerains();
+    noteWarRoster();
+    await reviewNewSettlements();
   }
 
   function simSnapshot(): {
@@ -2483,7 +2833,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       pacts = loaded.pacts as StoredPact[];
     }
     if ('mercenaries' in loaded && Array.isArray(loaded.mercenaries)) {
-      mercenaries = loaded.mercenaries as StoredMercenary[];
+      mercenaries = (loaded.mercenaries as StoredMercenary[]).map((row) => ({
+        ...row,
+        destinationId: row.destinationId ?? null,
+        trail: row.trail ?? [row.nodeId],
+      }));
     }
     if ('patrols' in loaded && Array.isArray(loaded.patrols)) {
       patrols = loaded.patrols as StoredPatrol[];
@@ -2740,6 +3094,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         roomId: entity.roomId ?? null,
         dungeonRooms: entity.dungeonRooms ?? [],
         quests: questRows(entity),
+        nodeId: entity.nodeId ?? null,
       })),
       mapNodes: graph.nodes.map((node) => ({ id: node.id, kind: node.kind })),
       recipes: catalog.recipes.map((recipe) => ({ id: recipe.id })),
@@ -2751,6 +3106,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       pacts,
       allies: allyMarkers(),
       defenses: defenseDuties,
+      suzerainFlags,
+      abuse,
+      musterCamps: (simWorld.geography?.nodes ?? [])
+        .filter((node) => node.id.startsWith('muster:'))
+        .map((node) => node.id),
       diplomacy,
       mercenaries,
       patrols,

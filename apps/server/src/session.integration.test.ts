@@ -936,7 +936,26 @@ test('guild create debits character gold and rejects a short roster', async () =
       },
     });
     expect(again.statusCode).toBe(400);
-    expect(again.json()).toMatchObject({ code: 'gold' });
+    expect(again.json()).toMatchObject({ code: 'cooldown' });
+
+    const broke = await built.app.inject({
+      method: 'POST',
+      url: '/guild',
+      payload: {
+        name: 'Green Wolves',
+        tag: 'GW',
+        initiatorId: 'fresh',
+        members: [
+          { id: 'fresh', level: 5 },
+          { id: 'b1', level: 5 },
+          { id: 'b2', level: 5 },
+          { id: 'b3', level: 5 },
+        ],
+        gold: 10_000,
+      },
+    });
+    expect(broke.statusCode).toBe(400);
+    expect(broke.json()).toMatchObject({ code: 'gold' });
   } finally {
     await built.close();
   }

@@ -91,6 +91,10 @@ export interface LivePorts {
   rememberDeclaration(guildId: string): void;
   declareNeutralCity(body: Record<string, unknown>): Promise<LiveResult>;
   rememberDefense(cityId: string, warId: string): { suzerainId: string; vassalId: string }[];
+  previousOffice(characterId: string): number | null;
+  reviewDeclaredWar(attackerGuildId: string, cityId: string): Promise<{ ok: boolean; code?: string }>;
+  rewardsFrozen(guildId: string): boolean;
+  logWithdrawal(guildId: string, characterId: string, amount: number): void;
   postCoalition(body: Record<string, unknown>): LiveResult;
   seatFounders(guildId: string, leaderId: string, memberIds: readonly string[]): void;
   seatMember(guildId: string, actorId: string, memberId: string, rank: string): LiveResult;
@@ -663,6 +667,13 @@ async function questTurnIn(body: Record<string, unknown>, ports: LivePorts): Pro
 }
 
 async function guildCreate(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const initiatorId = text(body, 'initiatorId');
+  if (initiatorId !== undefined && body.lastOfficeMs === undefined) {
+    const held = ports.previousOffice(initiatorId);
+    if (held !== null) {
+      body.lastOfficeMs = held;
+    }
+  }
   const created = await ports.guild.create(body);
   if (!created.ok) {
     return { ok: false, code: created.code };
@@ -722,7 +733,9 @@ async function auctionBid(body: Record<string, unknown>, ports: LivePorts): Prom
   if (bid.value.buyout) {
     const paid = sellerProceeds(bid.value.price);
     const owner = cityId === null ? null : ports.cityOwner(cityId);
-    const credited = await ports.guild.creditTax({ amount: paid.tax, guildId: owner });
+    const frozen = owner !== null && ports.rewardsFrozen(owner);
+    const credited = frozen ? 'void' : await ports.guild.creditTax({ amount: paid.tax, guildId: owner });
+    ports.economy.recordAuctionTax({ amount: paid.tax, sink: credited });
     taxSink = credited;
     if (credited === 'guild') {
       guildTax = paid.tax;
@@ -900,7 +913,8 @@ async function guildWar(body: Record<string, unknown>, ports: LivePorts): Promis
     return vassal;
   }
   if (ports.cityOwner(cityId) === null) {
-    return ports.declareNeutralCity(body);
+    const neutral = await ports.declareNeutralCity(body);
+    return neutral;
   }
   const limits = ports.warLimits(cityId, attackerGuildId);
   const declared = await ports.guild.declareWar({
@@ -923,6 +937,10 @@ async function guildWar(body: Record<string, unknown>, ports: LivePorts): Promis
   ports.rememberDeclaration(attackerGuildId);
   const warId = declared.value.warId;
   const defenders = ports.rememberDefense(cityId, warId);
+  const reviewed = await ports.reviewDeclaredWar(attackerGuildId, cityId);
+  if (!reviewed.ok) {
+    return { ok: false, code: reviewed.code };
+  }
   return { ok: true, value: { ...declared.value, defenders } };
 }
 
@@ -947,6 +965,9 @@ async function guildWithdraw(body: Record<string, unknown>, ports: LivePorts): P
   });
   if (!taken.ok) {
     return { ok: false, code: taken.code };
+  }
+  if (characterId !== undefined) {
+    ports.logWithdrawal(guildId, characterId, body.amount);
   }
   return { ok: true, value: taken.value };
 }

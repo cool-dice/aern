@@ -1,5 +1,5 @@
 import { readFileSync } from 'node:fs';
-import { ALLIANCE_BREAK_MS, CITY_CAPTURE_COOLDOWN_MS, CONTENDER_CLOSE_MS, CONTENDER_GOLD, GUILD_CREATE_GOLD, NODE_DROP_MS, NODE_PLANT_MS, NODE_TAX_OFFICER_MAX, NOVICE_LOCK_MS, PACT_MS, PATROL_QUEST_GOLD, PATROL_QUEST_MS, VASSAL_RELEASE_MS, VASSAL_TAX_MIN, WAR_GOLD, WAR_HOLD_MS, WAR_MUSTER_MS, WAR_RESOURCES } from '@rift/domain/guild';
+import { ALLIANCE_BREAK_MS, CITY_CAPTURE_COOLDOWN_MS, CONTENDER_CLOSE_MS, CONTENDER_GOLD, DRAW_WAR_COOLDOWN_MS, GUILD_CREATE_GOLD, NAP_BREACH_GOLD, NODE_DROP_MS, NODE_PLANT_MS, NODE_TAX_OFFICER_MAX, NOVICE_LOCK_MS, PACT_MS, PATROL_QUEST_GOLD, PATROL_QUEST_MS, VASSAL_RELEASE_MS, VASSAL_TAX_MIN, WAR_ASSAULT_MS, WAR_FINISH_MS, WAR_GOLD, WAR_HOLD_MS, WAR_LEAD_MS, WAR_MUSTER_MS, WAR_RESOURCES } from '@rift/domain/guild';
 import { PORTAL_BLOCK_MS, STORAGE_GOLD_PER_SLOT_DAY } from '@rift/domain/economy';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
@@ -56,6 +56,7 @@ test('auction tax, storage, diplomacy, and war routes call the domain functions'
   expect(bid.includes('cityOwner(')).toBe(true);
   expect(bid.includes('guildCity')).toBe(false);
   expect(bid.includes('creditTax(')).toBe(true);
+  expect(bid.includes('recordAuctionTax(')).toBe(true);
   const economyBid = readFileSync(new URL('./modules/economy/service.ts', import.meta.url), 'utf8');
   const priced = economyBid.slice(economyBid.indexOf('bidAuction(input)'), economyBid.indexOf('auctionLot(lotId)'));
   expect(priced.includes('auctionTaxSink(')).toBe(false);
@@ -96,6 +97,22 @@ test('auction tax, storage, diplomacy, and war routes call the domain functions'
   expect(tickBody.includes('spawnNeutralGuards(')).toBe(true);
   expect(tickBody.includes('openWarFronts(')).toBe(true);
   expect(tickBody.includes('tickCaptures(')).toBe(true);
+  expect(tickBody.includes('tickVassalReleases(')).toBe(true);
+  expect(tickBody.includes('penalizeAbsentSuzerains(')).toBe(true);
+  expect(tickBody.includes('reviewNewSettlements(')).toBe(true);
+  expect(composeSource.includes('reviewSection11(')).toBe(true);
+  expect(dispatch.includes('reviewDeclaredWar(')).toBe(true);
+  expect(dispatch.includes('logWithdrawal(')).toBe(true);
+  expect(composeSource.includes('failSuzerainDefense(')).toBe(true);
+  expect(composeSource.includes('releaseVassal(')).toBe(true);
+  const fronts = composeSource.slice(
+    composeSource.indexOf('function openWarFronts'),
+    composeSource.indexOf('function spawnMusterCamps'),
+  );
+  expect(fronts.includes('spawnMusterCamps(')).toBe(true);
+  expect(fronts.includes('muster:${war.cityId}')).toBe(true);
+  expect(fronts.includes('nearestHub(')).toBe(false);
+  expect(composeSource.includes('function spawnMusterCamps')).toBe(true);
   const nodeGate = composeSource.slice(
     composeSource.indexOf('function resourceAccess'),
     composeSource.indexOf('function addNodeChest'),
@@ -149,6 +166,7 @@ test('a guild city auction deposits the 5% tax and a neutral city sinks it', asy
   expect(bought).toMatchObject({ ok: true, value: { price: 100, buyout: true, taxSink: 'guild', guildTax: 5, sinkTax: 0 } });
   expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(5);
   expect(graph.economy.service.balance('seller')).toBe(95);
+  expect((graph.state() as { tax: { guild: number; void: number } }).tax).toEqual({ guild: 5, void: 0 });
 
   const wild = graph.economy.service.offerAuction({
     sellerId: 'seller',
@@ -166,6 +184,7 @@ test('a guild city auction deposits the 5% tax and a neutral city sinks it', asy
   const sunk = await graph.act('auction_bid', { lotId: wild.value.id, bidderId: 'buyer', bid: 100 });
   expect(sunk).toMatchObject({ ok: true, value: { taxSink: 'void', guildTax: 0, sinkTax: 5 } });
   expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(5);
+  expect((graph.state() as { tax: { guild: number; void: number } }).tax).toEqual({ guild: 5, void: 5 });
 });
 
 test('extended storage debits 1 gold per slot and a hostile city refuses a neutral', async () => {
@@ -308,8 +327,36 @@ test('a node flag drop seizes the chest and the officer tax cap is 15', async ()
   };
   const node = dropped.resourceNodes.find((row) => row.nodeId === 'plains_mine');
   expect(node?.guildId).toBeNull();
-  expect(node?.chest).toBe(0);
-  expect(dropped.guildVaults.find((row) => row.guildId === guildId)?.amount).toBe(chest);
+  expect(node?.chest).toBe(chest);
+  expect(dropped.guildVaults.find((row) => row.guildId === guildId)?.amount).toBeUndefined();
+  graph.enterWorld('kai', 'plains_mine');
+  graph.enterCharacter('account-kai', 'kai');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'kai', action: 'wait' });
+  const ash = await graph.act('guild_create', {
+    name: 'Ash Keepers',
+    tag: 'ASH',
+    initiatorId: 'kai',
+    leaderId: 'kai',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'kai', level: 5 },
+      { id: 'n1', level: 5 },
+      { id: 'n2', level: 5 },
+      { id: 'n3', level: 5 },
+    ],
+  });
+  expect(ash.ok).toBe(true);
+  const ashId = (ash.value as { guildId: string }).guildId;
+  await graph.skipMs(NODE_PLANT_MS);
+  const taken = graph.state() as {
+    resourceNodes: { nodeId: string; guildId: string | null; chest: number }[];
+    guildVaults: { guildId: string; amount: number }[];
+  };
+  expect(taken.resourceNodes.find((row) => row.nodeId === 'plains_mine')).toMatchObject({
+    guildId: ashId,
+    chest: 0,
+  });
+  expect(taken.guildVaults.find((row) => row.guildId === ashId)?.amount).toBe(chest);
 });
 
 test('node access is separate for allies, other guilds, and neutrals', async () => {
@@ -451,7 +498,8 @@ test('mercenary kind changes patrol, combat, and escort outcomes', async () => {
     composeSource.indexOf('function tickAllianceBreaks'),
   );
   expect(tick.includes('kind: contract.kind')).toBe(true);
-  expect(tick.includes('duty: contractDuty(contract)')).toBe(true);
+  expect(tick.includes('duty: contractDuty(walked)')).toBe(true);
+  expect(composeSource.includes('escortArrived(')).toBe(true);
   const once = composeSource.slice(composeSource.indexOf('function tickOnce'), composeSource.indexOf('function simSnapshot'));
   expect(once.includes('await tickContracts(')).toBe(true);
   expect(once.includes('await tickVassalTithes(')).toBe(true);
@@ -460,7 +508,7 @@ test('mercenary kind changes patrol, combat, and escort outcomes', async () => {
   const graph = compose({ nowMs: 0 });
   graph.enterWorld('lia', 'plains_mine');
   graph.enterCharacter('account-lia', 'lia');
-  graph.enterWorld('blade', 'plains_mine');
+  graph.enterWorld('blade', 'cross_light');
   graph.enterCharacter('account-blade', 'blade');
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'blade', action: 'wait' });
@@ -496,9 +544,9 @@ test('mercenary kind changes patrol, combat, and escort outcomes', async () => {
     issuedAtMs: (graph.state() as { nowMs: number }).nowMs,
     action: 'attack_ranged',
     targetId: 'blade:bandit',
-    params: { entityId: 'blade', weaponDamage: 80, range: 8, odCost: 0, pvpOpen: true, safeZone: false },
+    params: { entityId: 'blade', weaponDamage: 80, range: 24, odCost: 0, pvpOpen: true, safeZone: false },
   });
-  graph.tickOnce();
+  await graph.tickOnce();
   await graph.skipMs(1_000);
   expect(
     (graph.state() as { mercenaries: { kind: string; status: string }[] }).mercenaries.find((row) => row.kind === 'attack')
@@ -509,7 +557,7 @@ test('mercenary kind changes patrol, combat, and escort outcomes', async () => {
     guildId,
     characterId: 'lia',
     mercenaryId: 'blade',
-    nodeId: 'plains_mine',
+    nodeId: 'cross_light',
     kind: 'patrol',
     rewardGold: 50,
     durationMs: 1_000,
@@ -697,6 +745,68 @@ test('a neutral capture charges 25000 gold and waits for the guard fight', async
   expect(won.captures.some((row) => row.cityId === 'fort_humans' && row.won && row.guildId === guildId)).toBe(true);
 });
 
+test('muster spawns a camp and attackers respawn there after the war delay', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  const guildId = await foundGuild(graph);
+  const guild = await graph.guild.repository.findGuild(guildId);
+  if (guild === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...guild, bank: 40_000 });
+  const declared = await graph.act('guild_war', {
+    attackerGuildId: guildId,
+    cityId: 'fort_humans',
+    leaderConsent: true,
+    councilConsents: 2,
+    resources: 20_000,
+  });
+  expect(declared.ok).toBe(true);
+  const startsAtMs = (declared.value as { startsAtMs: number }).startsAtMs;
+  await graph.skipMs(startsAtMs);
+  await graph.tickOnce();
+  expect((graph.state() as { musterCamps: string[] }).musterCamps).toContain('muster:fort_humans');
+  expect(await graph.act('encounter_enter', { characterId: 'lia' })).toMatchObject({ ok: true });
+  graph.submit({
+    commandId: 'hit-camp',
+    seq: 1,
+    issuedAtMs: (graph.state() as { nowMs: number }).nowMs,
+    action: 'attack_ranged',
+    targetId: 'lia:spore_rat',
+    params: { entityId: 'lia', weaponDamage: 500, range: 8, odCost: 0 },
+  });
+  await graph.tickOnce();
+  for (let step = 0; step < 12 && (graph.state() as { self: { phase: string } | null }).self?.phase !== 'downed'; step += 1) {
+    await graph.tickOnce();
+  }
+  const downed = graph.state() as { nowMs: number; self: { phase: string; nodeId: string | null } | null };
+  expect(downed.self?.phase).toBe('downed');
+  const diedAt = downed.nowMs;
+  graph.submit({
+    commandId: 'too-soon',
+    seq: 2,
+    issuedAtMs: diedAt,
+    action: 'respawn',
+    params: { entityId: 'lia' },
+  });
+  await graph.tickOnce();
+  expect((graph.state() as { self: { phase: string } | null }).self?.phase).toBe('downed');
+  await graph.skipMs(30_000);
+  graph.submit({
+    commandId: 'camp-up',
+    seq: 3,
+    issuedAtMs: (graph.state() as { nowMs: number }).nowMs,
+    action: 'respawn',
+    params: { entityId: 'lia' },
+  });
+  await graph.tickOnce();
+  expect((graph.state() as { self: { phase: string; nodeId: string | null } | null }).self).toMatchObject({
+    phase: 'online',
+    nodeId: 'muster:fort_humans',
+  });
+});
+
 test('a suzerain must defend, ally markers are stored, and a coalition channel posts', async () => {
   const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
   const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
@@ -776,12 +886,14 @@ test('a suzerain must defend, ally markers are stored, and a coalition channel p
     allies: { guildId: string; nodeId: string; characterId: string }[];
     diplomacy: { text: string }[];
   };
-  expect(state.defenses).toContainEqual({
-    warId: (declared.value as { warId: string }).warId,
-    cityId: 'fort_humans',
-    suzerainId: ash,
-    vassalId: wolves,
-  });
+  expect(state.defenses).toContainEqual(
+    expect.objectContaining({
+      warId: (declared.value as { warId: string }).warId,
+      cityId: 'fort_humans',
+      suzerainId: ash,
+      vassalId: wolves,
+    }),
+  );
   expect(state.allies).toContainEqual({ guildId: ash, nodeId: 'fort_humans', characterId: 'kai' });
   expect(
     await graph.act('pact', {
@@ -802,4 +914,171 @@ test('a suzerain must defend, ally markers are stored, and a coalition channel p
   expect((graph.state() as { diplomacy: { text: string }[] }).diplomacy.map((row) => row.text)).toEqual([
     'hold the gate',
   ]);
+});
+
+test('an escort contract completes when the mercenary walks to the destination', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterWorld('lia', 'plains_mine');
+  graph.enterCharacter('account-lia', 'lia');
+  graph.enterWorld('blade', 'plains_mine');
+  graph.enterCharacter('account-blade', 'blade');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'blade', action: 'wait' });
+  const guildId = await foundGuild(graph);
+  const guild = await graph.guild.repository.findGuild(guildId);
+  if (guild === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...guild, bank: 20_000 });
+  const hired = await graph.act('mercenary', {
+    guildId,
+    characterId: 'lia',
+    mercenaryId: 'blade',
+    nodeId: 'plains_mine',
+    destinationId: 'fort_humans',
+    kind: 'escort',
+    rewardGold: 100,
+    durationMs: 60_000,
+  });
+  expect(hired.ok).toBe(true);
+  graph.submit({
+    commandId: 'walk-escort',
+    seq: 1,
+    issuedAtMs: 0,
+    action: 'step_s',
+    params: { entityId: 'blade', to: 'fort_humans' },
+  });
+  let arrived = false;
+  for (let step = 0; step < 80 && !arrived; step += 1) {
+    await graph.tickOnce();
+    const players = (graph.state() as { players: { id: string; nodeId: string | null }[] }).players;
+    arrived = players.find((row) => row.id === 'blade')?.nodeId === 'fort_humans';
+  }
+  expect(arrived).toBe(true);
+  const done = (graph.state() as { mercenaries: { kind: string; status: string }[] }).mercenaries.find(
+    (row) => row.kind === 'escort',
+  );
+  expect(done?.status).toBe('complete');
+});
+
+test('a suzerain who never walks to the city pays the pact-breach fine', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  const wolves = await foundGuild(graph);
+  await winCity(graph, wolves, 'fort_humans');
+  await graph.skipMs(CITY_CAPTURE_COOLDOWN_MS);
+  graph.enterWorld('kai', 'cross_light');
+  graph.enterCharacter('account-kai', 'kai');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'kai', action: 'wait' });
+  const ashCreated = await graph.act('guild_create', {
+    name: 'Ash Keepers',
+    tag: 'ASH',
+    initiatorId: 'kai',
+    leaderId: 'kai',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'kai', level: 5 },
+      { id: 'n1', level: 5 },
+      { id: 'n2', level: 5 },
+      { id: 'n3', level: 5 },
+    ],
+  });
+  expect(ashCreated.ok).toBe(true);
+  const ash = (ashCreated.value as { guildId: string }).guildId;
+  const suzerain = await graph.guild.repository.findGuild(ash);
+  if (suzerain === null) {
+    throw new Error('missing suzerain');
+  }
+  await graph.guild.repository.saveGuild({ ...suzerain, bank: 80_000 });
+  expect(
+    await graph.act('pact', {
+      kind: 'vassal',
+      guildIds: [wolves, ash],
+      suzerainId: ash,
+      vassalId: wolves,
+      taxPercent: VASSAL_TAX_MIN,
+      characterId: 'lia',
+    }),
+  ).toMatchObject({ ok: true });
+  graph.enterCharacter('account-noa', 'noa');
+  const oakCreated = await graph.act('guild_create', {
+    name: 'Oak',
+    tag: 'OAK',
+    initiatorId: 'noa',
+    leaderId: 'noa',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'noa', level: 5 },
+      { id: 'o1', level: 5 },
+      { id: 'o2', level: 5 },
+      { id: 'o3', level: 5 },
+    ],
+  });
+  expect(oakCreated.ok).toBe(true);
+  const oak = (oakCreated.value as { guildId: string }).guildId;
+  const attacker = await graph.guild.repository.findGuild(oak);
+  if (attacker === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...attacker, bank: 100_000 });
+  const declared = await graph.act('guild_war', {
+    attackerGuildId: oak,
+    cityId: 'fort_humans',
+    leaderConsent: true,
+    councilConsents: 2,
+    resources: WAR_RESOURCES,
+  });
+  expect(declared.ok).toBe(true);
+  await graph.skipMs(WAR_LEAD_MS + WAR_MUSTER_MS + WAR_ASSAULT_MS + WAR_FINISH_MS);
+  expect((await graph.guild.repository.findGuild(ash))?.bank).toBe(80_000 - NAP_BREACH_GOLD);
+  const flags = (graph.state() as { suzerainFlags: { guildId: string; fine: number }[] }).suzerainFlags;
+  expect(flags).toContainEqual(expect.objectContaining({ guildId: ash, fine: NAP_BREACH_GOLD }));
+});
+
+test('a recent leader cannot found another guild, and two unfought wars freeze rewards', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  const guildId = await foundGuild(graph);
+  const again = await graph.act('guild_create', {
+    name: 'Second Pack',
+    tag: 'SP',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    gold: GUILD_CREATE_GOLD,
+    members: founders,
+  });
+  expect(again).toMatchObject({ ok: false, code: 'cooldown' });
+  await winCity(graph, guildId, 'fort_humans');
+  await graph.skipMs(CITY_CAPTURE_COOLDOWN_MS);
+  const guild = await graph.guild.repository.findGuild(guildId);
+  if (guild === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...guild, bank: 200_000 });
+  const quietWar = async () => {
+    const declared = await graph.act('guild_war', {
+      attackerGuildId: guildId,
+      cityId: 'fort_humans',
+      leaderConsent: true,
+      councilConsents: 2,
+      resources: WAR_RESOURCES,
+    });
+    expect(declared.ok).toBe(true);
+    await graph.skipMs(WAR_LEAD_MS + WAR_MUSTER_MS + WAR_ASSAULT_MS + WAR_FINISH_MS);
+  };
+  await quietWar();
+  expect((graph.state() as { abuse: { frozen: string[] } }).abuse.frozen).not.toContain(guildId);
+  await graph.skipMs(DRAW_WAR_COOLDOWN_MS);
+  const funded = await graph.guild.repository.findGuild(guildId);
+  if (funded === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...funded, bank: 200_000 });
+  await quietWar();
+  expect((graph.state() as { abuse: { frozen: string[]; reasons: string[] } }).abuse.reasons).toContain(
+    'repeat_no_fight',
+  );
+  expect((graph.state() as { abuse: { frozen: string[] } }).abuse.frozen).toContain(guildId);
 });
