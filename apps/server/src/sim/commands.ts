@@ -1,6 +1,13 @@
 import { DIRS, type Dir } from '@rift/domain/movement';
 import type { ClientCommand } from '@rift/protocol';
-import type { AttackCommand, MoveCommand, SimCommand } from './tick';
+import type {
+  AttackCommand,
+  LootCommand,
+  MoveCommand,
+  RespawnCommand,
+  ReviveCommand,
+  SimCommand,
+} from './tick';
 
 const DIR_SET = new Set<string>(DIRS);
 
@@ -15,7 +22,37 @@ export function toSimCommand(command: ClientCommand): SimCommand | null {
   if (command.action === 'attack_melee' || command.action === 'attack_ranged') {
     return toAttack(command);
   }
+  if (command.action === 'revive' || command.action === 'respawn' || command.action === 'loot_corpse') {
+    return toLife(command);
+  }
   return null;
+}
+
+function toLife(command: ClientCommand): ReviveCommand | RespawnCommand | LootCommand | null {
+  const entityId = command.params.entityId;
+  if (typeof entityId !== 'string') {
+    return null;
+  }
+  if (command.action === 'respawn') {
+    return { type: 'respawn', entityId, issuedAtMs: command.issuedAtMs };
+  }
+  if (command.targetId === undefined) {
+    return null;
+  }
+  if (command.action === 'revive') {
+    return { type: 'revive', entityId, victimId: command.targetId, issuedAtMs: command.issuedAtMs };
+  }
+  const itemId = command.params.itemId;
+  if (typeof itemId !== 'string') {
+    return null;
+  }
+  return {
+    type: 'loot',
+    entityId,
+    victimId: command.targetId,
+    itemId,
+    issuedAtMs: command.issuedAtMs,
+  };
 }
 
 function toMove(command: ClientCommand): MoveCommand | null {

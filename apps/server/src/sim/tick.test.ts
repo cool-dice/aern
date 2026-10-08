@@ -61,6 +61,9 @@ function entity(partial: Partial<SimEntity> & Pick<SimEntity, 'id'>): SimEntity 
     phases: partial.phases,
     speedMultiplier: partial.speedMultiplier,
     rank: partial.rank,
+    bindNodeId: partial.bindNodeId,
+    bindCell: partial.bindCell,
+    inventory: partial.inventory,
   };
 }
 
@@ -202,7 +205,7 @@ test('an opening aimed attack that cannot pay does not enter combat', () => {
   expect(rejected.entities[1]?.hp).toBe(40);
 });
 
-test('the first attack enters combat at 1 OD and can drop HP below 0 without downing', () => {
+test('the first attack enters combat at 1 OD and 0 HP downs the target', () => {
   const start = world({
     entities: [
       entity({ id: 'a', inCombat: false, od: 8, odFrac: 8.4, cell: { x: 0, y: 0 } }),
@@ -224,7 +227,8 @@ test('the first attack enters combat at 1 OD and can drop HP below 0 without dow
   expect(target?.od).toBe(1);
   expect(target?.odFrac).toBe(1);
   expect(target?.hp).toBeLessThan(0);
-  expect(target?.phase).toBe('online');
+  expect(target?.phase).toBe('downed');
+  expect(done.corpses[0]?.victimId).toBe('b');
 });
 
 test('spending OD keeps the fraction', () => {

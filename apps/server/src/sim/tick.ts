@@ -8,6 +8,13 @@ import {
   type Combatant,
   type LimbId,
 } from '@rift/domain/combat';
+import {
+  fallDown,
+  respawnAtBind,
+  revive,
+  takeFromCorpse,
+  type LootStack as CorpseStack,
+} from '@rift/domain/death';
 import { cellsFor, chebyshev, move, step, type Cell, type Dir } from '@rift/domain/movement';
 import type { Rng } from '@rift/domain/rng';
 import { derive, emptyPoints } from '@rift/domain/stats';
@@ -66,6 +73,8 @@ export interface SimEntity {
   speedMultiplier?: number;
   rank?: 'basic' | 'boss';
   bindNodeId?: string;
+  bindCell?: Cell;
+  inventory?: CorpseStack[];
 }
 
 export interface SimCorpse {
@@ -107,7 +116,28 @@ export interface AttackCommand {
   distance?: number;
 }
 
-export type SimCommand = MoveCommand | AttackCommand;
+export interface ReviveCommand {
+  type: 'revive';
+  entityId: string;
+  victimId: string;
+  issuedAtMs: number;
+}
+
+export interface RespawnCommand {
+  type: 'respawn';
+  entityId: string;
+  issuedAtMs: number;
+}
+
+export interface LootCommand {
+  type: 'loot';
+  entityId: string;
+  victimId: string;
+  itemId: string;
+  issuedAtMs: number;
+}
+
+export type SimCommand = MoveCommand | AttackCommand | ReviveCommand | RespawnCommand | LootCommand;
 
 export interface SimWorld {
   tick: number;
@@ -166,10 +196,11 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
   }
 
   const obstacles = world.obstacles.map((cell) => ({ x: cell.x, y: cell.y }));
-  for (const command of orderCommands(entities, commands, rng)) {
+  const ordered = orderCommands(entities, commands, rng);
+  for (const command of ordered) {
     if (command.type === 'move') {
       applyMove(entities, command, rejections, mods, obstacles);
-    } else {
+    } else if (command.type === 'attack') {
       applyAttack(entities, command, rejections, mods, nowMs);
     }
   }
@@ -179,6 +210,16 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
   }
 
   const settled = settleMonsters(entities, world.corpses, rng, nowMs, world.lootTables);
+  settlePlayers(settled.entities, settled.corpses, nowMs);
+  for (const command of ordered) {
+    if (command.type === 'revive') {
+      applyRevive(settled.entities, settled.corpses, command, rejections, nowMs);
+    } else if (command.type === 'respawn') {
+      applyRespawn(settled.entities, command, rejections);
+    } else if (command.type === 'loot') {
+      applyLoot(settled.entities, settled.corpses, command, rejections, nowMs);
+    }
+  }
 
   const next: SimWorld = {
     tick,
@@ -307,8 +348,149 @@ function orderCommands(
 }
 
 function reactionOf(entities: readonly SimEntity[], command: SimCommand): number {
-  const id = command.type === 'move' ? command.entityId : command.attackerId;
+  const id = command.type === 'attack' ? command.attackerId : command.entityId;
   return findEntity(entities, id)?.reaction ?? 0;
+}
+
+function settlePlayers(entities: SimEntity[], corpses: SimCorpse[], nowMs: number): void {
+  for (const entity of entities) {
+    if (entity.monsterId !== undefined || entity.phase !== 'online' || entity.hp > 0) {
+      continue;
+    }
+    const fell = fallDown({
+      victimId: entity.id,
+      life: {
+        phase: 'online',
+        hp: entity.hp,
+        bindNodeId: entity.bindNodeId ?? 'fort_humans',
+        inventory: entity.inventory ?? [],
+      },
+      nowMs,
+      maxHp: entity.maxHp,
+    });
+    entity.phase = 'downed';
+    entity.hp = fell.life.hp;
+    entity.inventory = [];
+    corpses.push({
+      victimId: fell.corpse.victimId,
+      createdAtMs: fell.corpse.createdAtMs,
+      stacks: fell.corpse.stacks.map((stack) => ({
+        itemId: stack.itemId,
+        qty: 1,
+        questItem: stack.questItem,
+        ...(stack.questOwnerId !== undefined ? { questOwnerId: stack.questOwnerId } : {}),
+      })),
+      looted: fell.corpse.looted,
+      bindNodeId: fell.corpse.bindNodeId,
+    });
+  }
+}
+
+function applyRevive(
+  entities: SimEntity[],
+  corpses: SimCorpse[],
+  command: ReviveCommand,
+  rejections: SimRejection[],
+  nowMs: number,
+): void {
+  const entity = findEntity(entities, command.victimId);
+  const index = corpses.findIndex((corpse) => corpse.victimId === command.victimId);
+  const corpse = index >= 0 ? corpses[index] : undefined;
+  if (entity === undefined || corpse === undefined || corpse.createdAtMs === undefined) {
+    rejections.push({ entityId: command.entityId, code: 'missing' });
+    return;
+  }
+  const revived = revive(toDomainCorpse(corpse), entity.maxHp, nowMs);
+  if (!revived.ok) {
+    rejections.push({ entityId: command.entityId, code: revived.code });
+    return;
+  }
+  entity.phase = 'online';
+  entity.hp = revived.value.life.hp;
+  entity.inventory = revived.value.inventory;
+  entity.inCombat = false;
+  corpses.splice(index, 1);
+}
+
+function applyRespawn(
+  entities: SimEntity[],
+  command: RespawnCommand,
+  rejections: SimRejection[],
+): void {
+  const entity = findEntity(entities, command.entityId);
+  if (entity === undefined || entity.phase !== 'downed') {
+    rejections.push({ entityId: command.entityId, code: 'missing' });
+    return;
+  }
+  const spawned = respawnAtBind(
+    {
+      phase: 'downed',
+      hp: entity.hp,
+      bindNodeId: entity.bindNodeId ?? 'fort_humans',
+      inventory: entity.inventory ?? [],
+    },
+    entity.maxHp,
+    Math.max(1, entity.od),
+  );
+  entity.phase = 'online';
+  entity.hp = spawned.life.hp;
+  entity.inventory = [];
+  entity.inCombat = false;
+  entity.cell = entity.bindCell ?? { x: 0, y: 0 };
+  entity.od = spawned.od;
+  entity.odFrac = spawned.od;
+}
+
+function applyLoot(
+  entities: SimEntity[],
+  corpses: SimCorpse[],
+  command: LootCommand,
+  rejections: SimRejection[],
+  nowMs: number,
+): void {
+  const index = corpses.findIndex((corpse) => corpse.victimId === command.victimId);
+  const corpse = index >= 0 ? corpses[index] : undefined;
+  if (corpse === undefined || corpse.createdAtMs === undefined) {
+    rejections.push({ entityId: command.entityId, code: 'missing' });
+    return;
+  }
+  const taken = takeFromCorpse(toDomainCorpse(corpse), command.itemId, command.entityId, nowMs);
+  if (!taken.ok) {
+    rejections.push({ entityId: command.entityId, code: taken.code });
+    return;
+  }
+  const looter = findEntity(entities, command.entityId);
+  if (looter !== undefined) {
+    looter.inventory = [...(looter.inventory ?? []), taken.value.stack];
+  }
+  corpses[index] = {
+    victimId: taken.value.corpse.victimId,
+    createdAtMs: taken.value.corpse.createdAtMs,
+    stacks: taken.value.corpse.stacks.map((stack) => ({
+      itemId: stack.itemId,
+      qty: 1,
+      questItem: stack.questItem,
+      ...(stack.questOwnerId !== undefined ? { questOwnerId: stack.questOwnerId } : {}),
+    })),
+    looted: taken.value.corpse.looted,
+    bindNodeId: taken.value.corpse.bindNodeId,
+  };
+}
+
+function toDomainCorpse(corpse: SimCorpse) {
+  return {
+    victimId: corpse.victimId,
+    createdAtMs: corpse.createdAtMs ?? 0,
+    stacks: (corpse.stacks ?? []).map((stack) => ({
+      itemId: stack.itemId,
+      questItem: stack.questItem === true,
+      ...(stack.questOwnerId !== undefined ? { questOwnerId: stack.questOwnerId } : {}),
+      durability: 100,
+      equipped: false,
+    })),
+    looted: corpse.looted === true,
+    bindNodeId: corpse.bindNodeId ?? 'fort_humans',
+  };
 }
 
 function applyMove(
@@ -523,6 +705,9 @@ function cloneEntity(entity: SimEntity): SimEntity {
     cell: { x: entity.cell.x, y: entity.cell.y },
     statuses: entity.statuses.map((status) => ({ ...status })),
     limbs: entity.limbs === undefined ? undefined : { ...entity.limbs },
+    inventory: entity.inventory?.map((stack) => ({ ...stack })),
+    bindCell: entity.bindCell === undefined ? undefined : { x: entity.bindCell.x, y: entity.bindCell.y },
+    phases: entity.phases === undefined ? undefined : [...entity.phases],
   };
 }
 

@@ -1,6 +1,6 @@
 # 103. Смерть, труп, подъём, респавн
 
-status: pending
+status: done
 
 ## Правило GDD
 
