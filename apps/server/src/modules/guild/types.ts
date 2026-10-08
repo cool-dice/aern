@@ -23,6 +23,8 @@ export interface CreateGuildInput {
   initiatorId?: string;
   leaderId?: string;
   lastOfficeMs?: number | null;
+  emblem?: string;
+  description?: string;
 }
 
 export interface DeclareWarInput {
@@ -46,6 +48,13 @@ export interface WithdrawInput {
   leaderConfirm?: boolean;
   councilConfirms?: number;
   councilVote?: boolean;
+  goldWithdrawnToday?: number;
+  resourceStock?: number;
+  resourceAmount?: number;
+  resourcesWithdrawnToday?: number;
+  itemSlots?: number;
+  itemAmount?: number;
+  itemsWithdrawnToday?: number;
 }
 
 export interface GuildService {
@@ -64,6 +73,8 @@ export interface StoredGuild {
   id: string;
   name: string;
   tag: string;
+  emblem?: string;
+  description?: string;
   leaderId: string;
   memberIds: string[];
   bank: number;

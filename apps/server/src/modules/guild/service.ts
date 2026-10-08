@@ -62,6 +62,8 @@ function parseCreate(input: unknown): CreateGuildInput | undefined {
     input.lastOfficeMs === null || typeof input.lastOfficeMs === 'number'
       ? input.lastOfficeMs
       : null;
+  const emblem = typeof input.emblem === 'string' ? input.emblem : '';
+  const description = typeof input.description === 'string' ? input.description : '';
   return {
     name: input.name,
     tag: input.tag,
@@ -70,6 +72,8 @@ function parseCreate(input: unknown): CreateGuildInput | undefined {
     initiatorId,
     leaderId,
     lastOfficeMs,
+    emblem,
+    description,
   };
 }
 
@@ -125,6 +129,8 @@ export class GuildService implements GuildServiceApi {
       gold: parsed.gold,
       nowMs: this.options.now(),
       lastOfficeMs: parsed.lastOfficeMs ?? null,
+      emblem: parsed.emblem ?? '',
+      description: parsed.description ?? '',
     });
     if (!drafted.ok) {
       return { ok: false, code: drafted.code };
@@ -138,6 +144,8 @@ export class GuildService implements GuildServiceApi {
       id: guildId,
       name: drafted.value.name,
       tag: drafted.value.tag,
+      emblem: drafted.value.emblem,
+      description: drafted.value.description,
       leaderId: drafted.value.leaderId,
       memberIds: drafted.value.memberIds,
       bank: drafted.value.gold,
@@ -204,6 +212,15 @@ export class GuildService implements GuildServiceApi {
       leaderConfirm: input.leaderConfirm ?? false,
       councilConfirms: input.councilConfirms ?? 0,
       councilVote: input.councilVote ?? false,
+      ...(input.goldWithdrawnToday !== undefined ? { goldWithdrawnToday: input.goldWithdrawnToday } : {}),
+      ...(input.resourceStock !== undefined ? { resourceStock: input.resourceStock } : {}),
+      ...(input.resourceAmount !== undefined ? { resourceAmount: input.resourceAmount } : {}),
+      ...(input.resourcesWithdrawnToday !== undefined
+        ? { resourcesWithdrawnToday: input.resourcesWithdrawnToday }
+        : {}),
+      ...(input.itemSlots !== undefined ? { itemSlots: input.itemSlots } : {}),
+      ...(input.itemAmount !== undefined ? { itemAmount: input.itemAmount } : {}),
+      ...(input.itemsWithdrawnToday !== undefined ? { itemsWithdrawnToday: input.itemsWithdrawnToday } : {}),
     });
     if (!taken.ok) {
       return { ok: false, code: taken.code };

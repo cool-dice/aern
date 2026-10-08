@@ -516,14 +516,32 @@ function bindQuests(db: RiftDb): QuestProgressRepository {
 }
 
 function bindGuilds(db: RiftDb): GuildRepository {
-  function toGuild(row: Record<string, unknown>, memberIds: string[], bank: number): StoredGuild {
+  function toGuild(
+    row: Record<string, unknown>,
+    memberIds: string[],
+    bank: number,
+    charter?: { emblem?: string; description?: string },
+  ): StoredGuild {
     return {
       id: String(row.id),
       name: String(row.name),
       tag: String(row.tag),
+      emblem: charter?.emblem ?? '',
+      description: charter?.description ?? '',
       leaderId: String(row.leaderId),
       memberIds,
       bank,
+    };
+  }
+
+  function charterOf(items: unknown): { emblem: string; description: string } {
+    if (typeof items !== 'object' || items === null || Array.isArray(items)) {
+      return { emblem: '', description: '' };
+    }
+    const row = items as { emblem?: unknown; description?: unknown };
+    return {
+      emblem: typeof row.emblem === 'string' ? row.emblem : '',
+      description: typeof row.description === 'string' ? row.description : '',
     };
   }
 
@@ -541,10 +559,11 @@ function bindGuilds(db: RiftDb): GuildRepository {
         },
         update: { name: guild.name, tag: guild.tag, leaderId: guild.leaderId },
       });
+      const charter = { emblem: guild.emblem ?? '', description: guild.description ?? '', slots: [] };
       await db.guildBank.upsert({
         where: { guildId: guild.id },
-        create: { guildId: guild.id, gold: guild.bank, items: [], resources: [] },
-        update: { gold: guild.bank },
+        create: { guildId: guild.id, gold: guild.bank, items: charter, resources: [] },
+        update: { gold: guild.bank, items: charter },
       });
       for (const memberId of guild.memberIds) {
         const rank = memberId === guild.leaderId ? 'leader' : 'member';
@@ -571,6 +590,7 @@ function bindGuilds(db: RiftDb): GuildRepository {
         row,
         members.map((member) => String(member.characterId)),
         Number(bank?.gold ?? 0),
+        charterOf(bank?.items),
       );
     },
     async listGuilds() {
@@ -585,6 +605,7 @@ function bindGuilds(db: RiftDb): GuildRepository {
             row,
             members.map((member) => String(member.characterId)),
             Number(bank?.gold ?? 0),
+            charterOf(bank?.items),
           ),
         );
       }

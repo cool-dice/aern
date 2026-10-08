@@ -115,6 +115,8 @@ test('live create with four level-5 members and 10000 gold stores a guild and de
       id: created.value.guildId,
       name: 'Red Wolves',
       tag: 'RW',
+      emblem: '',
+      description: '',
       leaderId: 'm0',
       memberIds: ['m0', 'm1', 'm2', 'm3'],
       bank: 0,

@@ -5,6 +5,8 @@ function copyGuild(guild: StoredGuild): StoredGuild {
     id: guild.id,
     name: guild.name,
     tag: guild.tag,
+    emblem: guild.emblem ?? '',
+    description: guild.description ?? '',
     leaderId: guild.leaderId,
     memberIds: [...guild.memberIds],
     bank: guild.bank,
