@@ -5,10 +5,12 @@ import { expect, test } from 'vitest';
 import { createClientStore } from '../state/store';
 import {
   askPortal,
+  castGuildChoice,
   completeTrade,
   declareWar,
   enterDungeon,
   grantNode,
+  postGuildEmblem,
   postMercenary,
   postPatrol,
   rentStorage,
@@ -41,6 +43,10 @@ test('the play screen posts craft and trade through App', () => {
   expect(app).toContain("kind: 'escort'");
   expect(app).toContain('destinationId:');
   expect(app).toContain('castLeaderVote(');
+  expect(app).toContain('castGuildChoice(');
+  expect(app).toContain("choice: 'yes'");
+  expect(app).toContain('postGuildEmblem(');
+  expect(app).toContain("emblem: 'wolf'");
   expect(app).toContain('dissolveGuild(');
   expect(app).toContain('strikeNode(');
   expect(app).toContain('postPatrol(');
@@ -54,6 +60,10 @@ test('the play screen posts craft and trade through App', () => {
   expect(panels).toContain('data-portal="ask"');
   expect(panels).toContain('data-dungeon="share"');
   expect(panels).toContain('data-dungeon="solo"');
+  expect(panels).toContain('data-vote="choice"');
+  expect(panels).toContain('data-emblem="set"');
+  expect(app).toContain('onChoice=');
+  expect(app).toContain('onEmblem=');
 });
 
 test('startCraft posts /craft/start and stores the job', async () => {
@@ -306,6 +316,47 @@ test('the play session posts city fees, node commands, storage, war, and contrac
   expect(store.getState().serviceResult?.route).toBe('/patrol');
   expect(store.getState().captures).toEqual([{ cityId: 'fort_humans', guildId: 'wolves', heldMs: 1, won: true }]);
   expect(store.getState().resourceNodes[0]?.chest).toBe(4);
+});
+
+test('the play session posts an internal ballot choice and a guild emblem', async () => {
+  const store = createClientStore();
+  const calls: { url: string; body: Record<string, unknown> }[] = [];
+  const fetchImpl = async (url: string, init: { body: string }) => {
+    calls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
+    return { ok: true, json: async () => ({ ok: true }) };
+  };
+  await castGuildChoice({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    voterId: 'lia',
+    choice: 'yes',
+    store,
+    fetchImpl,
+  });
+  await postGuildEmblem({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    emblem: 'wolf',
+    description: 'the red pack',
+    store,
+    fetchImpl,
+  });
+  expect(calls).toEqual([
+    {
+      url: 'http://game.example/guild/vote',
+      body: { guildId: 'wolves', voterId: 'lia', choice: 'yes' },
+    },
+    {
+      url: 'http://game.example/guild/emblem',
+      body: {
+        guildId: 'wolves',
+        characterId: 'lia',
+        emblem: 'wolf',
+        description: 'the red pack',
+      },
+    },
+  ]);
 });
 
 test('an escort posts the destination the live route already accepts', async () => {

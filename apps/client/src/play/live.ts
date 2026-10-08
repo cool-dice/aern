@@ -448,6 +448,50 @@ export async function renewPact(input: {
   });
 }
 
+/** Posts `/guild/vote` with an internal ballot `choice`. Section 3.3 is not a leader candidate. */
+export async function castGuildChoice(input: {
+  server: string;
+  guildId: string;
+  voterId: string;
+  choice: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/guild/vote',
+    body: { guildId: input.guildId, voterId: input.voterId, choice: input.choice },
+    store: input.store,
+    log: 'choice',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/guild/emblem`. An open leader poll keeps it until that poll closes. */
+export async function postGuildEmblem(input: {
+  server: string;
+  guildId: string;
+  characterId: string;
+  emblem: string;
+  description?: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/guild/emblem',
+    body: {
+      guildId: input.guildId,
+      characterId: input.characterId,
+      emblem: input.emblem,
+      ...(input.description !== undefined ? { description: input.description } : {}),
+    },
+    store: input.store,
+    log: 'emblem',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/guild/vote`. One character, one ballot. The server calls `castLeaderVote`. */
 export async function castLeaderVote(input: {
   server: string;

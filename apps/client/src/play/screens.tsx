@@ -71,6 +71,8 @@ export function PlayPanels({
   onContend,
   onCoalition,
   onVote,
+  onChoice,
+  onEmblem,
   onDissolve,
   onStrike,
 }: {
@@ -96,6 +98,8 @@ export function PlayPanels({
   onContend?: () => void;
   onCoalition?: () => void;
   onVote?: () => void;
+  onChoice?: () => void;
+  onEmblem?: () => void;
   onDissolve?: () => void;
   onStrike?: () => void;
 }): ReactElement | null {
@@ -201,6 +205,12 @@ export function PlayPanels({
         </button>
         <button type="button" data-vote="leader" onClick={() => onVote?.()}>
           vote
+        </button>
+        <button type="button" data-vote="choice" onClick={() => onChoice?.()}>
+          choice
+        </button>
+        <button type="button" data-emblem="set" onClick={() => onEmblem?.()}>
+          emblem
         </button>
         <button type="button" data-dissolve="guild" onClick={() => onDissolve?.()}>
           dissolve

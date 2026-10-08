@@ -853,6 +853,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     registerAtHall,
     banFounder,
     openLeaderPoll,
+    setCharterEmblem,
     seatCharter,
     carriersBlocked: carriersBlockedIds,
     leadershipBlocked,
@@ -3167,6 +3168,45 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
   }
 
+  async function setCharterEmblem(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const characterId =
+      typeof body.characterId === 'string'
+        ? body.characterId
+        : typeof body.voterId === 'string'
+          ? body.voterId
+          : '';
+    const emblem = typeof body.emblem === 'string' ? body.emblem : '';
+    const description = typeof body.description === 'string' ? body.description : undefined;
+    if (guildId.length === 0 || characterId.length === 0 || emblem.length === 0) {
+      return { ok: false, code: 'member' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null || !guild.memberIds.includes(characterId)) {
+      return { ok: false, code: 'member' };
+    }
+    const rank = rankRecord(guildId)[characterId];
+    if (rank !== 'leader' && rank !== 'council') {
+      return { ok: false, code: 'rank' };
+    }
+    const poll = leaderPolls.get(guildId);
+    if (poll !== undefined && !poll.closed) {
+      poll.emblem = emblem;
+      if (description !== undefined) {
+        poll.description = description;
+      }
+      return { ok: true, value: { stored: false, emblem, description: poll.description } };
+    }
+    await repos.guilds.saveGuild({
+      ...guild,
+      emblem,
+      ...(description !== undefined ? { description } : {}),
+    });
+    return { ok: true, value: { stored: true, emblem, description: description ?? guild.description } };
+  }
+
   function openLeaderPoll(guildId: string, emblem = '', description = ''): void {
     if (leaderPolls.has(guildId)) {
       const poll = leaderPolls.get(guildId);
@@ -5188,6 +5228,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/guild/withdraw', action: 'guild_withdraw' },
   { path: '/guild/rank', action: 'guild_rank' },
   { path: '/guild/vote', action: 'guild_vote' },
+  { path: '/guild/emblem', action: 'guild_emblem' },
   { path: '/guild/join', action: 'guild_join' },
   { path: '/guild/dissolve', action: 'guild_dissolve' },
   { path: '/guild/deposit', action: 'guild_deposit' },

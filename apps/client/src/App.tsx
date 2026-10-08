@@ -14,6 +14,7 @@ import { PlayPanels } from './play/screens';
 import {
   askPortal,
   breakPact,
+  castGuildChoice,
   castLeaderVote,
   completeTrade,
   declareWar,
@@ -22,6 +23,7 @@ import {
   grantNode,
   noticePact,
   postCoalition,
+  postGuildEmblem,
   postMercenary,
   postPatrol,
   registerContender,
@@ -691,6 +693,33 @@ export function App() {
                 guildId: 'guild',
                 voterId: characterId,
                 candidateId: 'm1',
+                store: plan.store,
+              });
+            }}
+            onChoice={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void castGuildChoice({
+                server: SERVER,
+                guildId: 'guild',
+                voterId: characterId,
+                choice: 'yes',
+                store: plan.store,
+              });
+            }}
+            onEmblem={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postGuildEmblem({
+                server: SERVER,
+                guildId: 'guild',
+                characterId,
+                emblem: 'wolf',
+                description: 'the red pack',
                 store: plan.store,
               });
             }}

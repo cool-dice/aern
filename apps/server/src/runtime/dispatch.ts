@@ -123,6 +123,7 @@ export interface LivePorts {
   registerAtHall(initiatorId: string, place: string | undefined): LiveResult;
   banFounder(body: Record<string, unknown>): LiveResult;
   openLeaderPoll(guildId: string, emblem?: string, description?: string): void;
+  setCharterEmblem(body: Record<string, unknown>): Promise<LiveResult>;
   seatCharter(guildId: string, leaderId: string, memberIds: readonly string[]): void;
   carriersBlocked(memberIds: readonly string[]): Promise<boolean>;
   leadershipBlocked(characterId: string): Promise<boolean>;
@@ -214,6 +215,7 @@ const LIVE_ACTIONS = new Set([
   'guild_withdraw',
   'guild_rank',
   'guild_vote',
+  'guild_emblem',
   'guild_join',
   'guild_dissolve',
   'guild_deposit',
@@ -325,6 +327,8 @@ export async function runLive(
       return guildRank(body, ports);
     case 'guild_vote':
       return ports.castLeaderBallot(body);
+    case 'guild_emblem':
+      return ports.setCharterEmblem(body);
     case 'guild_join':
       return ports.joinGuild(body);
     case 'guild_dissolve':

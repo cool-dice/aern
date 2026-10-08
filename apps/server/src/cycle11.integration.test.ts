@@ -137,6 +137,14 @@ test('cycle 11 hooks are called from tickOnce, skipMs, or the live route', () =>
   expect(opened.includes('emblem')).toBe(true);
   expect(finish.includes('poll.emblem')).toBe(true);
   expect(finish.includes('poll.description')).toBe(true);
+  expect(dispatch.includes("case 'guild_emblem'")).toBe(true);
+  expect(dispatch.includes('setCharterEmblem(')).toBe(true);
+  const emblem = composeSource.slice(
+    composeSource.indexOf('async function setCharterEmblem'),
+    composeSource.indexOf('function openLeaderPoll'),
+  );
+  expect(emblem.includes('poll.emblem = emblem')).toBe(true);
+  expect(emblem.includes('saveGuild(')).toBe(true);
   expect(create.includes('seatFounders(')).toBe(false);
   expect(create.includes('leadershipBlocked(')).toBe(true);
   const join = dispatch.slice(dispatch.indexOf("case 'guild_join'"), dispatch.indexOf("case 'guild_dissolve'"));
@@ -399,6 +407,30 @@ test('the charter stores an emblem and description, and withdraw caps items', as
     itemAmount: 1,
   });
   expect(extra).toMatchObject({ ok: false, code: 'limit' });
+});
+
+test('an emblem posted while the leader poll is open is stored when that poll closes', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  const guildId = await foundGuild(graph);
+  expect((await graph.guild.repository.findGuild(guildId))?.emblem).toBe('');
+  const posted = await graph.act('guild_emblem', {
+    guildId,
+    characterId: 'lia',
+    emblem: 'bear',
+    description: 'the ash pack',
+  });
+  expect(posted).toMatchObject({ ok: true, value: { stored: false, emblem: 'bear' } });
+  expect((await graph.guild.repository.findGuild(guildId))?.emblem).toBe('');
+  expect(await graph.act('guild_emblem', { guildId, characterId: 'm1', emblem: 'fox' })).toMatchObject({
+    ok: false,
+    code: 'rank',
+  });
+  expect(await graph.act('guild_vote', { guildId, voterId: 'm1', candidateId: 'lia' })).toMatchObject({ ok: true });
+  expect(await graph.act('guild_vote', { guildId, voterId: 'm2', candidateId: 'lia' })).toMatchObject({ ok: true });
+  const stored = await graph.guild.repository.findGuild(guildId);
+  expect(stored?.emblem).toBe('bear');
+  expect(stored?.description).toBe('the ash pack');
 });
 
 test('creation refuses an unconfirmed founder and a founder outside the city hall', async () => {
