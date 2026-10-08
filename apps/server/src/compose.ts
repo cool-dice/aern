@@ -151,6 +151,7 @@ import {
   seatRank,
   strikeNodeFlag,
   succeedAbsentLeader,
+  canVote,
   voteQuorum,
   nodeAccessAllows,
   nodeAccessCategory,
@@ -5068,6 +5069,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (poll.ballots.some((row) => row.voterId === voterId)) {
       return { ok: false, code: 'stuffed' };
     }
+    const leaderRank = rankRecord(guildId)[voterId];
+    if (leaderRank !== undefined && !canVote(leaderRank).ok) {
+      return { ok: false, code: 'rank' };
+    }
     const record = await repos.characters.findById(voterId);
     if (record?.controller === 'bot') {
       const entity = simWorld.entities.find((row) => row.id === voterId);
@@ -5135,7 +5140,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
     }
     const ranks = rankRecord(guildId);
-    if (ranks[voterId] === 'novice') {
+    const voterRank = ranks[voterId];
+    if (voterRank !== undefined && !canVote(voterRank).ok) {
       return { ok: false, code: 'rank' };
     }
     poll.ballots.push({ voterId, choice });

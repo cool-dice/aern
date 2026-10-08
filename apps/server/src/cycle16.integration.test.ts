@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { Appearance } from '@rift/domain/character';
+import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { emptyPoints } from '@rift/domain/stats';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
@@ -310,4 +311,64 @@ test('silenceMs mutes the hacked keeper kind for the domain duration', async () 
   const rat = entities.find((entity) => entity.monsterId === 'spore_rat');
   expect(patrol?.keeperSilent).toBe(true);
   expect(rat?.keeperSilent).toBe(false);
+});
+
+test('canVote refuses a novice on the guild vote route', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const leader = composeSource.slice(
+    composeSource.indexOf('async function castLeaderBallot'),
+    composeSource.indexOf('async function resolveLeaderPolls'),
+  );
+  const internal = composeSource.slice(
+    composeSource.indexOf('async function castInternalBallot'),
+    composeSource.indexOf('async function resolveInternalPolls'),
+  );
+  expect(leader.includes('canVote(')).toBe(true);
+  expect(internal.includes('canVote(')).toBe(true);
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  const created = await graph.character.service.create({
+    accountId: 'account-new',
+    controller: 'player',
+    name: 'New',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const noviceId = created.value.characterId;
+  const guild = await graph.act('guild_create', {
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    emblem: 'wolf',
+    description: 'the red pack',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'lia', level: 5, confirmed: true },
+      { id: 'm1', level: 5, confirmed: true },
+      { id: 'm2', level: 5, confirmed: true },
+      { id: 'm3', level: 5, confirmed: true },
+    ],
+  });
+  expect(guild.ok).toBe(true);
+  if (!guild.ok) {
+    return;
+  }
+  const guildId = (guild.value as { guildId: string }).guildId;
+  expect(await graph.act('guild_join', { guildId, actorId: 'lia', characterId: noviceId })).toMatchObject({
+    ok: true,
+    value: { rank: 'novice' },
+  });
+  expect(await graph.act('guild_vote', { guildId, voterId: noviceId, choice: 'yes' })).toMatchObject({
+    ok: false,
+    code: 'rank',
+  });
+  expect(await graph.act('guild_vote', { guildId, voterId: 'lia', choice: 'yes' })).toMatchObject({
+    ok: true,
+  });
 });
