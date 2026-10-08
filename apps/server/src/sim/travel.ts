@@ -1,5 +1,6 @@
 import { step, type Cell, type Dir } from '@rift/domain/movement';
 import { err, ok, type Result } from '@rift/domain/result';
+import { SIM_TICK_MS } from '@rift/domain/time';
 import { canWalk, type NodeKind, type WorldEdge, type WorldNode } from '@rift/domain/world';
 
 export interface GeoNode {
@@ -110,4 +111,49 @@ export function neighborStep(input: {
     return err('barrier');
   }
   return ok({ nodeId: chosen.id, cell: { x: chosen.x, y: chosen.y } });
+}
+
+export function edgeLength(geography: Geography, fromId: string, toId: string): number | undefined {
+  const edge = geography.edges.find(
+    (item) => (item.a === fromId && item.b === toId) || (item.a === toId && item.b === fromId),
+  );
+  return edge?.length;
+}
+
+/**
+ * One action along an edge. OD is one step (or a run) per action, and the
+ * action covers `cellsPerAction` cells of `WorldEdge.length`. Time is one
+ * sim tick per action, so the crossing is not a flat 1 OD teleport.
+ */
+export function edgeStep(input: {
+  remaining: number;
+  cellsPerAction: number;
+  running: boolean;
+  od: number;
+}): { ok: true; remaining: number; od: number; spent: number } | { ok: false; code: 'od' } {
+  if (input.remaining <= 0) {
+    return { ok: true, remaining: 0, od: input.od, spent: 0 };
+  }
+  const cells = Math.max(1, Math.floor(input.cellsPerAction));
+  const spent = input.running ? 3 : 1;
+  if (input.od < spent) {
+    return { ok: false, code: 'od' };
+  }
+  return {
+    ok: true,
+    remaining: input.remaining - Math.min(cells, input.remaining),
+    od: input.od - spent,
+    spent,
+  };
+}
+
+export function edgeTravel(input: {
+  length: number;
+  cellsPerAction: number;
+  running: boolean;
+}): { od: number; travelMs: number } {
+  const cells = Math.max(1, Math.floor(input.cellsPerAction));
+  const actions = Math.max(1, Math.ceil(input.length / cells));
+  const stepOd = input.running ? 3 : 1;
+  return { od: actions * stepOd, travelMs: actions * SIM_TICK_MS };
 }

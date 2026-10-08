@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from 'vitest';
-import { neighborStep, type Geography } from './travel';
+import { edgeStep, edgeTravel, neighborStep, type Geography } from './travel';
 
 const geography: Geography = {
   barrierDown: false,
@@ -20,9 +20,23 @@ const geography: Geography = {
   ],
 };
 
-test('stepTick calls neighborStep so a grid step cannot pretend to be the graph', () => {
+test('stepTick calls neighborStep and edgeStep so a graph step uses edge length', () => {
   const source = readFileSync(new URL('./tick.ts', import.meta.url), 'utf8');
   expect(source.includes('neighborStep(')).toBe(true);
+  expect(source.includes('edgeLength(')).toBe(true);
+  expect(source.includes('edgeStep(')).toBe(true);
+});
+
+test('edge length spends one step of OD per action and takes that many ticks', () => {
+  expect(edgeTravel({ length: 10, cellsPerAction: 1, running: false })).toEqual({ od: 10, travelMs: 1_000 });
+  expect(edgeTravel({ length: 10, cellsPerAction: 4, running: true })).toEqual({ od: 9, travelMs: 300 });
+  expect(edgeStep({ remaining: 10, cellsPerAction: 1, running: false, od: 10 })).toEqual({
+    ok: true,
+    remaining: 9,
+    od: 9,
+    spent: 1,
+  });
+  expect(edgeStep({ remaining: 10, cellsPerAction: 1, running: false, od: 0 })).toEqual({ ok: false, code: 'od' });
 });
 
 test('a step follows the edge in that direction and refuses a missing path', () => {

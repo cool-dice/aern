@@ -20,7 +20,7 @@ import {
   type LootStack as CorpseStack,
 } from '@rift/domain/death';
 import { cellsFor, chebyshev, move, step, type Cell, type Dir } from '@rift/domain/movement';
-import { neighborStep, type Geography } from './travel';
+import { edgeLength, edgeStep, neighborStep, type Geography } from './travel';
 import { combatZone } from './zones';
 import type { Rng } from '@rift/domain/rng';
 import { derive, emptyPoints } from '@rift/domain/stats';
@@ -106,6 +106,12 @@ export interface SimEntity {
   inEncounter?: boolean;
   /** Prototype pack this monster belongs to. Pursuit stays inside that pack. */
   instanceId?: string;
+  /** Personal reputation with each NPC, 0–100. */
+  reputation?: Record<string, number>;
+  /** Guild this character holds a flag for. */
+  guildId?: string;
+  /** Cells still left on the current world edge. */
+  travel?: { nodeId: string; cell: Cell; remaining: number; running: boolean };
 }
 
 export interface MonsterRespawn {
@@ -276,19 +282,23 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
   }
 
   const obstacles = world.obstacles.map((cell) => ({ x: cell.x, y: cell.y }));
+  const graphStepped = new Set<string>();
   const ordered = orderCommands(entities, commands, rng);
   for (const command of ordered) {
     if (command.type === 'move') {
       applyMove(entities, command, rejections, mods, obstacles, weather, {
         geography: world.geography,
         barrierDown: world.barrierDown === true,
-      });
+      }, graphStepped);
     } else if (command.type === 'attack') {
       applyAttack(entities, command, rejections, mods, nowMs, weather, rng, zoneOf(world));
     }
   }
 
   for (const entity of entities) {
+    if (entity.travel !== undefined && !graphStepped.has(entity.id)) {
+      walkEdge(entity, mods, weather);
+    }
     applyLogout(entity);
   }
 
@@ -806,6 +816,7 @@ function applyMove(
   obstacles: readonly Cell[],
   weather: WeatherMods,
   travel: { geography?: Geography; barrierDown: boolean },
+  graphStepped: Set<string>,
 ): void {
   const entity = findEntity(entities, command.entityId);
   if (entity === undefined) {
@@ -828,7 +839,7 @@ function applyMove(
     stepNode(entity, command, rejections, mods, weather, {
       geography: travel.geography,
       barrierDown: travel.barrierDown,
-    });
+    }, graphStepped);
     return;
   }
 
@@ -891,6 +902,7 @@ function stepNode(
   mods: ReadonlyMap<string, StatusMods>,
   weather: WeatherMods,
   travel: { geography: Geography; barrierDown: boolean },
+  graphStepped: Set<string>,
 ): void {
   const nodeId = entity.nodeId;
   if (nodeId === undefined) {
@@ -898,20 +910,16 @@ function stepNode(
     return;
   }
   const downed = entity.phase === 'downed';
-  const paced = move({
-    from: entity.cell,
-    dir: command.dir,
-    inCombat: entity.inCombat,
-    od: entity.od,
-    reaction: entity.reaction,
-    running: command.running,
-    overloaded: entity.overloaded === true,
-    legsDestroyed: entity.legsDestroyed ?? 0,
-    downed,
-    blocked: () => false,
-  });
-  if (!paced.ok) {
-    rejections.push({ entityId: entity.id, code: paced.code });
+  if (command.running && entity.overloaded === true) {
+    rejections.push({ entityId: entity.id, code: 'overload_run' });
+    return;
+  }
+  if (command.running && downed) {
+    rejections.push({ entityId: entity.id, code: 'downed' });
+    return;
+  }
+  if ((entity.legsDestroyed ?? 0) === 2) {
+    rejections.push({ entityId: entity.id, code: 'legs' });
     return;
   }
   const speed =
@@ -926,8 +934,8 @@ function stepNode(
     legsDestroyed: entity.legsDestroyed ?? 0,
     downed,
   });
-  if (speed !== 1 && Math.floor(pace * speed) < 1) {
-    rejections.push({ entityId: entity.id, code: 'slow' });
+  if (pace < 1 || (speed !== 1 && Math.floor(pace * speed) < 1)) {
+    rejections.push({ entityId: entity.id, code: pace < 1 ? 'legs' : 'slow' });
     return;
   }
   const stepped = neighborStep({
@@ -940,9 +948,68 @@ function stepNode(
     rejections.push({ entityId: entity.id, code: stepped.code });
     return;
   }
-  spendOd(entity, paced.value.od);
-  entity.cell = stepped.value.cell;
-  entity.nodeId = stepped.value.nodeId;
+  const length = edgeLength(travel.geography, nodeId, stepped.value.nodeId);
+  if (length === undefined) {
+    rejections.push({ entityId: entity.id, code: 'no_edge' });
+    return;
+  }
+  if (entity.travel?.nodeId !== stepped.value.nodeId) {
+    entity.travel = {
+      nodeId: stepped.value.nodeId,
+      cell: stepped.value.cell,
+      remaining: length,
+      running: command.running,
+    };
+  } else {
+    entity.travel = { ...entity.travel, running: command.running };
+  }
+  graphStepped.add(entity.id);
+  walkEdge(entity, mods, weather);
+}
+
+function walkEdge(
+  entity: SimEntity,
+  mods: ReadonlyMap<string, StatusMods>,
+  weather: WeatherMods,
+): void {
+  const trip = entity.travel;
+  if (trip === undefined || entity.phase === 'offline' || entity.frozen === true || entity.stunned) {
+    return;
+  }
+  const downed = entity.phase === 'downed';
+  const speed =
+    (mods.get(entity.id)?.speedMultiplier ?? 1) *
+    neuroshockScale(1, neuralOverload(entity)) *
+    weather.speed *
+    (entity.speedMultiplier ?? 1);
+  const pace = cellsFor({
+    reaction: entity.reaction,
+    running: trip.running,
+    overloaded: entity.overloaded === true,
+    legsDestroyed: entity.legsDestroyed ?? 0,
+    downed,
+  });
+  const cellsPerAction = speed === 1 ? pace : Math.floor(pace * speed);
+  if (cellsPerAction < 1) {
+    return;
+  }
+  const walked = edgeStep({
+    remaining: trip.remaining,
+    cellsPerAction,
+    running: trip.running,
+    od: entity.od,
+  });
+  if (!walked.ok) {
+    return;
+  }
+  spendOd(entity, walked.od);
+  if (walked.remaining > 0) {
+    entity.travel = { ...trip, remaining: walked.remaining };
+    return;
+  }
+  entity.nodeId = trip.nodeId;
+  entity.cell = { ...trip.cell };
+  delete entity.travel;
 }
 
 function neuralOverload(entity: SimEntity): boolean {

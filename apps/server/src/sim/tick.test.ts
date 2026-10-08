@@ -715,7 +715,7 @@ test('a player on the geography graph is not chased, and a step uses the edge', 
   const start = world({
     geography,
     entities: [
-      entity({ id: 'lia', hp: 40, maxHp: 40, cell: { x: 0, y: 0 }, nodeId: 'fort_humans' }),
+      entity({ id: 'lia', hp: 40, maxHp: 40, cell: { x: 0, y: 0 }, nodeId: 'fort_humans', od: 10, odFrac: 10 }),
       entity({
         id: 'rat',
         monsterId: 'spore_rat',
@@ -736,12 +736,29 @@ test('a player on the geography graph is not chased, and a step uses the edge', 
     mulberry32(1),
   );
   expect(moved.entities.find((row) => row.id === 'lia')).toMatchObject({
+    nodeId: 'fort_humans',
+    travel: { nodeId: 'edge_light', remaining: 9, running: false },
+  });
+  expect(moved.entities.find((row) => row.id === 'lia')?.od).toBe(9);
+  const continued = stepTick(
+    moved,
+    [{ type: 'move', entityId: 'lia', dir: 'e', running: false, issuedAtMs: 0 }],
+    mulberry32(1),
+  );
+  expect(continued.entities.find((row) => row.id === 'lia')?.travel).toMatchObject({ remaining: 8 });
+  expect(moved.geography?.nodes).toHaveLength(2);
+  let arrived = continued;
+  for (let i = 0; i < 8; i += 1) {
+    arrived = stepTick(arrived, [], mulberry32(1));
+  }
+  expect(arrived.entities.find((row) => row.id === 'lia')).toMatchObject({
     nodeId: 'edge_light',
     cell: { x: 10, y: 0 },
   });
-  expect(moved.geography?.nodes).toHaveLength(2);
+  expect(arrived.entities.find((row) => row.id === 'lia')?.travel).toBeUndefined();
+  expect(arrived.entities.find((row) => row.id === 'lia')?.od).toBe(2);
   const refused = stepTick(
-    moved,
+    arrived,
     [{ type: 'move', entityId: 'lia', dir: 'nw', running: false, issuedAtMs: 0 }],
     mulberry32(1),
   );
