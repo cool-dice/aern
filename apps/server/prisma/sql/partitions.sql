@@ -1,0 +1,17 @@
+-- Prisma models for damage_log, chats, and action_logs are unpartitioned so the
+-- client can generate. Partitioning below is a comment only. Unit tests do not
+-- apply it, and it does not block startup.
+--
+-- damage_log: monthly partitions on timestamp
+--   PARTITION BY RANGE (timestamp)
+--   one partition per calendar month
+--
+-- chats: monthly partitions on created_at
+--   PARTITION BY RANGE (created_at)
+--   one partition per calendar month
+--
+-- action_logs: daily partitions on timestamp
+--   PARTITION BY RANGE (timestamp)
+--   one partition per calendar day
+--
+-- memories may later be hash-partitioned by bot_id. That split is not required to start.

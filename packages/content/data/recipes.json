@@ -1,0 +1,2143 @@
+[
+  {
+    "id": "rusty_sword",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "rusty_sword",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "metal": 5
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": true
+  },
+  {
+    "id": "sledgehammer",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "sledgehammer",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "metal": 8,
+      "wood": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "spear",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "spear",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "metal": 6,
+      "wood": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "steel_sword",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "steel_sword",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 10,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "two_handed_axe",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "two_handed_axe",
+    "minLevel": 5,
+    "maxLevel": 25,
+    "materials": {
+      "metal": 15,
+      "wood": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "paired_blades",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "paired_blades",
+    "minLevel": 5,
+    "maxLevel": 25,
+    "materials": {
+      "metal": 12,
+      "leather": 4
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "energy_blade",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "energy_blade",
+    "minLevel": 15,
+    "maxLevel": 35,
+    "materials": {
+      "metal": 15,
+      "crystals": 3,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "plasma_cutter",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "plasma_cutter",
+    "minLevel": 20,
+    "maxLevel": 40,
+    "materials": {
+      "metal": 18,
+      "crystals": 4,
+      "energy_cell": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_blade",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "precursor_blade",
+    "minLevel": 25,
+    "maxLevel": 45,
+    "materials": {
+      "titanium": 20,
+      "crystals": 5,
+      "relic_shard": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_blade",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "rift_blade",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 25,
+      "crystals": 6,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "primordial_hammer",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "primordial_hammer",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 30,
+      "crystals": 6,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_scythe",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "precursor_scythe",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 25,
+      "crystals": 8,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rusty_pistol",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "rusty_pistol",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "metal": 5
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "shotgun",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "shotgun",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "metal": 8,
+      "wood": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "bow",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "bow",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "wood": 4,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": true
+  },
+  {
+    "id": "rifle",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "rifle",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 12,
+      "wood": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "smg",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "smg",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 10,
+      "leather": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "crossbow",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "crossbow",
+    "minLevel": 5,
+    "maxLevel": 25,
+    "materials": {
+      "wood": 8,
+      "metal": 4,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "plasmer",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "plasmer",
+    "minLevel": 15,
+    "maxLevel": 35,
+    "materials": {
+      "metal": 15,
+      "crystals": 4,
+      "energy_cell": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "laser_rifle",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "laser_rifle",
+    "minLevel": 20,
+    "maxLevel": 40,
+    "materials": {
+      "metal": 18,
+      "crystals": 5,
+      "energy_cell": 4
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "railgun",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "railgun",
+    "minLevel": 25,
+    "maxLevel": 45,
+    "materials": {
+      "titanium": 20,
+      "crystals": 6,
+      "energy_cell": 4
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_plasmer",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "rift_plasmer",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 25,
+      "crystals": 7,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_rifle",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "precursor_rifle",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 25,
+      "crystals": 8,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "primordial_shotgun",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "primordial_shotgun",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 30,
+      "crystals": 5,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "dagger",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "dagger",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "metal": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "club",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "club",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "wood": 4
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "throwing_knife",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "throwing_knife",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "metal": 3,
+      "leather": 1
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "short_sword",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "short_sword",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 8,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "machine_pistol",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "machine_pistol",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 8,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "stunner",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "stunner",
+    "minLevel": 5,
+    "maxLevel": 25,
+    "materials": {
+      "metal": 6,
+      "crystals": 2,
+      "energy_cell": 1
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "plasma_pistol",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "plasma_pistol",
+    "minLevel": 15,
+    "maxLevel": 35,
+    "materials": {
+      "metal": 10,
+      "crystals": 3,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "grenade_launcher",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "grenade_launcher",
+    "minLevel": 20,
+    "maxLevel": 40,
+    "materials": {
+      "metal": 15,
+      "crystals": 4,
+      "energy_cell": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "neuro_whip",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "neuro_whip",
+    "minLevel": 20,
+    "maxLevel": 40,
+    "materials": {
+      "metal": 8,
+      "crystals": 4,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_dagger",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "rift_dagger",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 15,
+      "crystals": 5,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_pistol",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "precursor_pistol",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 15,
+      "crystals": 6,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "primordial_shield",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "primordial_shield",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 20,
+      "crystals": 4,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "leather_hood",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "leather_hood",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "leather": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": true
+  },
+  {
+    "id": "rusty_helmet",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "rusty_helmet",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "metal": 5
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "neuro_circlet",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "neuro_circlet",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "metal": 3,
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "steel_helmet",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "steel_helmet",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 8,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "bio_respirator",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "bio_respirator",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 4,
+      "spores": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "tactical_helmet",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "tactical_helmet",
+    "minLevel": 5,
+    "maxLevel": 25,
+    "materials": {
+      "metal": 6,
+      "crystals": 2,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "energy_helmet",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "energy_helmet",
+    "minLevel": 15,
+    "maxLevel": 35,
+    "materials": {
+      "metal": 10,
+      "crystals": 4,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_helmet",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "precursor_helmet",
+    "minLevel": 20,
+    "maxLevel": 40,
+    "materials": {
+      "titanium": 12,
+      "crystals": 4,
+      "relic_shard": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_helmet",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "rift_helmet",
+    "minLevel": 25,
+    "maxLevel": 45,
+    "materials": {
+      "titanium": 15,
+      "crystals": 5,
+      "relic_shard": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "primordial_crown",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "primordial_crown",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 20,
+      "crystals": 6,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_helmet_unique",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "precursor_helmet_unique",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 20,
+      "crystals": 5,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "neuro_crown",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "neuro_crown",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 15,
+      "crystals": 8,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "leather_jacket",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "leather_jacket",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "leather": 5
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": true
+  },
+  {
+    "id": "quilted_armor",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "quilted_armor",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "cloth": 4,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rig",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "rig",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "cloth": 4,
+      "metal": 1
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "steel_cuirass",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "steel_cuirass",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 12,
+      "leather": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "ranger_cloak",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "ranger_cloak",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "cloth": 5,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "bio_armor",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "bio_armor",
+    "minLevel": 5,
+    "maxLevel": 25,
+    "materials": {
+      "metal": 8,
+      "spores": 4,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "energy_armor",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "energy_armor",
+    "minLevel": 15,
+    "maxLevel": 35,
+    "materials": {
+      "metal": 15,
+      "crystals": 5,
+      "energy_cell": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_armor",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "precursor_armor",
+    "minLevel": 20,
+    "maxLevel": 40,
+    "materials": {
+      "titanium": 18,
+      "crystals": 5,
+      "relic_shard": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_armor",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "rift_armor",
+    "minLevel": 25,
+    "maxLevel": 45,
+    "materials": {
+      "titanium": 22,
+      "crystals": 6,
+      "relic_shard": 4
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "primordial_shell",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "primordial_shell",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 28,
+      "crystals": 7,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_mantle",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "precursor_mantle",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 20,
+      "crystals": 6,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_armor_unique",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "rift_armor_unique",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 30,
+      "crystals": 8,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "leather_gloves",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "leather_gloves",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "work_gauntlets",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "work_gauntlets",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "cloth": 2,
+      "metal": 1
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "bracers",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "bracers",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "metal": 4,
+      "leather": 1
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "steel_gloves",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "steel_gloves",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 6,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "cyber_arm_mech",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "cyber_arm_mech",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 5,
+      "crystals": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "cyber_arm_bio",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "cyber_arm_bio",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "spores": 5,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "energy_gloves",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "energy_gloves",
+    "minLevel": 15,
+    "maxLevel": 35,
+    "materials": {
+      "metal": 8,
+      "crystals": 3,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_gloves",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "precursor_gloves",
+    "minLevel": 20,
+    "maxLevel": 40,
+    "materials": {
+      "titanium": 10,
+      "crystals": 3,
+      "relic_shard": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_gloves",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "rift_gloves",
+    "minLevel": 25,
+    "maxLevel": 45,
+    "materials": {
+      "titanium": 12,
+      "crystals": 4,
+      "relic_shard": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "primordial_hand",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "primordial_hand",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 15,
+      "crystals": 5,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_cyber_arm",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "precursor_cyber_arm",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 15,
+      "crystals": 4,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_gloves_unique",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "rift_gloves_unique",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 15,
+      "crystals": 5,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "leather_boots",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "leather_boots",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "leather": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "work_boots",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "work_boots",
+    "minLevel": 1,
+    "maxLevel": 5,
+    "materials": {
+      "leather": 2,
+      "metal": 1
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "greaves",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "greaves",
+    "minLevel": 1,
+    "maxLevel": 10,
+    "materials": {
+      "metal": 5,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "steel_greaves",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "steel_greaves",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 8,
+      "leather": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "leg_boosters",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "leg_boosters",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "metal": 6,
+      "crystals": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "bio_leg_prosthetics",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "bio_leg_prosthetics",
+    "minLevel": 5,
+    "maxLevel": 20,
+    "materials": {
+      "spores": 6,
+      "leather": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "energy_legs",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "energy_legs",
+    "minLevel": 15,
+    "maxLevel": 35,
+    "materials": {
+      "metal": 10,
+      "crystals": 4,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_greaves",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "precursor_greaves",
+    "minLevel": 20,
+    "maxLevel": 40,
+    "materials": {
+      "titanium": 12,
+      "crystals": 4,
+      "relic_shard": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_greaves",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "rift_greaves",
+    "minLevel": 25,
+    "maxLevel": 45,
+    "materials": {
+      "titanium": 15,
+      "crystals": 5,
+      "relic_shard": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "primordial_boots",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "primordial_boots",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 18,
+      "crystals": 5,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "precursor_legs_unique",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "precursor_legs_unique",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 18,
+      "crystals": 5,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "rift_greaves_unique",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "rift_greaves_unique",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 20,
+      "crystals": 6,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "spore_relic",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "spore_relic",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "relic_shard": 5,
+      "spores": 3,
+      "amino": 2
+    },
+    "unique": false,
+    "kind": "relic",
+    "prototype": true
+  },
+  {
+    "id": "culture_relic",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "culture_relic",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "relic_shard": 8,
+      "spores": 5,
+      "amino": 4
+    },
+    "unique": false,
+    "kind": "relic",
+    "prototype": false
+  },
+  {
+    "id": "symbiont_relic",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "symbiont_relic",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "relic_shard": 12,
+      "spores": 8,
+      "amino": 6,
+      "organic_matrix": 2
+    },
+    "unique": false,
+    "kind": "relic",
+    "prototype": false
+  },
+  {
+    "id": "unique_bio_relic",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "unique_bio_relic",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "relic_shard": 20,
+      "spores": 10,
+      "amino": 8,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "relic",
+    "prototype": false
+  },
+  {
+    "id": "plate_relic",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "plate_relic",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "relic_shard": 5,
+      "metal": 3,
+      "crystals": 2
+    },
+    "unique": false,
+    "kind": "relic",
+    "prototype": true
+  },
+  {
+    "id": "mechanism_relic",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "mechanism_relic",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "relic_shard": 8,
+      "metal": 5,
+      "crystals": 4,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "relic",
+    "prototype": false
+  },
+  {
+    "id": "crystal_relic",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "crystal_relic",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "relic_shard": 12,
+      "crystals": 8,
+      "energy_cell": 6
+    },
+    "unique": false,
+    "kind": "relic",
+    "prototype": false
+  },
+  {
+    "id": "unique_mech_relic",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "unique_mech_relic",
+    "minLevel": 30,
+    "maxLevel": 50,
+    "materials": {
+      "relic_shard": 20,
+      "crystals": 10,
+      "energy_cell": 8,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "relic",
+    "prototype": false
+  },
+  {
+    "id": "weapon_oil",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "weapon_oil",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "metal": 2,
+      "spores": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "armor_piercing",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "armor_piercing",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "crystals": 2,
+      "spores": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "stabilizer",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "stabilizer",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "crystals": 1,
+      "metal": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "craft_ammo_light",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "ammo_light",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "metal": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false,
+    "qty": 10
+  },
+  {
+    "id": "craft_ammo_heavy",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "ammo_heavy",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "metal": 2
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false,
+    "qty": 10
+  },
+  {
+    "id": "craft_energy_cells",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "energy_cell",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false,
+    "qty": 5
+  },
+  {
+    "id": "craft_ammo_special",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "ammo_special",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "metal": 3,
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false,
+    "qty": 3
+  },
+  {
+    "id": "grenade",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "grenade",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "metal": 2,
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "smoke_grenade",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "smoke_grenade",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "metal": 2,
+      "spores": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "repair_kit",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "repair_kit",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "metal": 3
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "armor_plate",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "armor_plate",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "metal": 3,
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "energy_shield",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "energy_shield",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "crystals": 2,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "craft_amino",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "amino",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "spore_concentrate",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "spore_concentrate",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 3,
+      "amino": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "bio_stimulant",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "bio_stimulant",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 2,
+      "amino": 2
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "antidote",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "antidote",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 3
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": true
+  },
+  {
+    "id": "antimutagen",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "antimutagen",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 3,
+      "amino": 2
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "craft_energy_cell",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "energy_cell",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "crystals": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "memory_crystal",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "memory_crystal",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "crystals": 3,
+      "relic_shard": 1
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "energy_stimulant",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "energy_stimulant",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "crystals": 2,
+      "energy_cell": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "crystal_charge",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "crystal_charge",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "crystals": 3,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "resonator",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "resonator",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "crystals": 2,
+      "energy_cell": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "healing_draught",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "healing_draught",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 3,
+      "amino": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": true
+  },
+  {
+    "id": "strength_potion",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "strength_potion",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 2,
+      "amino": 2
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "fortitude_potion",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "fortitude_potion",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 2,
+      "amino": 2
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "reaction_potion",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "reaction_potion",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 2,
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "will_potion",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "will_potion",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 2,
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "stimulant",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "stimulant",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 3,
+      "crystals": 2
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "poison",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "poison",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 3,
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "weakness_potion",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "weakness_potion",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 2,
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "slowing_mixture",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "slowing_mixture",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 2,
+      "crystals": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "ration",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "ration",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 2,
+      "amino": 1
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "hearty_dinner",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "hearty_dinner",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 4,
+      "amino": 2
+    },
+    "unique": false,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "rift_elixir",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "rift_elixir",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 10,
+      "crystals": 5,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "precursor_poison",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "precursor_poison",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 8,
+      "crystals": 4,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "primordial_nectar",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "primordial_nectar",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 10,
+      "amino": 5,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "truth_serum",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "truth_serum",
+    "minLevel": 1,
+    "maxLevel": 1,
+    "materials": {
+      "spores": 6,
+      "crystals": 4,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "consumable",
+    "prototype": false
+  },
+  {
+    "id": "core_berserk",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "core_berserk",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "metal": 12,
+      "crystals": 3,
+      "spores": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "core_ghost",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "core_ghost",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "metal": 12,
+      "crystals": 4,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "core_titan",
+    "skill": "armorer",
+    "station": "bench",
+    "itemId": "core_titan",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "titanium": 15,
+      "crystals": 5,
+      "energy_cell": 3
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "core_sniper",
+    "skill": "weaponsmith",
+    "station": "forge",
+    "itemId": "core_sniper",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "metal": 10,
+      "crystals": 4,
+      "energy_cell": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "core_necromancer",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "core_necromancer",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "spores": 15,
+      "amino": 6,
+      "organic_matrix": 2
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "core_medic",
+    "skill": "biotech",
+    "station": "lab",
+    "itemId": "core_medic",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "spores": 10,
+      "amino": 4
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "core_tech",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "core_tech",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "crystals": 8,
+      "energy_cell": 4
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "core_scout",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "core_scout",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "spores": 10,
+      "crystals": 4
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "core_engineer",
+    "skill": "mechanic",
+    "station": "workshop",
+    "itemId": "core_engineer",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "crystals": 12,
+      "energy_cell": 6
+    },
+    "unique": false,
+    "kind": "item",
+    "prototype": false
+  },
+  {
+    "id": "core_first_engineer",
+    "skill": "alchemist",
+    "station": "alchemy",
+    "itemId": "core_first_engineer",
+    "minLevel": 1,
+    "maxLevel": 50,
+    "materials": {
+      "spores": 20,
+      "crystals": 10,
+      "unique_component": 1
+    },
+    "unique": true,
+    "kind": "item",
+    "prototype": false
+  }
+]

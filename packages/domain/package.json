@@ -1,0 +1,51 @@
+{
+  "name": "@rift/domain",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ai": "./src/ai.ts",
+    "./ancient": "./src/ancient.ts",
+    "./build": "./src/build.ts",
+    "./character": "./src/character.ts",
+    "./death": "./src/death.ts",
+    "./events": "./src/events.ts",
+    "./combat": "./src/combat.ts",
+    "./craft": "./src/craft.ts",
+    "./dungeon": "./src/dungeon.ts",
+    "./economy": "./src/economy.ts",
+    "./guild": "./src/guild.ts",
+    "./hack": "./src/hack.ts",
+    "./items": "./src/items.ts",
+    "./loot": "./src/loot.ts",
+    "./language": "./src/language.ts",
+    "./moderation": "./src/moderation.ts",
+    "./movement": "./src/movement.ts",
+    "./progression": "./src/progression.ts",
+    "./quests": "./src/quests.ts",
+    "./relics": "./src/relics.ts",
+    "./result": "./src/result.ts",
+    "./rng": "./src/rng.ts",
+    "./social": "./src/social.ts",
+    "./stats": "./src/stats.ts",
+    "./gathering": "./src/gathering.ts",
+    "./wiki": "./src/wiki.ts",
+    "./status": "./src/status.ts",
+    "./time": "./src/time.ts",
+    "./world": "./src/world.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src",
+    "build": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "eslint": "9.39.5",
+    "typescript": "5.6.3",
+    "vitest": "2.1.4"
+  }
+}

@@ -1,0 +1,93 @@
+[
+  {
+    "id": "core_berserk",
+    "implant": true,
+    "coreGrade": 3,
+    "nn": 2,
+    "requirementsText": "Реликт в торсе",
+    "skills": "Ярость: +50% урона, −30% брони на 10 сек (КД 120 сек); Пассив: +10% к урону при HP < 50%",
+    "slot": "core"
+  },
+  {
+    "id": "core_ghost",
+    "implant": true,
+    "coreGrade": 4,
+    "nn": 2,
+    "requirementsText": "Реликт в ногах",
+    "skills": "Невидимость на 5 сек (КД 180 сек); Пассив: −20% к заметности",
+    "slot": "core"
+  },
+  {
+    "id": "core_titan",
+    "implant": true,
+    "coreGrade": 5,
+    "nn": 3,
+    "requirementsText": "2+ реликта",
+    "skills": "Щит 150 HP на 15 сек (КД 240 сек); Пассив: +15% к броне",
+    "slot": "core"
+  },
+  {
+    "id": "core_sniper",
+    "implant": true,
+    "coreGrade": 3,
+    "nn": 2,
+    "requirementsText": "Реликт в руках",
+    "skills": "Меткий выстрел: +100% к урону, игнорирует броню (КД 90 сек); Пассив: +10% к дальности",
+    "slot": "core"
+  },
+  {
+    "id": "core_necromancer",
+    "implant": true,
+    "coreGrade": 5,
+    "nn": 3,
+    "requirementsText": "Реликт в голове",
+    "skills": "Поднять павшего союзника с 30% HP (КД 600 сек); Пассив: +10% к лечению",
+    "slot": "core"
+  },
+  {
+    "id": "core_medic",
+    "implant": false,
+    "coreGrade": 3,
+    "nn": 2,
+    "requirementsText": "Нет",
+    "skills": "Лечение 50 HP союзнику (КД 60 сек); Пассив: +10% к скорости лечения",
+    "slot": "core"
+  },
+  {
+    "id": "core_tech",
+    "implant": false,
+    "coreGrade": 3,
+    "nn": 2,
+    "requirementsText": "Нет",
+    "skills": "Взлом: +50% к скорости взлома на 10 сек (КД 120 сек); Пассив: +10% к крафту",
+    "slot": "core"
+  },
+  {
+    "id": "core_scout",
+    "implant": false,
+    "coreGrade": 4,
+    "nn": 2,
+    "requirementsText": "Нет",
+    "skills": "Сканер: подсвечивает врагов на 20 сек (КД 180 сек); Пассив: +15% к обнаружению",
+    "slot": "core"
+  },
+  {
+    "id": "core_engineer",
+    "implant": false,
+    "coreGrade": 4,
+    "nn": 2,
+    "requirementsText": "Нет",
+    "skills": "Турель: ставит турель на 30 сек (КД 300 сек); Пассив: +10% к ремонту",
+    "slot": "core"
+  },
+  {
+    "id": "core_first_engineer",
+    "implant": false,
+    "coreGrade": 5,
+    "nn": 3,
+    "requirementsText": "Только чистый, высокий уровень Пути",
+    "skills": "+1 навык сверх нормы; Пассив: +10% ко всем статам",
+    "slot": "core",
+    "domainTemplateId": "first_engineer_kit"
+  }
+]

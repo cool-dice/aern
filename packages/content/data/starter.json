@@ -1,0 +1,21 @@
+{
+  "weapon": {
+    "itemId": "rusty_sword",
+    "level": 1
+  },
+  "armor": {
+    "itemId": "leather_jacket",
+    "level": 1,
+    "slot": "torso"
+  },
+  "items": [
+    {
+      "itemId": "bandage",
+      "qty": 3
+    },
+    {
+      "itemId": "ammo_light",
+      "qty": 20
+    }
+  ]
+}
