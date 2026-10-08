@@ -11,7 +11,7 @@ import type { Appearance, RaceId } from '@rift/domain/character';
 import Fastify, { type FastifyInstance } from 'fastify';
 import type { WebSocketServer } from 'ws';
 import { MemoryWorld } from './infra/db/memory';
-import { createPrismaRepositories, type PrismaRepositories } from './infra/db/prisma';
+import { createPrismaRepositories, type PrismaRepositories, type RiftDb } from './infra/db/prisma';
 import { attach, handleMessage } from './infra/ws/gateway';
 import { createAiModule, type AiModule } from './modules/ai/index';
 import { createBuildModule } from './modules/build/index';
@@ -45,6 +45,7 @@ import { setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@
 import { nnUsed, type BuildState } from '@rift/domain/build';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { newEconomyCharacter } from './modules/economy/repository';
+import type { EconomyCharacter } from './modules/economy/types';
 import { observeEntity } from './modules/ai/observe';
 import { SIDECAR_TIMEOUT_MS } from './modules/ai/types';
 import { broadcastState } from './infra/ws/gateway';
@@ -77,6 +78,8 @@ export interface ComposeOptions {
   contentDir?: string;
   jwtSecret?: string;
   databaseUrl?: string;
+  /** Injected Prisma client. Production omits it and opens `databaseUrl`. */
+  db?: RiftDb;
 }
 
 export interface ServerComposition {
@@ -104,6 +107,7 @@ export interface ServerComposition {
   creditGold: (characterId: string, amount: number) => void;
   seedTrader: (input: { characterId: string; gold: number; itemId?: string; qty?: number }) => void;
   flush: () => Promise<void>;
+  hydrate: () => Promise<void>;
   noteSidecar: (input: { atMs: number; characterId: string; action: string }) => void;
 }
 
@@ -132,7 +136,13 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const clock = manualClock(options.nowMs ?? 0);
   const bus = createBus();
   const catalog = resolveCatalog(options);
-  const repos = openRepositories(options.databaseUrl, clock);
+  const repos = openRepositories(options.databaseUrl, clock, options.db);
+  const walletIds = new Set<string>();
+  const saveWallet = repos.economy.saveCharacter.bind(repos.economy);
+  repos.economy.saveCharacter = (character) => {
+    walletIds.add(character.characterId);
+    saveWallet(character);
+  };
   const sessions = new Map<string, SessionCacheEntry>();
   const auth = createAuthModule({
     jwtSecret: options.jwtSecret ?? DEV_JWT_SECRET,
@@ -388,6 +398,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   let playedUtility = 0;
   let rejectedTotal = 0;
   let runtimeError: unknown = null;
+  let snapshotJob: Promise<void> = Promise.resolve();
+  let snapshotError: unknown = null;
   const rng = mulberry32(1);
   const weatherRng = mulberry32(2);
   const sockets = new Set<{ send(data: string): void }>();
@@ -664,15 +676,54 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     rejectedTotal += simWorld.rejections.length;
     observeAndSubmit();
     publishState();
-    const saving = repos.world.saveSnapshot?.(statePayload());
-    if (saving !== undefined) {
-      void saving.catch((error: unknown) => {
+    const saving = repos.world.saveSnapshot?.(simSnapshot());
+    snapshotJob = (saving ?? Promise.resolve()).then(
+      () => undefined,
+      (error: unknown) => {
+        snapshotError = error;
         runtimeError = error;
-      });
-    }
+      },
+    );
     void repos.flush().catch((error: unknown) => {
       runtimeError = error;
     });
+  }
+
+  function simSnapshot(): { kind: 'rift-sim'; world: SimWorld; wallets: EconomyCharacter[] } {
+    const wallets: EconomyCharacter[] = [];
+    for (const characterId of walletIds) {
+      const wallet = repos.economy.getCharacter(characterId);
+      if (wallet !== null) {
+        wallets.push(wallet);
+      }
+    }
+    return structuredClone({
+      kind: 'rift-sim',
+      world: {
+        ...simWorld,
+        history: [],
+        rejections: [],
+      },
+      wallets,
+    });
+  }
+
+  async function hydrate(): Promise<void> {
+    const loaded = await repos.world.loadSnapshot?.();
+    if (!isRiftSim(loaded)) {
+      return;
+    }
+    simWorld = {
+      ...loaded.world,
+      history: [],
+      rejections: [],
+      corpses: loaded.world.corpses ?? [],
+      obstacles: loaded.world.obstacles ?? [],
+      entities: loaded.world.entities ?? [],
+    };
+    for (const wallet of loaded.wallets) {
+      repos.economy.saveCharacter(wallet);
+    }
   }
 
   function topUpSeasonSpawns(budget: number, tag: string): void {
@@ -1051,7 +1102,16 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     state: statePayload,
     creditGold,
     seedTrader,
-    flush: () => repos.flush(),
+    async flush() {
+      await snapshotJob;
+      if (snapshotError !== null) {
+        const error = snapshotError;
+        snapshotError = null;
+        throw error instanceof Error ? error : new Error(String(error));
+      }
+      await repos.flush();
+    },
+    hydrate,
     noteSidecar,
     snapshot,
     auth,
@@ -1102,6 +1162,9 @@ export async function buildApp(options: ComposeOptions = {}): Promise<BuiltServe
   let sockets: WebSocketServer | undefined;
   try {
     const composition = compose(options);
+    if (options.databaseUrl !== undefined && options.databaseUrl.trim() !== '') {
+      await composition.hydrate();
+    }
     registerHttp(app, composition);
     await app.ready();
     sockets = attach(app.server);
@@ -1285,9 +1348,13 @@ function registerHttp(app: FastifyInstance, composition: ServerComposition): voi
   });
 }
 
-function openRepositories(databaseUrl: string | undefined, clock: Clock): PrismaRepositories {
+function openRepositories(
+  databaseUrl: string | undefined,
+  clock: Clock,
+  db: RiftDb | undefined,
+): PrismaRepositories {
   if (databaseUrl !== undefined && databaseUrl.trim() !== '') {
-    return createPrismaRepositories({ DATABASE_URL: databaseUrl });
+    return createPrismaRepositories({ DATABASE_URL: databaseUrl }, db);
   }
   const memory = new MemoryWorld(clock);
   return {
@@ -1460,6 +1527,32 @@ function asNodeKind(kind: string): NodeKind {
     return kind;
   }
   return 'hub';
+}
+
+function isRiftSim(
+  value: unknown,
+): value is { kind: 'rift-sim'; world: SimWorld; wallets: EconomyCharacter[] } {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+  const record = value as { kind?: unknown; world?: unknown; wallets?: unknown };
+  if (record.kind !== 'rift-sim' || typeof record.world !== 'object' || record.world === null) {
+    return false;
+  }
+  const world = record.world as { tick?: unknown; nowMs?: unknown; entities?: unknown };
+  if (typeof world.tick !== 'number' || typeof world.nowMs !== 'number' || !Array.isArray(world.entities)) {
+    return false;
+  }
+  if (!Array.isArray(record.wallets)) {
+    return false;
+  }
+  return record.wallets.every((wallet) => {
+    if (typeof wallet !== 'object' || wallet === null) {
+      return false;
+    }
+    const row = wallet as { characterId?: unknown; gold?: unknown };
+    return typeof row.characterId === 'string' && typeof row.gold === 'number';
+  });
 }
 
 function emptyWorld(nowMs: number): SimWorld {

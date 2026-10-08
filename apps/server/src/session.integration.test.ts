@@ -4,6 +4,7 @@ import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { emptyPoints } from '@rift/domain/stats';
 import { expect, test } from 'vitest';
 import { buildApp, compose } from './compose';
+import type { PrismaWrite, RiftDb } from './infra/db/prisma';
 import { PROTOTYPE_MONSTERS } from './sim/bestiary';
 
 const appearance: Appearance = {
@@ -608,6 +609,105 @@ test('auction buyout records the 5% tax destination', async () => {
     await built.close();
   }
 });
+
+test('a database boot restores the sim snapshot and wallets', async () => {
+  const db = memoryDb();
+  const url = 'postgresql://rift@127.0.0.1:5432/rift';
+  const first = compose({ nowMs: 1_000, jwtSecret: 'test-secret', databaseUrl: url, db });
+  await first.hydrate();
+  expect((first.state() as { self: unknown }).self).toBeNull();
+  first.enterWorld('lia');
+  first.creditGold('lia', 250);
+  first.tickOnce();
+  await first.flush();
+
+  const second = compose({ nowMs: 5, jwtSecret: 'test-secret', databaseUrl: url, db });
+  await second.hydrate();
+  const restored = second.state() as { nowMs: number; self: { id: string } | null };
+  expect(restored.nowMs).toBe(1_100);
+  expect(restored.self?.id).toBe('lia');
+  expect(second.economy.service.balance('lia')).toBe(250);
+
+  await db.storage.upsert({
+    where: { id: 'world:sim' },
+    create: {
+      id: 'world:sim',
+      ownerId: 'world',
+      items: { tick: 4, entities: ['lia'] },
+      gold: 0,
+      slots: 0,
+    },
+    update: { items: { tick: 4, entities: ['lia'] } },
+  });
+  const ignored = compose({ nowMs: 50, jwtSecret: 'test-secret', databaseUrl: url, db });
+  await ignored.hydrate();
+  expect((ignored.state() as { nowMs: number; self: unknown }).nowMs).toBe(50);
+  expect((ignored.state() as { self: unknown }).self).toBeNull();
+
+  db.storage.upsert = async () => {
+    throw new Error('disk');
+  };
+  ignored.tickOnce();
+  await expect(ignored.flush()).rejects.toThrow('disk');
+});
+
+function memoryDb(): RiftDb {
+  const writers = new Map<string, PrismaWrite>();
+  return new Proxy({} as RiftDb, {
+    get(_target, prop) {
+      const name = String(prop);
+      const cached = writers.get(name);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const rows: Record<string, unknown>[] = [];
+      const writer: PrismaWrite = {
+        async create({ data }) {
+          rows.push({ ...data });
+          return data;
+        },
+        async upsert({ where, create, update }) {
+          const found = rows.find((row) => row.id === where.id);
+          if (found === undefined) {
+            const next = { ...create };
+            rows.push(next);
+            return next;
+          }
+          Object.assign(found, update);
+          return found;
+        },
+        async findUnique({ where }) {
+          const found = rows.find((row) => row.id === where.id);
+          return found === undefined ? null : { ...found };
+        },
+        async findMany() {
+          return rows.map((row) => ({ ...row }));
+        },
+        async update({ where, data }) {
+          const found = rows.find((row) => row.id === where.id);
+          if (found === undefined) {
+            throw new Error(`missing ${name}`);
+          }
+          Object.assign(found, data);
+          return { ...found };
+        },
+        async delete({ where }) {
+          const index = rows.findIndex((row) => row.id === where.id);
+          if (index >= 0) {
+            rows.splice(index, 1);
+          }
+          return {};
+        },
+        async deleteMany() {
+          rows.splice(0, rows.length);
+          return { count: 0 };
+        },
+      };
+      writers.set(name, writer);
+      return writer;
+    },
+  });
+}
 
 test('guild create debits character gold and rejects a short roster', async () => {
   const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
