@@ -27,7 +27,7 @@ export function classifyMessage(input: {
   const punishable =
     isSpam(input.text, input.recentTexts, input.recentMs, input.nowMs) ||
     isCaps(input.text) ||
-    hitsBlacklist(input.text, input.blacklist);
+    textHitsBlacklist(input.text, input.blacklist);
   if (!punishable) {
     return 'none';
   }
@@ -110,7 +110,11 @@ function isCaps(text: string): boolean {
   return upper * 10 > letters * 7;
 }
 
-function hitsBlacklist(text: string, blacklist: readonly string[]): boolean {
+/** Guild names use this list. It is separate from the 3..24 letter pattern. */
+export const GUILD_NAME_BLACKLIST = ['slug'] as const;
+
+/** Artifact 32 §3.6. A blacklist entry matches a whole token, not a substring. */
+export function textHitsBlacklist(text: string, blacklist: readonly string[]): boolean {
   const banned = new Set<string>();
   for (const entry of blacklist) {
     const word = entry.trim().toLowerCase();

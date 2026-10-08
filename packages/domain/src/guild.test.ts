@@ -11,6 +11,7 @@ import {
   GUILD_CREATE_GOLD,
   GUILD_WAR_COOLDOWN_MS,
   NOVICE_LOCK_MS,
+  COLLUSION_BAN_MS,
   OFFICE_COOLDOWN_MS,
   WAR_ASSAULT_MS,
   WAR_FINISH_MS,
@@ -24,7 +25,9 @@ import {
   canDissolve,
   canVote,
   castLeaderVote,
+  applyCreationBan,
   createGuild,
+  screenCharter,
   NEUTRAL_CAPTURE_GOLD,
   NEUTRAL_GUARD_COUNT,
   declareNeutralCapture,
@@ -179,6 +182,70 @@ test('duplicate founders are not four unique characters', () => {
   const duplicated = founders([5, 5, 5, 5]);
   duplicated[3] = { id: 'm1', level: 5, inGuild: false };
   expect(createGuild(draftInput({ founders: duplicated }))).toEqual({ ok: false, code: 'size' });
+});
+
+test('charter screening refuses a moderated name, a live office, and an abuse ban', () => {
+  const clean = {
+    name: 'Red Wolves',
+    blacklist: ['slug'] as const,
+    nowMs: 0,
+    founders: [{ id: 'a', lastOfficeMs: null, inOffice: false, ban: null }],
+  };
+  expect(screenCharter({ ...clean, name: 'Red slug' })).toEqual({ ok: false, code: 'name' });
+  expect(screenCharter(clean).ok).toBe(true);
+  expect(
+    screenCharter({
+      ...clean,
+      nowMs: OFFICE_COOLDOWN_MS - 1,
+      founders: [{ id: 'a', lastOfficeMs: 0, inOffice: false, ban: null }],
+    }),
+  ).toEqual({ ok: false, code: 'cooldown' });
+  expect(
+    screenCharter({
+      ...clean,
+      nowMs: OFFICE_COOLDOWN_MS,
+      founders: [{ id: 'a', lastOfficeMs: 0, inOffice: true, ban: null }],
+    }),
+  ).toEqual({ ok: false, code: 'cooldown' });
+  expect(
+    screenCharter({
+      ...clean,
+      founders: [
+        {
+          id: 'a',
+          lastOfficeMs: null,
+          inOffice: false,
+          ban: { id: 'a', kind: 'collusion', untilMs: COLLUSION_BAN_MS },
+        },
+      ],
+    }),
+  ).toEqual({ ok: false, code: 'ban' });
+  expect(
+    screenCharter({
+      ...clean,
+      nowMs: COLLUSION_BAN_MS,
+      founders: [
+        {
+          id: 'a',
+          lastOfficeMs: null,
+          inOffice: false,
+          ban: { id: 'a', kind: 'collusion', untilMs: COLLUSION_BAN_MS },
+        },
+      ],
+    }).ok,
+  ).toBe(true);
+  expect(
+    screenCharter({
+      ...clean,
+      founders: [{ id: 'a', lastOfficeMs: null, inOffice: false, ban: { id: 'a', kind: 'alt_guild', untilMs: null } }],
+    }),
+  ).toEqual({ ok: false, code: 'ban' });
+  expect(applyCreationBan({ role: 'player', kind: 'collusion', nowMs: 0 })).toEqual({ ok: false, code: 'rank' });
+  expect(applyCreationBan({ role: 'moderator', kind: 'alt_guild', nowMs: 4 })).toEqual({
+    ok: true,
+    value: { kind: 'alt_guild', untilMs: null },
+  });
+  expect(COLLUSION_BAN_MS).toBe(30 * 24 * 60 * 60 * 1000);
 });
 
 test('names are 3..24 letters and spaces, tags are 2..4 uppercase latin letters', () => {

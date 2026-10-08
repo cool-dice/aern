@@ -118,6 +118,8 @@ export interface LivePorts {
     itemsWithdrawnToday?: number;
   }): Promise<LiveResult>;
   reviewRewardFreeze(body: Record<string, unknown>): Promise<LiveResult>;
+  screenGuildCreate(body: Record<string, unknown>): LiveResult;
+  banFounder(body: Record<string, unknown>): LiveResult;
   openLeaderPoll(guildId: string): void;
   seatCharter(guildId: string, leaderId: string, memberIds: readonly string[]): void;
   carriersBlocked(memberIds: readonly string[]): Promise<boolean>;
@@ -214,6 +216,7 @@ const LIVE_ACTIONS = new Set([
   'guild_dissolve',
   'guild_deposit',
   'guild_review',
+  'guild_ban',
   'node_strike',
   'coalition_say',
 ]);
@@ -328,6 +331,8 @@ export async function runLive(
       return ports.depositGuild(body);
     case 'guild_review':
       return ports.reviewRewardFreeze(body);
+    case 'guild_ban':
+      return ports.banFounder(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':
@@ -754,6 +759,10 @@ async function guildCreate(body: Record<string, unknown>, ports: LivePorts): Pro
   const leaderIdForSeat = text(body, 'leaderId') ?? initiatorId;
   if (leaderIdForSeat !== undefined && (await ports.leadershipBlocked(leaderIdForSeat))) {
     return { ok: false, code: 'limit' };
+  }
+  const screened = ports.screenGuildCreate(body);
+  if (!screened.ok) {
+    return screened;
   }
   const created = await ports.guild.create(body);
   if (!created.ok) {

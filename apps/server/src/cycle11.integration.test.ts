@@ -123,6 +123,9 @@ test('cycle 11 hooks are called from tickOnce, skipMs, or the live route', () =>
     dispatch.indexOf('async function auctionBid'),
   );
   expect(create.indexOf('carriersBlocked(')).toBeLessThan(create.indexOf('ports.guild.create('));
+  expect(create.indexOf('screenGuildCreate(')).toBeLessThan(create.indexOf('ports.guild.create('));
+  expect(dispatch.includes("case 'guild_ban'")).toBe(true);
+  expect(dispatch.includes('banFounder(')).toBe(true);
   expect(create.includes('seatCharter(')).toBe(true);
   expect(create.includes('seatFounders(')).toBe(false);
   expect(create.includes('leadershipBlocked(')).toBe(true);
@@ -380,4 +383,63 @@ test('the charter stores an emblem and description, and withdraw caps items', as
     itemAmount: 1,
   });
   expect(extra).toMatchObject({ ok: false, code: 'limit' });
+});
+
+test('creation refuses a moderated name, a founder still in office, and an abuse ban', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.enterCharacter('account-kai', 'kai');
+  const moderated = await graph.act('guild_create', {
+    name: 'Red slug',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    gold: GUILD_CREATE_GOLD,
+    members: founders,
+  });
+  expect(moderated).toMatchObject({ ok: false, code: 'name' });
+  expect(await graph.guild.repository.listGuilds()).toEqual([]);
+  const guildId = await foundGuild(graph);
+  expect(await graph.act('guild_rank', { guildId, actorId: 'lia', memberId: 'm1', rank: 'council' })).toMatchObject({
+    ok: true,
+  });
+  graph.creditGold('kai', GUILD_CREATE_GOLD);
+  const seated = await graph.act('guild_create', {
+    name: 'Ash Guard',
+    tag: 'ASH',
+    initiatorId: 'kai',
+    leaderId: 'kai',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'kai', level: 5 },
+      { id: 'm1', level: 5 },
+      { id: 'a2', level: 5 },
+      { id: 'a3', level: 5 },
+    ],
+  });
+  expect(seated).toMatchObject({ ok: false, code: 'cooldown' });
+  graph.appointStaff('mod', 'moderator');
+  expect(await graph.act('guild_ban', { reviewerId: 'lia', characterId: 'kai', kind: 'alt_guild' })).toMatchObject({
+    ok: false,
+    code: 'rank',
+  });
+  expect(await graph.act('guild_ban', { reviewerId: 'mod', characterId: 'a2', kind: 'collusion' })).toMatchObject({
+    ok: true,
+    value: { kind: 'collusion' },
+  });
+  const banned = await graph.act('guild_create', {
+    name: 'Oak Guard',
+    tag: 'OAK',
+    initiatorId: 'kai',
+    leaderId: 'kai',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'kai', level: 5 },
+      { id: 'a2', level: 5 },
+      { id: 'b2', level: 5 },
+      { id: 'b3', level: 5 },
+    ],
+  });
+  expect(banned).toMatchObject({ ok: false, code: 'ban' });
+  expect(await graph.guild.repository.listGuilds()).toHaveLength(1);
 });

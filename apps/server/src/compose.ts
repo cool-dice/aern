@@ -4,6 +4,7 @@ import { loadCatalog, type Catalog } from '@rift/content';
 import type { NodeKind, WorldEdge, WorldNode } from '@rift/domain/world';
 import type { WorldRepository } from './modules/world/repository';
 import { parseClientCommand, type ClientCommand } from '@rift/protocol';
+import { GUILD_NAME_BLACKLIST } from '@rift/domain/moderation';
 import { mulberry32 } from '@rift/domain/rng';
 import { EQUIP_SLOTS, type EquipSlot, type GradeId } from '@rift/domain/items';
 import { STAT_IDS, derive, emptyPoints, type StatBlock } from '@rift/domain/stats';
@@ -96,7 +97,10 @@ import {
   renewPact,
   REVOTE_MS,
   acceptRewardReview,
+  applyCreationBan,
+  COLLUSION_BAN_MS,
   reviewSection11,
+  screenCharter,
   rewardFreezeEnds,
   type Section12Report,
   type WarStamp,
@@ -303,6 +307,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const frozenGuilds = new Set<string>();
   let rewardFreezes: { guildId: string; atMs: number; reviewedAtMs: number | null }[] = [];
   const staffRoles = new Map<string, 'moderator' | 'admin'>();
+  const creationBans = new Map<string, { kind: 'collusion' | 'alt_guild'; untilMs: number | null }>();
   let heldWithdrawals: {
     guildId: string;
     characterId: string;
@@ -837,6 +842,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     logWithdrawal,
     holdWithdrawal,
     reviewRewardFreeze,
+    screenGuildCreate,
+    banFounder,
     openLeaderPoll,
     seatCharter,
     carriersBlocked: carriersBlockedIds,
@@ -1388,8 +1395,16 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (!allowed.ok) {
       return { ok: false, code: allowed.code };
     }
+    const previousRank = table.get(memberId) ?? null;
     table.set(memberId, seated.value.rank);
     rememberSeat(guildId, memberId, clock.now());
+    if (
+      (previousRank === 'leader' || previousRank === 'council') &&
+      seated.value.rank !== 'leader' &&
+      seated.value.rank !== 'council'
+    ) {
+      endOffice(memberId);
+    }
     if (seated.value.rank === 'leader' || seated.value.rank === 'council') {
       rememberOffice(memberId, guildId);
     }
@@ -2567,10 +2582,43 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   }
 
   function rememberOffice(characterId: string, guildId: string): void {
-    if (officeHeldAt.has(characterId)) {
+    officeHeldAt.set(characterId, { atMs: clock.now(), guildId });
+  }
+
+  function endOffice(characterId: string): void {
+    const held = officeHeldAt.get(characterId);
+    if (held === undefined) {
       return;
     }
-    officeHeldAt.set(characterId, { atMs: clock.now(), guildId });
+    held.atMs = clock.now();
+  }
+
+  function founderInOffice(characterId: string): boolean {
+    for (const table of guildRanks.values()) {
+      const rank = table.get(characterId);
+      if (rank === 'leader' || rank === 'council') {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  function activeCreationBan(characterId: string): { id: string; kind: 'collusion' | 'alt_guild'; untilMs: number | null } | null {
+    const ban = creationBans.get(characterId);
+    if (ban === undefined) {
+      return null;
+    }
+    if (ban.untilMs !== null && clock.now() >= ban.untilMs) {
+      return null;
+    }
+    return { id: characterId, kind: ban.kind, untilMs: ban.untilMs };
+  }
+
+  function noteCreationBan(characterId: string, kind: 'collusion' | 'alt_guild', untilMs: number | null): void {
+    if (characterId.length === 0) {
+      return;
+    }
+    creationBans.set(characterId, { kind, untilMs });
   }
 
   function previousOffice(characterId: string): number | null {
@@ -2689,9 +2737,68 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       } else {
         existing.atMs = now;
       }
+      noteCreationBan(leaderId, 'collusion', now + COLLUSION_BAN_MS);
+      for (const memberId of next.roster) {
+        noteCreationBan(memberId, 'collusion', now + COLLUSION_BAN_MS);
+      }
       abuse = { ...abuse, frozen: [...frozenGuilds] };
     }
+    if (reviewed.multibox === 'carrier') {
+      for (const bots of carriers.values()) {
+        for (const botId of bots) {
+          noteCreationBan(botId, 'alt_guild', null);
+        }
+      }
+    }
     return reviewed;
+  }
+
+  function screenGuildCreate(body: Record<string, unknown>): { ok: boolean; code?: string } {
+    const name = typeof body.name === 'string' ? body.name : '';
+    const members = Array.isArray(body.members) ? body.members : [];
+    const founders: string[] = [];
+    for (const member of members) {
+      if (typeof member !== 'object' || member === null || !('id' in member)) {
+        continue;
+      }
+      const id = (member as { id?: unknown }).id;
+      if (typeof id === 'string' && id.length > 0) {
+        founders.push(id);
+      }
+    }
+    const screened = screenCharter({
+      name,
+      blacklist: GUILD_NAME_BLACKLIST,
+      nowMs: clock.now(),
+      founders: founders.map((id) => ({
+        id,
+        lastOfficeMs: previousOffice(id),
+        inOffice: founderInOffice(id),
+        ban: activeCreationBan(id),
+      })),
+    });
+    if (!screened.ok) {
+      return { ok: false, code: screened.code };
+    }
+    return { ok: true };
+  }
+
+  function banFounder(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const reviewerId = typeof body.reviewerId === 'string' ? body.reviewerId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const kind = typeof body.kind === 'string' ? body.kind : '';
+    const role = staffRoles.get(reviewerId);
+    if (role === undefined || characterId.length === 0) {
+      return { ok: false, code: 'rank' };
+    }
+    const applied = applyCreationBan({ role, kind, nowMs: clock.now() });
+    if (!applied.ok) {
+      return { ok: false, code: applied.code };
+    }
+    noteCreationBan(characterId, applied.value.kind, applied.value.untilMs);
+    return { ok: true, value: { characterId, kind: applied.value.kind, untilMs: applied.value.untilMs } };
   }
 
   async function reviewDeclaredWar(attackerGuildId: string, cityId: string): Promise<{ ok: boolean; code?: string }> {
@@ -3306,6 +3413,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const previous = guild.leaderId;
     if (table.get(previous) === 'leader') {
       table.set(previous, 'veteran');
+      endOffice(previous);
       rememberSeat(guildId, previous, clock.now());
     }
     table.set(toId, 'leader');
@@ -5007,6 +5115,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/guild/dissolve', action: 'guild_dissolve' },
   { path: '/guild/deposit', action: 'guild_deposit' },
   { path: '/guild/review', action: 'guild_review' },
+  { path: '/guild/ban', action: 'guild_ban' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

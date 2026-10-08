@@ -1,4 +1,5 @@
 import { askHostilePortal, GUILD_BANK_CAP, PORTAL_BLOCK_MS } from './economy';
+import { textHitsBlacklist } from './moderation';
 import { err, ok, type Result } from './result';
 import type { Rng } from './rng';
 
@@ -260,6 +261,90 @@ export function createGuild(input: {
     memberIds: [...ids],
     gold: 0,
   });
+}
+
+export type CreationBanKind = 'collusion' | 'alt_guild';
+
+export interface CreationBan {
+  id: string;
+  kind: CreationBanKind;
+  /** Null does not expire. A collusion ban uses `COLLUSION_BAN_MS`. */
+  untilMs: number | null;
+}
+
+/**
+ * Artifact 17 §2.3. The name pattern is not the moderation rule. A blacklist
+ * token is refused. An office still inside the 7-day window is refused, including
+ * a founder who still holds leader or council. An active collusion or alt-guild
+ * ban on any founder is refused.
+ */
+export function screenCharter(input: {
+  name: string;
+  blacklist: readonly string[];
+  nowMs: number;
+  founders: {
+    id: string;
+    lastOfficeMs: number | null;
+    inOffice: boolean;
+    ban: CreationBan | null;
+  }[];
+}): Result<true, 'name' | 'cooldown' | 'ban'> {
+  assertMs(input.nowMs, 'nowMs');
+  if (textHitsBlacklist(input.name, input.blacklist)) {
+    return err('name');
+  }
+  for (const founder of input.founders) {
+    if (founder.id.length === 0) {
+      throw new RangeError('founder id must be non-empty');
+    }
+    if (founder.inOffice) {
+      return err('cooldown');
+    }
+    if (founder.lastOfficeMs !== null) {
+      assertMs(founder.lastOfficeMs, 'lastOfficeMs');
+      if (input.nowMs - founder.lastOfficeMs < OFFICE_COOLDOWN_MS) {
+        return err('cooldown');
+      }
+    }
+    const ban = founder.ban;
+    if (ban !== null && ban.id === founder.id && creationBanActive(ban, input.nowMs)) {
+      return err('ban');
+    }
+  }
+  return ok(true);
+}
+
+function creationBanActive(ban: CreationBan, nowMs: number): boolean {
+  if (ban.kind !== 'collusion' && ban.kind !== 'alt_guild') {
+    return false;
+  }
+  if (ban.untilMs === null) {
+    return true;
+  }
+  assertMs(ban.untilMs, 'untilMs');
+  return nowMs < ban.untilMs;
+}
+
+/**
+ * Artifact 32 §10. Collusion is 30 days. An alt-guild ban does not expire:
+ * artifact 32 §6.1 bans the accounts.
+ */
+export function applyCreationBan(input: {
+  role: string;
+  kind: string;
+  nowMs: number;
+}): Result<{ kind: CreationBanKind; untilMs: number | null }, 'rank' | 'kind'> {
+  assertMs(input.nowMs, 'nowMs');
+  if (!(REVIEWER_ROLES as readonly string[]).includes(input.role)) {
+    return err('rank');
+  }
+  if (input.kind === 'collusion') {
+    return ok({ kind: 'collusion', untilMs: input.nowMs + COLLUSION_BAN_MS });
+  }
+  if (input.kind === 'alt_guild') {
+    return ok({ kind: 'alt_guild', untilMs: null });
+  }
+  return err('kind');
 }
 
 /** Leader is leader; every other founder starts as novice. */
