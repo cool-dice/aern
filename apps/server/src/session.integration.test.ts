@@ -536,9 +536,9 @@ test('story acts publish artifact scenes and live events advance them', async ()
   expect(rings.primordialOpened).toBe(false);
   expect(rings.self?.nodeId).toBe('fort_humans');
   expect(rings.self?.roomId).toBe(0);
-  const act3 = rings.players[0]?.quests.find((quest) => quest.id === 'act3_light');
-  expect(act3?.objectives.find((objective) => objective.id === 'outer_ring')?.current).toBe(0);
-  expect(act3?.objectives.find((objective) => objective.id === 'middle_ring')?.current).toBe(0);
+  const act3Inside = rings.players[0]?.quests.find((quest) => quest.id === 'act3_light');
+  expect(act3Inside?.objectives.find((objective) => objective.id === 'outer_ring')?.current).toBe(0);
+  expect(act3Inside?.objectives.find((objective) => objective.id === 'middle_ring')?.current).toBe(0);
   expect(act3?.objectives.find((objective) => objective.id === 'archive')?.current).toBe(1);
 
   expect(await graph.act('dungeon_leave', { characterId: 'lia' })).toMatchObject({ ok: true });
@@ -944,9 +944,9 @@ test('cities block attacks until war or an invasion wave, and disconnect removes
     commandId: 'war-hit',
     seq: 2,
     issuedAtMs: 1_200,
-    action: 'attack_melee',
+    action: 'attack_ranged',
     targetId: 'kai',
-    params: { entityId: 'lia', weaponDamage: 8, range: 1, odCost: 0 },
+    params: { entityId: 'lia', weaponDamage: 8, range: 8, odCost: 0 },
   });
   graph.tickOnce();
   expect(graph.snapshot().rejected).toBe(beforeRejected);
@@ -961,9 +961,9 @@ test('cities block attacks until war or an invasion wave, and disconnect removes
     commandId: 'wave-hit',
     seq: 1,
     issuedAtMs: barrier,
-    action: 'attack_melee',
+    action: 'attack_ranged',
     targetId: 'kai',
-    params: { entityId: 'lia', weaponDamage: 8, range: 1, odCost: 0 },
+    params: { entityId: 'lia', weaponDamage: 8, range: 8, odCost: 0 },
   });
   holiday.tickOnce();
   expect((holiday.state() as { invasion: string | null }).invasion).toBe('wave1');

@@ -759,7 +759,7 @@ test('a city geography ignores client pvp flags until war, a wave, or the encoun
   };
   const fighters = [
     entity({ id: 'lia', nodeId: 'fort_humans', cell: { x: 0, y: 0 }, hp: 40, maxHp: 40, evasion: 0, armor: 0 }),
-    entity({ id: 'kai', nodeId: 'fort_humans', cell: { x: 0, y: 0 }, hp: 40, maxHp: 40, evasion: 0, armor: 0 }),
+    entity({ id: 'kai', nodeId: 'fort_humans', cell: { x: 1, y: 0 }, hp: 40, maxHp: 40, evasion: 0, armor: 0 }),
   ];
   const hit = attack({
     attackerId: 'lia',
