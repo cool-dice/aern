@@ -108,15 +108,40 @@ export interface LivePorts {
     leaderConfirm: boolean;
     councilConfirms: number;
     councilVote: boolean;
+    goldWithdrawnToday?: number;
+    resourceStock?: number;
+    resourceAmount?: number;
+    resourcesWithdrawnToday?: number;
+    itemSlots?: number;
+    itemAmount?: number;
+    itemsWithdrawnToday?: number;
   }): Promise<LiveResult>;
   openLeaderPoll(guildId: string): void;
+  seatCharter(guildId: string, leaderId: string, memberIds: readonly string[]): void;
+  carriersBlocked(memberIds: readonly string[]): Promise<boolean>;
+  leadershipBlocked(characterId: string): Promise<boolean>;
   castLeaderBallot(body: Record<string, unknown>): Promise<LiveResult>;
+  joinGuild(body: Record<string, unknown>): Promise<LiveResult>;
+  bankLimits(guildId: string, characterId: string): {
+    goldWithdrawnToday: number;
+    resourceStock: number;
+    resourcesWithdrawnToday: number;
+    itemSlots: number;
+    itemsWithdrawnToday: number;
+  };
+  creditWithdrawal(input: {
+    guildId: string;
+    characterId: string;
+    amount: number;
+    resourceAmount: number;
+    itemAmount: number;
+  }): void;
   dissolveGuild(body: Record<string, unknown>): Promise<LiveResult>;
   depositGuild(body: Record<string, unknown>): Promise<LiveResult>;
   strikeNode(body: Record<string, unknown>): LiveResult;
   postCoalition(body: Record<string, unknown>): LiveResult;
   seatFounders(guildId: string, leaderId: string, memberIds: readonly string[]): void;
-  seatMember(guildId: string, actorId: string, memberId: string, rank: string): LiveResult;
+  seatMember(guildId: string, actorId: string, memberId: string, rank: string): Promise<LiveResult>;
   placeQuest(characterId: string, questId: string): Promise<void>;
   loadBuild(characterId: string): Promise<BuildState>;
   relicGrade(characterId: string): Promise<GradeId>;
@@ -182,6 +207,7 @@ const LIVE_ACTIONS = new Set([
   'guild_withdraw',
   'guild_rank',
   'guild_vote',
+  'guild_join',
   'guild_dissolve',
   'guild_deposit',
   'node_strike',
@@ -290,6 +316,8 @@ export async function runLive(
       return guildRank(body, ports);
     case 'guild_vote':
       return ports.castLeaderBallot(body);
+    case 'guild_join':
+      return ports.joinGuild(body);
     case 'guild_dissolve':
       return ports.dissolveGuild(body);
     case 'guild_deposit':
@@ -705,6 +733,22 @@ async function guildCreate(body: Record<string, unknown>, ports: LivePorts): Pro
       body.lastOfficeMs = held;
     }
   }
+  const memberIds = Array.isArray(body.members)
+    ? body.members.flatMap((member) => {
+        if (typeof member !== 'object' || member === null || !('id' in member)) {
+          return [];
+        }
+        const id = (member as { id?: unknown }).id;
+        return typeof id === 'string' && id.length > 0 ? [id] : [];
+      })
+    : [];
+  if (await ports.carriersBlocked(memberIds)) {
+    return { ok: false, code: 'carrier' };
+  }
+  const leaderIdForSeat = text(body, 'leaderId') ?? initiatorId;
+  if (leaderIdForSeat !== undefined && (await ports.leadershipBlocked(leaderIdForSeat))) {
+    return { ok: false, code: 'limit' };
+  }
   const created = await ports.guild.create(body);
   if (!created.ok) {
     return { ok: false, code: created.code };
@@ -722,17 +766,8 @@ async function guildCreate(body: Record<string, unknown>, ports: LivePorts): Pro
   }
   const initiator = text(body, 'initiatorId');
   const leaderId = text(body, 'leaderId') ?? initiator;
-  const memberIds = Array.isArray(body.members)
-    ? body.members.flatMap((member) => {
-        if (typeof member !== 'object' || member === null || !('id' in member)) {
-          return [];
-        }
-        const id = (member as { id?: unknown }).id;
-        return typeof id === 'string' && id.length > 0 ? [id] : [];
-      })
-    : [];
   if (leaderId !== undefined && memberIds.length > 0) {
-    ports.seatFounders(created.value.guildId, leaderId, memberIds);
+    ports.seatCharter(created.value.guildId, leaderId, memberIds);
   }
   if (initiator !== undefined) {
     await ports.note(initiator, 'capture');
@@ -1000,20 +1035,31 @@ async function guildWithdraw(body: Record<string, unknown>, ports: LivePorts): P
     councilConfirms: typeof body.councilConfirms === 'number' ? body.councilConfirms : 0,
     councilVote: body.councilVote === true,
   };
+  const limits = ports.bankLimits(guildId, characterId ?? '');
+  const resourceAmount = typeof body.resourceAmount === 'number' ? body.resourceAmount : 0;
+  const itemAmount = typeof body.itemAmount === 'number' ? body.itemAmount : 0;
+  const withdrawal = {
+    rank,
+    amount: body.amount,
+    ...confirms,
+    goldWithdrawnToday: limits.goldWithdrawnToday,
+    resourceStock: limits.resourceStock,
+    resourceAmount,
+    resourcesWithdrawnToday: limits.resourcesWithdrawnToday,
+    itemSlots: limits.itemSlots,
+    itemAmount,
+    itemsWithdrawnToday: limits.itemsWithdrawnToday,
+  };
   if (ports.rewardsFrozen(guildId)) {
     return ports.holdWithdrawal({
       guildId,
       characterId: characterId ?? '',
-      rank,
-      amount: body.amount,
-      ...confirms,
+      ...withdrawal,
     });
   }
   const taken = await ports.guild.withdraw({
     guildId,
-    rank,
-    amount: body.amount,
-    ...confirms,
+    ...withdrawal,
   });
   if (!taken.ok) {
     return { ok: false, code: taken.code };
@@ -1021,6 +1067,13 @@ async function guildWithdraw(body: Record<string, unknown>, ports: LivePorts): P
   ports.noteTurnover(body.amount);
   if (characterId !== undefined) {
     ports.logWithdrawal(guildId, characterId, body.amount);
+    ports.creditWithdrawal({
+      guildId,
+      characterId,
+      amount: taken.value.amount,
+      resourceAmount,
+      itemAmount,
+    });
   }
   return { ok: true, value: taken.value };
 }
@@ -1033,7 +1086,7 @@ async function guildRank(body: Record<string, unknown>, ports: LivePorts): Promi
   if (guildId === undefined || actorId === undefined || memberId === undefined || rank === undefined) {
     return { ok: false, code: 'invalid' };
   }
-  return ports.seatMember(guildId, actorId, memberId, rank);
+  return await ports.seatMember(guildId, actorId, memberId, rank);
 }
 
 function rankOf(value: string | undefined): GuildRank | null {

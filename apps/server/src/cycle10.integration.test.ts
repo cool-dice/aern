@@ -332,13 +332,32 @@ test('a multibox carrier is refused before the war is saved or charged', async (
       { id: 'm3', level: 5 },
     ],
   });
-  expect(created.ok).toBe(true);
-  const guildId = (created.value as { guildId: string }).guildId;
+  expect(created).toMatchObject({ ok: false, code: 'carrier' });
+  expect(await graph.guild.repository.listGuilds()).toEqual([]);
+  const seated = await graph.act('guild_create', {
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'lia', level: 5 },
+      { id: first.value.characterId, level: 5 },
+      { id: 'm2', level: 5 },
+      { id: 'm3', level: 5 },
+    ],
+  });
+  expect(seated.ok).toBe(true);
+  const guildId = (seated.value as { guildId: string }).guildId;
   const funded = await graph.guild.repository.findGuild(guildId);
   if (funded === null) {
     throw new Error('missing guild');
   }
-  await graph.guild.repository.saveGuild({ ...funded, bank: 100_000 });
+  await graph.guild.repository.saveGuild({
+    ...funded,
+    bank: 100_000,
+    memberIds: [...funded.memberIds, second.value.characterId],
+  });
   const declared = await graph.act('guild_war', {
     attackerGuildId: guildId,
     cityId: 'fort_humans',
@@ -395,9 +414,11 @@ test('a withdrawal during review is held and the next tick pays it', async () =>
   const held = await graph.act('guild_withdraw', { guildId, characterId: 'lia', amount: 1 });
   expect(held).toMatchObject({ ok: true, value: { held: true, amount: 1, bank } });
   expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(bank);
+  const wallet = graph.economy.service.balance('lia') ?? 0;
   await graph.tickOnce();
   expect((graph.state() as { abuse: { frozen: string[] } }).abuse.frozen).not.toContain(guildId);
   expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(bank - 1);
+  expect(graph.economy.service.balance('lia')).toBe(wallet + 1);
   expect(WAR_GOLD).toBe(50_000);
 });
 
@@ -449,9 +470,9 @@ test('the section 11 tick lifts a 24 hour portal block for a neutral', async () 
   graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
   const guildId = await foundGuild(graph);
   await winCity(graph, guildId, 'fort_humans');
-  await graph.skipMs(PORTAL_BLOCK_MS);
+  await graph.skipMs(PORTAL_BLOCK_MS - 1);
   expect((graph.state() as { abuse: { portalsLifted: string[] } }).abuse.portalsLifted).not.toContain('fort_humans');
-  await graph.tickOnce();
+  await graph.skipMs(1);
   expect((graph.state() as { abuse: { portalsLifted: string[] } }).abuse.portalsLifted).toContain('fort_humans');
   graph.enterWorld('neo', 'obsidian_tower');
   expect(graph.cityService('neo', 'fort_humans', 'portal').ok).toBe(true);

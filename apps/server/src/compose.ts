@@ -56,11 +56,13 @@ import {
   type PortalStance,
 } from '@rift/domain/economy';
 import {
+  aiLeadership,
   allianceFriendlyFire,
   applyVassalTithe,
   breakAlliance,
   canDissolve,
   castLeaderVote,
+  closeInternalVote,
   escortArrived,
   failSuzerainDefense,
   releaseVassal,
@@ -68,13 +70,18 @@ import {
   declareNeutralCapture,
   depositBank,
   depositNodeChest,
+  dissolveHoldings,
   dissolveShares,
   formPact,
   withdraw,
   founderRanks,
+  INTERNAL_VOTE_MS,
+  LEADER_ABSENCE_MS,
   freshResourceNode,
   GUILD_CREATE_GOLD,
   measureSection12,
+  officerInvite,
+  reserveItemSlots,
   NEUTRAL_GUARD_COUNT,
   coalitionChannel,
   napBetween,
@@ -94,6 +101,7 @@ import {
   type WarStamp,
   seatRank,
   strikeNodeFlag,
+  succeedAbsentLeader,
   voteQuorum,
   nodeAccessAllows,
   nodeAccessCategory,
@@ -296,6 +304,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     guildId: string;
     characterId: string;
     amount: number;
+    resourceAmount: number;
+    itemAmount: number;
     rank: GuildRank;
     leaderConfirm: boolean;
     councilConfirms: number;
@@ -313,9 +323,29 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
   >();
   const voteRng = mulberry32(3);
+  const internalPolls = new Map<
+    string,
+    {
+      guildId: string;
+      openedAtMs: number;
+      ballots: { voterId: string; choice: string }[];
+      closed: boolean;
+      result: { status: string; choice?: string; by?: string; deciderId?: string | null } | null;
+    }
+  >();
   const dissolvePolls = new Map<string, { leaderConsent: boolean; councilIds: Set<string> }>();
   const contributions = new Map<string, Map<string, number>>();
+  const resourceLedgers = new Map<string, Map<string, number>>();
+  const itemLedgers = new Map<string, Map<string, number>>();
+  const guildResources = new Map<string, number>();
+  const guildItems = new Map<string, { itemId: string; qty: number }[]>();
+  const memberStats = new Map<string, Map<string, { seatedAtMs: number; activityMs: number }>>();
+  const leaderSeenAt = new Map<string, number>();
+  const invitesToday = new Map<string, { day: number; count: number }>();
+  const withdrawnToday = new Map<string, { day: number; gold: number; resources: number; items: number }>();
   let dissolutionVoid = 0;
+  let dissolutionResourceVoid = 0;
+  let dissolutionItemVoid = 0;
   const declaredEvents: number[] = [];
   const settledEvents: { atMs: number; elapsedMs: number; participants: number; result: 'win' | 'draw' }[] = [];
   const captureEvents: number[] = [];
@@ -803,7 +833,13 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     logWithdrawal,
     holdWithdrawal,
     openLeaderPoll,
+    seatCharter,
+    carriersBlocked: carriersBlockedIds,
+    leadershipBlocked,
     castLeaderBallot,
+    joinGuild,
+    bankLimits,
+    creditWithdrawal,
     dissolveGuild,
     depositGuild,
     strikeNode,
@@ -1299,7 +1335,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return guildRanks.get(guildId)?.get(characterId) ?? null;
   }
 
-  function seatMember(
+  async function seatMember(
     guildId: string,
     actorId: string,
     memberId: string,
@@ -1331,19 +1367,29 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         counts[held] += 1;
       }
     }
+    const joined = memberStats.get(guildId)?.get(memberId)?.seatedAtMs ?? 0;
     const seated = seatRank({
       rank,
       from: table.get(memberId) ?? null,
       counts,
-      joinedAtMs: 0,
+      joinedAtMs: joined,
       nowMs: clock.now(),
     });
     if (!seated.ok) {
       return { ok: false, code: seated.code };
     }
+    const posts = await leadershipPosts(memberId, guildId);
+    const allowed = aiLeadership({ ai: posts.ai, rank: seated.value.rank, posts: posts.count });
+    if (!allowed.ok) {
+      return { ok: false, code: allowed.code };
+    }
     table.set(memberId, seated.value.rank);
+    rememberSeat(guildId, memberId, clock.now());
     if (seated.value.rank === 'leader' || seated.value.rank === 'council') {
       rememberOffice(memberId, guildId);
+    }
+    if (seated.value.rank === 'leader') {
+      leaderSeenAt.set(guildId, clock.now());
     }
     return { ok: true, value: { guildId, memberId, rank: seated.value.rank } };
   }
@@ -1352,9 +1398,188 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const table = new Map<string, GuildRank>();
     for (const row of founderRanks(leaderId, memberIds)) {
       table.set(row.id, row.rank);
+      rememberSeat(guildId, row.id, clock.now());
     }
     guildRanks.set(guildId, table);
+    leaderSeenAt.set(guildId, clock.now());
     rememberOffice(leaderId, guildId);
+  }
+
+  /** Charter members can vote. Starting novice ranks wait until the leader poll closes. */
+  function seatCharter(guildId: string, leaderId: string, memberIds: readonly string[]): void {
+    const table = new Map<string, GuildRank>();
+    for (const id of memberIds) {
+      table.set(id, id === leaderId ? 'leader' : 'veteran');
+      rememberSeat(guildId, id, clock.now());
+    }
+    guildRanks.set(guildId, table);
+    leaderSeenAt.set(guildId, clock.now());
+    rememberOffice(leaderId, guildId);
+  }
+
+  function rememberSeat(guildId: string, characterId: string, atMs: number): void {
+    const table = memberStats.get(guildId) ?? new Map<string, { seatedAtMs: number; activityMs: number }>();
+    const previous = table.get(characterId);
+    table.set(characterId, { seatedAtMs: atMs, activityMs: previous?.activityMs ?? 0 });
+    memberStats.set(guildId, table);
+  }
+
+  async function leadershipPosts(
+    characterId: string,
+    exceptGuildId: string,
+  ): Promise<{ ai: boolean; count: number }> {
+    const record = await repos.characters.findById(characterId);
+    if (record?.controller !== 'bot') {
+      return { ai: false, count: 0 };
+    }
+    let count = 0;
+    for (const [guildId, table] of guildRanks) {
+      if (guildId === exceptGuildId) {
+        continue;
+      }
+      const rank = table.get(characterId);
+      if (rank === 'leader' || rank === 'council' || rank === 'officer') {
+        count += 1;
+      }
+    }
+    return { ai: true, count };
+  }
+
+  function rankRecord(guildId: string): Partial<Record<string, GuildRank>> {
+    const ranks: Partial<Record<string, GuildRank>> = {};
+    for (const [id, rank] of guildRanks.get(guildId) ?? []) {
+      ranks[id] = rank;
+    }
+    return ranks;
+  }
+
+  function dayIndex(nowMs: number): number {
+    return Math.floor(nowMs / (24 * 60 * 60 * 1000));
+  }
+
+  function takenToday(guildId: string, characterId: string): { gold: number; resources: number; items: number } {
+    const row = withdrawnToday.get(`${guildId}\0${characterId}`);
+    if (row === undefined || row.day !== dayIndex(clock.now())) {
+      return { gold: 0, resources: 0, items: 0 };
+    }
+    return row;
+  }
+
+  function noteTaken(guildId: string, characterId: string, gold: number, resources: number, items: number): void {
+    const current = takenToday(guildId, characterId);
+    withdrawnToday.set(`${guildId}\0${characterId}`, {
+      day: dayIndex(clock.now()),
+      gold: current.gold + gold,
+      resources: current.resources + resources,
+      items: current.items + items,
+    });
+  }
+
+  function bankLimits(guildId: string, characterId: string): {
+    goldWithdrawnToday: number;
+    resourceStock: number;
+    resourcesWithdrawnToday: number;
+    itemSlots: number;
+    itemsWithdrawnToday: number;
+  } {
+    const taken = takenToday(guildId, characterId);
+    return {
+      goldWithdrawnToday: taken.gold,
+      resourceStock: guildResources.get(guildId) ?? 0,
+      resourcesWithdrawnToday: taken.resources,
+      itemSlots: guildItems.get(guildId)?.length ?? 0,
+      itemsWithdrawnToday: taken.items,
+    };
+  }
+
+  function itemQty(guildId: string): number {
+    return (guildItems.get(guildId) ?? []).reduce((total, stack) => total + stack.qty, 0);
+  }
+
+  function creditWithdrawal(input: {
+    guildId: string;
+    characterId: string;
+    amount: number;
+    resourceAmount: number;
+    itemAmount: number;
+  }): void {
+    if (input.amount > 0) {
+      creditGold(input.characterId, input.amount);
+    }
+    if (input.resourceAmount > 0) {
+      const stock = guildResources.get(input.guildId) ?? 0;
+      guildResources.set(input.guildId, Math.max(0, stock - input.resourceAmount));
+      const stacks = resourceLedgers.get(input.guildId);
+      void creditMaterial(input.characterId, 'metal', input.resourceAmount);
+      if (stacks !== undefined) {
+        stacks.set(input.characterId, Math.max(0, (stacks.get(input.characterId) ?? 0) - input.resourceAmount));
+      }
+    }
+    if (input.itemAmount > 0) {
+      const left = takeItems(input.guildId, input.itemAmount);
+      giveItems(input.characterId, left.given);
+    }
+    noteTaken(input.guildId, input.characterId, input.amount, input.resourceAmount, input.itemAmount);
+  }
+
+  function takeItems(
+    guildId: string,
+    qty: number,
+  ): { given: { itemId: string; qty: number }[]; voided: number } {
+    const stacks = [...(guildItems.get(guildId) ?? [])];
+    const given: { itemId: string; qty: number }[] = [];
+    let left = qty;
+    const next: { itemId: string; qty: number }[] = [];
+    for (const stack of stacks) {
+      if (left <= 0) {
+        next.push(stack);
+        continue;
+      }
+      const moved = Math.min(stack.qty, left);
+      left -= moved;
+      if (moved > 0) {
+        given.push({ itemId: stack.itemId, qty: moved });
+      }
+      if (stack.qty > moved) {
+        next.push({ itemId: stack.itemId, qty: stack.qty - moved });
+      }
+    }
+    guildItems.set(guildId, next);
+    return { given, voided: left };
+  }
+
+  function giveItems(characterId: string, stacks: { itemId: string; qty: number }[]): void {
+    if (stacks.length === 0) {
+      return;
+    }
+    const current =
+      repos.economy.getCharacter(characterId) ??
+      newEconomyCharacter({ characterId, side: 'light', gold: 0 });
+    const items = { ...current.items };
+    for (const stack of stacks) {
+      const held = items[stack.itemId];
+      if (held === undefined) {
+        items[stack.itemId] = {
+          itemId: stack.itemId,
+          level: 1,
+          grade: 'common',
+          unique: false,
+          durability: 100,
+          qty: stack.qty,
+        };
+      } else {
+        items[stack.itemId] = { ...held, qty: held.qty + stack.qty };
+      }
+    }
+    repos.economy.saveCharacter({ ...current, items });
+  }
+
+  async function creditMaterial(characterId: string, resourceId: string, amount: number): Promise<void> {
+    const stacks = await repos.materials.read(characterId);
+    await repos.materials.commit(characterId, stacks, {
+      ...stacks,
+      [resourceId]: (stacks[resourceId] ?? 0) + amount,
+    });
   }
 
   function nextDiplomacyId(prefix: string): string {
@@ -1944,6 +2169,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await penalizeAbsentSuzerains();
     noteWarRoster();
     await reviewNewSettlements();
+    const fronts = openWarFronts();
+    simWorld = { ...simWorld, warFronts: fronts };
+    await resolveLeaderPolls();
+    await resolveInternalPolls();
+    await relieveAbsentLeaders(ms);
+    await inspectRewardFreezes();
+    refreshPortalLifts();
+    await sampleBalance();
   }
 
   function guardAllies(command: SimCommand): SimCommand {
@@ -2397,10 +2630,13 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       const bots = carriers.get(record.accountId) ?? [];
       bots.push(memberId);
       carriers.set(record.accountId, bots);
-      const entity = simWorld.entities.find((row) => row.id === memberId);
+    }
+    for (const ballot of storedBallots(guildId)) {
+      const record = await repos.characters.findById(ballot.voterId);
+      const entity = simWorld.entities.find((row) => row.id === ballot.voterId);
       ballots.push({
-        voterId: memberId,
-        ai: true,
+        voterId: ballot.voterId,
+        ai: record?.controller === 'bot',
         carrierOnline: entity !== undefined && entity.phase === 'online' && entity.carrierOffline !== true,
       });
     }
@@ -2482,6 +2718,57 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       carriers.set(record.accountId, bots);
     }
     return [...carriers.entries()].map(([carrierId, botIds]) => ({ carrierId, botIds }));
+  }
+
+  function storedBallots(guildId: string): { voterId: string }[] {
+    const rows: { voterId: string }[] = [];
+    const leader = leaderPolls.get(guildId);
+    if (leader !== undefined) {
+      for (const ballot of leader.ballots) {
+        rows.push({ voterId: ballot.voterId });
+      }
+    }
+    const motion = internalPolls.get(guildId);
+    if (motion !== undefined) {
+      for (const ballot of motion.ballots) {
+        rows.push({ voterId: ballot.voterId });
+      }
+    }
+    return rows;
+  }
+
+  async function leadershipBlocked(characterId: string): Promise<boolean> {
+    const posts = await leadershipPosts(characterId, '');
+    const allowed = aiLeadership({ ai: posts.ai, rank: 'leader', posts: posts.count });
+    return !allowed.ok;
+  }
+
+  async function carriersBlockedIds(memberIds: readonly string[]): Promise<boolean> {
+    const carriers = new Map<string, string[]>();
+    for (const memberId of memberIds) {
+      const record = await repos.characters.findById(memberId);
+      if (record?.controller !== 'bot') {
+        continue;
+      }
+      const bots = carriers.get(record.accountId) ?? [];
+      bots.push(memberId);
+      carriers.set(record.accountId, bots);
+    }
+    const reviewed = reviewSection11({
+      nowMs: clock.now(),
+      lastOfficeMs: null,
+      history: [],
+      next: null,
+      portals: [],
+      ballots: [],
+      carriers: [...carriers.entries()].map(([carrierId, botIds]) => ({ carrierId, botIds })),
+      withdrawalsLogged: 0,
+    });
+    if (reviewed.multibox !== 'carrier') {
+      return false;
+    }
+    abuse = { ...abuse, multibox: 'carrier' };
+    return true;
   }
 
   /** Section 11 multibox, before a war row is saved or the bank is charged. */
@@ -2752,11 +3039,19 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (revote) {
       poll.revoteUsed = true;
     }
+    const ranks = rankRecord(guildId);
+    let eligible = 0;
+    for (const id of guild.memberIds) {
+      if (ranks[id] !== 'novice') {
+        eligible += 1;
+      }
+    }
     const elected = castLeaderVote({
       memberIds: guild.memberIds,
       ballots: poll.ballots,
       revote,
       rng: voteRng,
+      ranks,
     });
     if (!elected.ok) {
       return { ok: false, code: elected.code };
@@ -2767,8 +3062,13 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
       return { ok: true, value: { status: 'tie', candidateIds: elected.value.candidateIds, revote: true } };
     }
-    if (!voteQuorum(poll.ballots.length, guild.memberIds.length)) {
+    if (!voteQuorum(poll.ballots.length, eligible)) {
       return { ok: true, value: { status: 'open', quorum: false, leaderId: elected.value.leaderId } };
+    }
+    const posts = await leadershipPosts(elected.value.leaderId, guildId);
+    const allowed = aiLeadership({ ai: posts.ai, rank: 'leader', posts: posts.count });
+    if (!allowed.ok) {
+      return { ok: false, code: allowed.code };
     }
     poll.closed = true;
     await repos.guilds.saveGuild({ ...guild, leaderId: elected.value.leaderId });
@@ -2787,6 +3087,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
           ? body.characterId
           : '';
     const candidateId = typeof body.candidateId === 'string' ? body.candidateId : '';
+    if (typeof body.choice === 'string') {
+      return castInternalBallot(body);
+    }
     if (guildId.length === 0 || voterId.length === 0 || candidateId.length === 0) {
       return { ok: false, code: 'member' };
     }
@@ -2830,6 +3133,218 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
   }
 
+  async function castInternalBallot(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const voterId =
+      typeof body.voterId === 'string'
+        ? body.voterId
+        : typeof body.characterId === 'string'
+          ? body.characterId
+          : '';
+    const choice = typeof body.choice === 'string' ? body.choice : '';
+    if (guildId.length === 0 || voterId.length === 0 || choice.length === 0) {
+      return { ok: false, code: 'member' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null || !guild.memberIds.includes(voterId)) {
+      return { ok: false, code: 'member' };
+    }
+    let poll = internalPolls.get(guildId);
+    if (poll === undefined) {
+      poll = { guildId, openedAtMs: clock.now(), ballots: [], closed: false, result: null };
+      internalPolls.set(guildId, poll);
+    }
+    if (poll.closed) {
+      return { ok: true, value: poll.result ?? { status: 'closed' } };
+    }
+    if (clock.now() >= poll.openedAtMs + INTERNAL_VOTE_MS) {
+      await resolveInternalPolls();
+      return { ok: true, value: poll.result ?? { status: 'window' } };
+    }
+    if (poll.ballots.some((row) => row.voterId === voterId)) {
+      return { ok: false, code: 'stuffed' };
+    }
+    const record = await repos.characters.findById(voterId);
+    if (record?.controller === 'bot') {
+      const entity = simWorld.entities.find((row) => row.id === voterId);
+      const online = entity !== undefined && entity.phase === 'online' && entity.carrierOffline !== true;
+      if (!online) {
+        return { ok: false, code: 'offline' };
+      }
+    }
+    const ranks = rankRecord(guildId);
+    if (ranks[voterId] === 'novice') {
+      return { ok: false, code: 'rank' };
+    }
+    poll.ballots.push({ voterId, choice });
+    return { ok: true, value: { status: 'open', closesAtMs: poll.openedAtMs + INTERNAL_VOTE_MS } };
+  }
+
+  async function resolveInternalPolls(): Promise<void> {
+    const now = clock.now();
+    for (const poll of internalPolls.values()) {
+      if (poll.closed || now < poll.openedAtMs + INTERNAL_VOTE_MS) {
+        continue;
+      }
+      const guild = await repos.guilds.findGuild(poll.guildId);
+      if (guild === null) {
+        poll.closed = true;
+        poll.result = { status: 'failed' };
+        continue;
+      }
+      const ranks = rankRecord(poll.guildId);
+      const council: { id: string; seniorityMs: number }[] = [];
+      for (const [id, rank] of guildRanks.get(poll.guildId) ?? []) {
+        if (rank !== 'council') {
+          continue;
+        }
+        const seated = memberStats.get(poll.guildId)?.get(id)?.seatedAtMs ?? now;
+        council.push({ id, seniorityMs: Math.max(0, now - seated) });
+      }
+      const seen = leaderSeenAt.get(poll.guildId) ?? poll.openedAtMs;
+      const closed = closeInternalVote({
+        openedAtMs: poll.openedAtMs,
+        nowMs: now,
+        ballots: poll.ballots,
+        eligibleIds: guild.memberIds,
+        ranks,
+        leaderId: guild.leaderId,
+        leaderAbsentMs: Math.max(0, now - seen),
+        council,
+      });
+      poll.closed = true;
+      poll.result = closed.ok ? closed.value : { status: closed.code };
+    }
+  }
+
+  function onlineMember(characterId: string): boolean {
+    const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
+    return entity !== undefined && entity.phase === 'online' && entity.carrierOffline !== true;
+  }
+
+  function noteMemberPresence(deltaMs: number): void {
+    const now = clock.now();
+    for (const [guildId, table] of guildRanks) {
+      for (const [id, rank] of table) {
+        if (!onlineMember(id)) {
+          continue;
+        }
+        if (rank === 'leader') {
+          leaderSeenAt.set(guildId, now);
+        }
+        const stats = memberStats.get(guildId)?.get(id);
+        if (stats !== undefined) {
+          stats.activityMs += deltaMs;
+        }
+      }
+    }
+  }
+
+  async function relieveAbsentLeaders(deltaMs: number): Promise<void> {
+    noteMemberPresence(deltaMs);
+    const now = clock.now();
+    const guilds = await repos.guilds.listGuilds();
+    for (const guild of guilds) {
+      if (guild.memberIds.length === 0) {
+        continue;
+      }
+      const seen = leaderSeenAt.get(guild.id);
+      if (seen === undefined) {
+        leaderSeenAt.set(guild.id, now);
+        continue;
+      }
+      const council: { id: string; seniorityMs: number; activity: number }[] = [];
+      const officers: { id: string; seniorityMs: number }[] = [];
+      for (const [id, rank] of guildRanks.get(guild.id) ?? []) {
+        const stats = memberStats.get(guild.id)?.get(id);
+        const seniorityMs = Math.max(0, now - (stats?.seatedAtMs ?? now));
+        const posts = await leadershipPosts(id, guild.id);
+        const allowed = aiLeadership({ ai: posts.ai, rank: 'leader', posts: posts.count });
+        if (!allowed.ok) {
+          continue;
+        }
+        if (rank === 'council') {
+          council.push({ id, seniorityMs, activity: stats?.activityMs ?? 0 });
+        } else if (rank === 'officer') {
+          officers.push({ id, seniorityMs });
+        }
+      }
+      const next = succeedAbsentLeader({
+        absentMs: Math.max(0, now - seen),
+        council,
+        officers,
+      });
+      if (next.action === 'wait') {
+        continue;
+      }
+      if (next.action === 'transfer') {
+        await transferLeader(guild.id, next.toId);
+        continue;
+      }
+      await payDissolution(guild.id, 'absence');
+    }
+  }
+
+  async function transferLeader(guildId: string, toId: string): Promise<void> {
+    const guild = await repos.guilds.findGuild(guildId);
+    const table = guildRanks.get(guildId);
+    if (guild === null || table === undefined || !table.has(toId)) {
+      return;
+    }
+    const previous = guild.leaderId;
+    if (table.get(previous) === 'leader') {
+      table.set(previous, 'veteran');
+      rememberSeat(guildId, previous, clock.now());
+    }
+    table.set(toId, 'leader');
+    rememberSeat(guildId, toId, clock.now());
+    rememberOffice(toId, guildId);
+    leaderSeenAt.set(guildId, clock.now());
+    await repos.guilds.saveGuild({ ...guild, leaderId: toId });
+  }
+
+  async function joinGuild(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const guildId = typeof body.guildId === 'string' ? body.guildId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const actorId = typeof body.actorId === 'string' ? body.actorId : '';
+    if (guildId.length === 0 || characterId.length === 0 || actorId.length === 0) {
+      return { ok: false, code: 'member' };
+    }
+    const guild = await repos.guilds.findGuild(guildId);
+    const actorRank = memberRank(guildId, actorId);
+    if (guild === null || actorRank === null) {
+      return { ok: false, code: 'member' };
+    }
+    if (guild.memberIds.includes(characterId) || guildOf.has(characterId)) {
+      return { ok: false, code: 'member' };
+    }
+    const day = dayIndex(clock.now());
+    const inviteKey = `${guildId}\0${actorId}`;
+    const invites = invitesToday.get(inviteKey);
+    const invitesCount = invites !== undefined && invites.day === day ? invites.count : 0;
+    const invited = officerInvite({ rank: actorRank, invitesToday: invitesCount });
+    if (!invited.ok) {
+      return { ok: false, code: invited.code };
+    }
+    if (await carriersBlockedIds([...guild.memberIds, characterId])) {
+      return { ok: false, code: 'carrier' };
+    }
+    const table = guildRanks.get(guildId) ?? new Map<string, GuildRank>();
+    table.set(characterId, 'novice');
+    guildRanks.set(guildId, table);
+    rememberSeat(guildId, characterId, clock.now());
+    await repos.guilds.saveGuild({ ...guild, memberIds: [...guild.memberIds, characterId] });
+    assignGuild(characterId, guildId);
+    if (actorRank === 'officer') {
+      invitesToday.set(inviteKey, { day, count: invitesCount + 1 });
+    }
+    return { ok: true, value: { guildId, characterId, rank: 'novice' } };
+  }
+
   function councilSize(guildId: string): number {
     let count = 0;
     for (const rank of guildRanks.get(guildId)?.values() ?? []) {
@@ -2871,7 +3386,68 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     table.set(characterId, (table.get(characterId) ?? 0) + entered);
     contributions.set(guildId, table);
     noteTurnover(entered);
-    return { ok: true, value: { bank: deposited.bank, contributed: entered } };
+    const resources = typeof body.resources === 'number' ? body.resources : 0;
+    const itemQtyIn = typeof body.itemQty === 'number' ? body.itemQty : 0;
+    const itemId = typeof body.itemId === 'string' ? body.itemId : '';
+    let resourceContributed = 0;
+    let itemContributed = 0;
+    if (Number.isInteger(resources) && resources > 0) {
+      const resourceId = typeof body.resourceId === 'string' ? body.resourceId : 'metal';
+      const stacks = await repos.materials.read(characterId);
+      const held = stacks[resourceId] ?? 0;
+      if (held < resources) {
+        return { ok: false, code: 'gold' };
+      }
+      const committed = await repos.materials.commit(characterId, stacks, {
+        ...stacks,
+        [resourceId]: held - resources,
+      });
+      if (!committed) {
+        return { ok: false, code: 'gold' };
+      }
+      guildResources.set(guildId, (guildResources.get(guildId) ?? 0) + resources);
+      const ledger = resourceLedgers.get(guildId) ?? new Map<string, number>();
+      ledger.set(characterId, (ledger.get(characterId) ?? 0) + resources);
+      resourceLedgers.set(guildId, ledger);
+      resourceContributed = resources;
+    }
+    if (Number.isInteger(itemQtyIn) && itemQtyIn > 0 && itemId.length > 0) {
+      const slots = guildItems.get(guildId) ?? [];
+      const adding = slots.some((stack) => stack.itemId === itemId) ? 0 : 1;
+      const reserved = reserveItemSlots(slots.length, adding);
+      if (!reserved.ok) {
+        return { ok: false, code: reserved.code };
+      }
+      const walletNow = repos.economy.getCharacter(characterId);
+      const heldItem = walletNow?.items[itemId];
+      if (walletNow === null || heldItem === undefined || heldItem.qty < itemQtyIn) {
+        return { ok: false, code: 'gold' };
+      }
+      const items = { ...walletNow.items };
+      const nextQty = heldItem.qty - itemQtyIn;
+      if (nextQty === 0) {
+        delete items[itemId];
+      } else {
+        items[itemId] = { ...heldItem, qty: nextQty };
+      }
+      repos.economy.saveCharacter({ ...walletNow, items });
+      const bankStacks = slots.map((stack) => ({ ...stack }));
+      const existing = bankStacks.find((stack) => stack.itemId === itemId);
+      if (existing === undefined) {
+        bankStacks.push({ itemId, qty: itemQtyIn });
+      } else {
+        existing.qty += itemQtyIn;
+      }
+      guildItems.set(guildId, bankStacks);
+      const ledger = itemLedgers.get(guildId) ?? new Map<string, number>();
+      ledger.set(characterId, (ledger.get(characterId) ?? 0) + itemQtyIn);
+      itemLedgers.set(guildId, ledger);
+      itemContributed = itemQtyIn;
+    }
+    return {
+      ok: true,
+      value: { bank: deposited.bank, contributed: entered, resources: resourceContributed, items: itemContributed },
+    };
   }
 
   async function dissolveGuild(
@@ -2905,24 +3481,86 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (!decision.ok) {
       return { ok: false, code: decision.code };
     }
-    const rows = [...(contributions.get(guildId)?.entries() ?? [])]
+    const paid = await payDissolution(guildId, decision.value.by);
+    if (paid === null) {
+      return { ok: false, code: 'member' };
+    }
+    return { ok: true, value: paid };
+  }
+
+  function ledgerRows(table: Map<string, Map<string, number>>, guildId: string): { id: string; contributed: number }[] {
+    return [...(table.get(guildId)?.entries() ?? [])]
       .filter((row) => row[1] > 0)
       .map(([id, contributed]) => ({ id, contributed }));
-    const shares = dissolveShares(guild.bank, rows);
+  }
+
+  async function payDissolution(
+    guildId: string,
+    by: string,
+  ): Promise<{ by: string; shares: { id: string; gold: number }[]; void: number; resources: { id: string; amount: number }[]; items: { id: string; amount: number }[] } | null> {
+    const guild = await repos.guilds.findGuild(guildId);
+    if (guild === null) {
+      return null;
+    }
+    const goldRows = ledgerRows(contributions, guildId);
+    const resourceRows = ledgerRows(resourceLedgers, guildId);
+    const itemRows = ledgerRows(itemLedgers, guildId);
+    const shares = dissolveShares(guild.bank, goldRows);
+    const holdings = dissolveHoldings({
+      gold: guild.bank,
+      resources: guildResources.get(guildId) ?? 0,
+      items: itemQty(guildId),
+      goldLedger: goldRows,
+      resourceLedger: resourceRows,
+      itemLedger: itemRows,
+    });
     for (const share of shares.shares) {
       if (share.gold > 0) {
         creditGold(share.id, share.gold);
       }
     }
+    for (const share of holdings.resources.shares) {
+      if (share.amount > 0) {
+        await creditMaterial(share.id, 'metal', share.amount);
+      }
+    }
+    const stacks = guildItems.get(guildId) ?? [];
+    let cursor = 0;
+    for (const share of holdings.items.shares) {
+      let left = share.amount;
+      const given: { itemId: string; qty: number }[] = [];
+      while (left > 0 && cursor < stacks.length) {
+        const stack = stacks[cursor];
+        if (stack === undefined) {
+          break;
+        }
+        const moved = Math.min(stack.qty, left);
+        given.push({ itemId: stack.itemId, qty: moved });
+        stack.qty -= moved;
+        left -= moved;
+        if (stack.qty === 0) {
+          cursor += 1;
+        }
+      }
+      giveItems(share.id, given);
+    }
     dissolutionVoid += shares.void;
+    dissolutionResourceVoid += holdings.resources.void;
+    dissolutionItemVoid += holdings.items.void;
     noteTurnover(guild.bank);
     await repos.guilds.saveGuild({ ...guild, bank: 0, memberIds: [] });
     for (const memberId of guild.memberIds) {
       guildOf.delete(memberId);
     }
     guildRanks.delete(guildId);
+    memberStats.delete(guildId);
     contributions.delete(guildId);
+    resourceLedgers.delete(guildId);
+    itemLedgers.delete(guildId);
+    guildResources.delete(guildId);
+    guildItems.delete(guildId);
     dissolvePolls.delete(guildId);
+    leaderSeenAt.delete(guildId);
     simWorld = {
       ...simWorld,
       entities: simWorld.entities.map((entity) => {
@@ -2934,7 +3572,13 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         return next;
       }),
     };
-    return { ok: true, value: { by: decision.value.by, shares: shares.shares, void: shares.void } };
+    return {
+      by,
+      shares: shares.shares,
+      void: shares.void,
+      resources: holdings.resources.shares,
+      items: holdings.items.shares,
+    };
   }
 
   function strikeNode(body: Record<string, unknown>): { ok: boolean; code?: string; value?: unknown } {
@@ -2965,6 +3609,13 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     leaderConfirm: boolean;
     councilConfirms: number;
     councilVote: boolean;
+    goldWithdrawnToday?: number;
+    resourceStock?: number;
+    resourceAmount?: number;
+    resourcesWithdrawnToday?: number;
+    itemSlots?: number;
+    itemAmount?: number;
+    itemsWithdrawnToday?: number;
   }): Promise<{ ok: boolean; code?: string; value?: unknown }> {
     const guild = await repos.guilds.findGuild(input.guildId);
     if (guild === null) {
@@ -2977,6 +3628,15 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       leaderConfirm: input.leaderConfirm,
       councilConfirms: input.councilConfirms,
       councilVote: input.councilVote,
+      ...(input.goldWithdrawnToday !== undefined ? { goldWithdrawnToday: input.goldWithdrawnToday } : {}),
+      ...(input.resourceStock !== undefined ? { resourceStock: input.resourceStock } : {}),
+      ...(input.resourceAmount !== undefined ? { resourceAmount: input.resourceAmount } : {}),
+      ...(input.resourcesWithdrawnToday !== undefined
+        ? { resourcesWithdrawnToday: input.resourcesWithdrawnToday }
+        : {}),
+      ...(input.itemSlots !== undefined ? { itemSlots: input.itemSlots } : {}),
+      ...(input.itemAmount !== undefined ? { itemAmount: input.itemAmount } : {}),
+      ...(input.itemsWithdrawnToday !== undefined ? { itemsWithdrawnToday: input.itemsWithdrawnToday } : {}),
     });
     if (!checked.ok) {
       return { ok: false, code: checked.code };
@@ -2987,6 +3647,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         guildId: input.guildId,
         characterId: input.characterId,
         amount: checked.value.amount,
+        resourceAmount: input.resourceAmount ?? 0,
+        itemAmount: input.itemAmount ?? 0,
         rank: input.rank,
         leaderConfirm: input.leaderConfirm,
         councilConfirms: input.councilConfirms,
@@ -3008,9 +3670,20 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         leaderConfirm: row.leaderConfirm,
         councilConfirms: row.councilConfirms,
         councilVote: row.councilVote,
+        resourceAmount: row.resourceAmount,
+        itemAmount: row.itemAmount,
+        resourceStock: guildResources.get(guildId) ?? 0,
+        itemSlots: guildItems.get(guildId)?.length ?? 0,
       });
       if (taken.ok) {
         noteTurnover(taken.value.amount);
+        creditWithdrawal({
+          guildId,
+          characterId: row.characterId,
+          amount: taken.value.amount,
+          resourceAmount: row.resourceAmount,
+          itemAmount: row.itemAmount,
+        });
       }
     }
   }
@@ -3266,6 +3939,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     noteWarRoster();
     await reviewNewSettlements();
     await resolveLeaderPolls();
+    await resolveInternalPolls();
+    await relieveAbsentLeaders(SIM_TICK_MS);
     await inspectRewardFreezes();
     refreshPortalLifts();
     await sampleBalance();
@@ -3643,6 +4318,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       abuse,
       balance: balanceReport,
       dissolutionVoid,
+      motions: [...internalPolls.values()].map((poll) => ({
+        guildId: poll.guildId,
+        closed: poll.closed,
+        result: poll.result,
+        ballots: poll.ballots.length,
+      })),
       musterCamps: (simWorld.geography?.nodes ?? [])
         .filter((node) => node.id.startsWith('muster:'))
         .map((node) => node.id),
@@ -4274,6 +4955,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/guild/withdraw', action: 'guild_withdraw' },
   { path: '/guild/rank', action: 'guild_rank' },
   { path: '/guild/vote', action: 'guild_vote' },
+  { path: '/guild/join', action: 'guild_join' },
   { path: '/guild/dissolve', action: 'guild_dissolve' },
   { path: '/guild/deposit', action: 'guild_deposit' },
   { path: '/node/strike', action: 'node_strike' },
