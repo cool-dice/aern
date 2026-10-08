@@ -57,7 +57,14 @@ import type { GameModule, ModuleContext } from './shared/module';
 import { OBSERVATION_LENGTH, utilityAction } from '@rift/domain/ai';
 import { NODES } from '@rift/domain/gathering';
 import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
-import { beginPurify, completePurify, nnUsed, type BuildState } from '@rift/domain/build';
+import {
+  beginPurify,
+  completePurify,
+  nnUsed,
+  recoverForgetting,
+  tickForgetting,
+  type BuildState,
+} from '@rift/domain/build';
 import { removeRelic, type RelicState } from '@rift/domain/relics';
 import { RACES } from '@rift/domain/character';
 import { PARTY_MAX, matchmake, type PartyRole } from '@rift/domain/social';
@@ -428,6 +435,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const lfgRoles = new Map<string, PartyRole>();
   const upyMemory = new Map<string, { lastLessonMs: Partial<Record<LanguageId, number>>; onlineMs: number }>();
   let clockPhase: 'day' | 'night' = dayPhase(0);
+  const pathUsed = new Map<string, Set<string>>();
   /** Deposits and reads posted to a coalition. There is still no shared balance. */
   const coalitionLedger = new Map<
     string,
@@ -944,6 +952,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     removeWornRelic,
     matchParty,
     teachLanguage,
+    markPathUsed,
+    recoverPath,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -2398,6 +2408,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await reviewCheatStrikes();
     await finishPurifications();
     await advanceLanguage(ms);
+    await advanceForgetting(ms);
     refreshPortalLifts();
     await sampleBalance();
   }
@@ -3676,6 +3687,99 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return {
       ok: true,
       value: { language, upy: gained.value.state.values[language], gold: gained.value.gold },
+    };
+  }
+
+  /**
+   * Artifact 6 §4.4. Online idle advances path forgetting by one step each two hours.
+   * Using the path clears that idle and does not restore a lost step.
+   */
+  async function advanceForgetting(deltaMs: number): Promise<void> {
+    if (deltaMs <= 0) {
+      return;
+    }
+    for (const entity of simWorld.entities) {
+      if (entity.monsterId !== undefined || entity.phase !== 'online') {
+        continue;
+      }
+      const record = await repos.characters.findById(entity.id);
+      const programs = record?.build?.programs;
+      if (record === null || programs === undefined || !programs.some((program) => program.kind === 'path')) {
+        continue;
+      }
+      const used = pathUsed.get(entity.id) ?? new Set<string>();
+      pathUsed.delete(entity.id);
+      await repos.characters.update({
+        ...record,
+        build: {
+          programs: programs.map((program) =>
+            program.kind === 'path' ? tickForgetting(program, deltaMs, used.has(program.templateId)) : { ...program },
+          ),
+          cores: record.build?.cores.map((core) => ({ ...core })) ?? [],
+          relicSocketFree: record.build?.relicSocketFree ?? 0,
+          relicGrade: record.build?.relicGrade ?? 'common',
+          purifyingUntilMs: record.build?.purifyingUntilMs ?? null,
+          echoIds: [...(record.build?.echoIds ?? [])],
+          relics: (record.build?.relics ?? []).map((relic) => ({ ...relic, echoIds: [...relic.echoIds] })),
+        },
+      });
+    }
+  }
+
+  function markPathUsed(
+    body: Record<string, unknown>,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const templateId = typeof body.templateId === 'string' ? body.templateId : '';
+    if (characterId.length === 0 || templateId.length === 0) {
+      return { ok: false, code: 'path' };
+    }
+    const used = pathUsed.get(characterId) ?? new Set<string>();
+    used.add(templateId);
+    pathUsed.set(characterId, used);
+    return { ok: true, value: { templateId } };
+  }
+
+  /**
+   * One forgetting step back: 50 gold and a 30-minute channel, in a city and out of combat.
+   */
+  async function recoverPath(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const templateId = typeof body.templateId === 'string' ? body.templateId : '';
+    if (characterId.length === 0 || templateId.length === 0) {
+      return { ok: false, code: 'path' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const state = await buildOf(characterId);
+    const gold = repos.economy.getCharacter(characterId)?.gold ?? 0;
+    const recovered = recoverForgetting(state, templateId, gold, clock.now());
+    if (!recovered.ok) {
+      return { ok: false, code: recovered.code };
+    }
+    const wallet = repos.economy.getCharacter(characterId);
+    if (wallet !== null) {
+      repos.economy.saveCharacter({ ...wallet, gold: recovered.value.gold });
+    }
+    await repos.characters.update({
+      ...record,
+      build: {
+        programs: recovered.value.state.programs.map((program) => ({ ...program })),
+        cores: recovered.value.state.cores.map((core) => ({ ...core })),
+        relicSocketFree: recovered.value.state.relicSocketFree,
+        relicGrade: record.build?.relicGrade ?? 'common',
+        purifyingUntilMs: recovered.value.state.purifyingUntilMs,
+        echoIds: [...(record.build?.echoIds ?? [])],
+        relics: (record.build?.relics ?? []).map((relic) => ({ ...relic, echoIds: [...relic.echoIds] })),
+      },
+    });
+    return {
+      ok: true,
+      value: { gold: recovered.value.gold, readyAtMs: recovered.value.readyAtMs, templateId },
     };
   }
 
@@ -5285,6 +5389,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await reviewCheatStrikes();
     await finishPurifications();
     await advanceLanguage(SIM_TICK_MS);
+    await advanceForgetting(SIM_TICK_MS);
     clockPhase = dayPhase(clock.now());
     refreshPortalLifts();
     await sampleBalance();
@@ -6385,6 +6490,8 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/relic/remove', action: 'relic_remove' },
   { path: '/party/match', action: 'party_match' },
   { path: '/language/teach', action: 'language_teach' },
+  { path: '/path/use', action: 'path_use' },
+  { path: '/path/recover', action: 'path_recover' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

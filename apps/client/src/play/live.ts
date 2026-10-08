@@ -576,6 +576,42 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/path/use`. Using a path clears its idle timer. */
+export async function postPathUse(input: {
+  server: string;
+  characterId: string;
+  templateId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/path/use',
+    body: { characterId: input.characterId, templateId: input.templateId },
+    store: input.store,
+    log: 'path-use',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/path/recover`. One forgetting step costs 50 gold and a 30-minute channel. */
+export async function postRecoverPath(input: {
+  server: string;
+  characterId: string;
+  templateId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/path/recover',
+    body: { characterId: input.characterId, templateId: input.templateId },
+    store: input.store,
+    log: 'path-recover',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/language/teach`. A lesson is 100 gold, caps at 80, and waits 24 hours. */
 export async function postTeach(input: {
   server: string;

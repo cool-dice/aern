@@ -36,6 +36,8 @@ import {
   postRemoveRelic,
   postMatchmake,
   postTeach,
+  postPathUse,
+  postRecoverPath,
   readBankLog,
   registerContender,
   renewPact,
@@ -769,6 +771,30 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onPathUse={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postPathUse({
+                server: SERVER,
+                characterId,
+                templateId: 'ward',
+                store: plan.store,
+              });
+            }}
+            onRecoverPath={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postRecoverPath({
+                server: SERVER,
+                characterId,
+                templateId: 'ward',
                 store: plan.store,
               });
             }}

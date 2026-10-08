@@ -178,6 +178,8 @@ export interface LivePorts {
   removeWornRelic(body: Record<string, unknown>): Promise<LiveResult>;
   matchParty(body: Record<string, unknown>): Promise<LiveResult>;
   teachLanguage(body: Record<string, unknown>): Promise<LiveResult>;
+  markPathUsed(body: Record<string, unknown>): LiveResult;
+  recoverPath(body: Record<string, unknown>): Promise<LiveResult>;
   setNeural(characterId: string, nn: number, nnLimit: number): void;
   walletGold(characterId: string): number;
   setGold(characterId: string, gold: number): void;
@@ -260,6 +262,8 @@ const LIVE_ACTIONS = new Set([
   'relic_remove',
   'party_match',
   'language_teach',
+  'path_use',
+  'path_recover',
   'node_strike',
   'coalition_say',
 ]);
@@ -408,6 +412,10 @@ export async function runLive(
       return ports.matchParty(body);
     case 'language_teach':
       return ports.teachLanguage(body);
+    case 'path_use':
+      return ports.markPathUsed(body);
+    case 'path_recover':
+      return ports.recoverPath(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':

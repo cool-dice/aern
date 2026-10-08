@@ -356,3 +356,69 @@ test('the published phase follows the two-hour cosmetic day', async () => {
   await graph.skipMs(60 * 60 * 1000);
   expect(graph.state().dayPhase).toBe('day');
 });
+
+test('tickForgetting and recoverForgetting run from the tick and the live route', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const tickBody = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('function simSnapshot'),
+  );
+  const skipBody = composeSource.slice(
+    composeSource.indexOf('async function skipMs'),
+    composeSource.indexOf('function guardAllies'),
+  );
+  const advance = composeSource.slice(
+    composeSource.indexOf('async function advanceForgetting'),
+    composeSource.indexOf('function markPathUsed'),
+  );
+  const recover = composeSource.slice(
+    composeSource.indexOf('async function recoverPath'),
+    composeSource.indexOf('function noteWarBlow'),
+  );
+  expect(tickBody.includes('advanceForgetting(')).toBe(true);
+  expect(skipBody.includes('advanceForgetting(')).toBe(true);
+  expect(advance.includes('tickForgetting(')).toBe(true);
+  expect(recover.includes('recoverForgetting(')).toBe(true);
+  expect(dispatch.includes('recoverPath(')).toBe(true);
+  expect(app.includes('postRecoverPath(')).toBe(true);
+  expect(app.includes('postPathUse(')).toBe(true);
+});
+
+test('two online hours forget a path, use clears the idle, and recovery spends 50 gold', async () => {
+  const graph = compose({ nowMs: 0 });
+  const points = { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 };
+  const created = await graph.character.service.create({
+    accountId: 'account-path',
+    controller: 'player',
+    name: 'Path',
+    clean: true,
+    points,
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  await graph.character.service.grantXp(characterId, 1_000);
+  graph.creditGold(characterId, 200);
+  expect(await graph.act('path_learn', { characterId, templateId: 'ward' })).toMatchObject({ ok: true });
+  graph.enterWorld(characterId, 'fort_humans');
+  await graph.skipMs(2 * 60 * 60 * 1000 - 100);
+  expect(await graph.act('path_use', { characterId, templateId: 'ward' })).toMatchObject({
+    ok: true,
+    value: { templateId: 'ward' },
+  });
+  await graph.tickOnce();
+  expect(await graph.act('path_recover', { characterId, templateId: 'ward' })).toMatchObject({
+    ok: false,
+    code: 'requirements',
+  });
+  await graph.skipMs(2 * 60 * 60 * 1000);
+  const recovered = await graph.act('path_recover', { characterId, templateId: 'ward' });
+  expect(recovered).toMatchObject({ ok: true, value: { gold: 50, templateId: 'ward' } });
+  const readyAtMs = (recovered.value as { readyAtMs: number }).readyAtMs;
+  expect(readyAtMs - (2 * 60 * 60 * 1000 - 100 + 100 + 2 * 60 * 60 * 1000)).toBe(30 * 60 * 1000);
+});
