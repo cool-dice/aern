@@ -145,21 +145,16 @@ export class GuildService implements GuildServiceApi {
     return { ok: true, value: { guildId } };
   }
 
-  async creditTax(amount: number): Promise<void> {
-    if (!Number.isInteger(amount) || amount <= 0) {
-      return;
+  async creditTax(input: { amount: number; guildId: string | null }): Promise<'guild' | 'void'> {
+    if (!Number.isInteger(input.amount) || input.amount <= 0 || input.guildId === null) {
+      return 'void';
     }
-    const guilds = await this.options.repository.listGuilds();
-    if (guilds.length === 0) {
-      return;
+    const guild = await this.options.repository.findGuild(input.guildId);
+    if (guild === null) {
+      return 'void';
     }
-    const share = Math.floor(amount / guilds.length);
-    let remainder = amount - share * guilds.length;
-    for (const guild of guilds) {
-      const extra = remainder > 0 ? 1 : 0;
-      remainder -= extra;
-      await this.options.repository.saveGuild({ ...guild, bank: guild.bank + share + extra });
-    }
+    await this.options.repository.saveGuild({ ...guild, bank: guild.bank + input.amount });
+    return 'guild';
   }
 
   async declareWar(input: DeclareWarInput): Promise<Result<{ warId: string }, string>> {

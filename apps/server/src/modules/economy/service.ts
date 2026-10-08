@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  auctionTaxSink,
   deposit,
   placeBid,
   portalFee,
@@ -313,12 +312,6 @@ export function createEconomyService(repository: EconomyRepository): EconomyServ
       repository.saveCharacter(buyer);
       repository.saveCharacter(nextSeller);
       repository.deleteLot(lot.id);
-      const destination = auctionTaxSink(lot.guildCity);
-      if (destination.taxSink === 'guild') {
-        tax.guild += paid.tax;
-      } else {
-        tax.void += paid.tax;
-      }
       return ok({ price: placed.value.price, buyout: true });
     },
 

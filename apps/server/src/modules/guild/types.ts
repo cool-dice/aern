@@ -54,8 +54,8 @@ export interface GuildService {
     gold: number,
   ): Promise<Result<{ leaderReady: boolean }, string>>;
   create(input: unknown): Promise<Result<{ guildId: string }, string>>;
-  /** Guild-city auction tax. Split across stored guild banks. No guilds leaves the ledger as the sink. */
-  creditTax(amount: number): Promise<void>;
+  /** Auction tax for the city owner from captures. A null owner sinks the tax. */
+  creditTax(input: { amount: number; guildId: string | null }): Promise<'guild' | 'void'>;
   declareWar(input: DeclareWarInput): Promise<Result<{ warId: string }, string>>;
   withdraw(input: WithdrawInput): Promise<Result<{ bank: number; amount: number }, string>>;
 }

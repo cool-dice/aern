@@ -717,12 +717,11 @@ async function auctionBid(body: Record<string, unknown>, ports: LivePorts): Prom
   if (bid.value.buyout) {
     const paid = sellerProceeds(bid.value.price);
     const owner = cityId === null ? null : ports.cityOwner(cityId);
-    if (owner !== null && paid.tax > 0) {
-      await ports.creditGuildBank(owner, paid.tax);
-      taxSink = 'guild';
+    const credited = await ports.guild.creditTax({ amount: paid.tax, guildId: owner });
+    taxSink = credited;
+    if (credited === 'guild') {
       guildTax = paid.tax;
     } else if (paid.tax > 0) {
-      taxSink = 'void';
       sinkTax = paid.tax;
     }
     await ports.note(bidderId, 'trade');
