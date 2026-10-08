@@ -37,12 +37,31 @@ export interface PredictedStep {
   cell: CellPoint;
 }
 
+export interface SessionQuest {
+  id: string;
+  story?: boolean;
+  difficulty?: string;
+  objectives: { id: string; target: number; current?: number }[];
+}
+
+export interface SessionNode {
+  id: string;
+  kind: string;
+  x?: number;
+  y?: number;
+}
+
 export interface ClientState {
   self: SelfState | null;
   entities: Record<string, EntityState>;
   inventory: InventoryEntry[];
   log: string[];
   connected: boolean;
+  /** Server hack password. Null until a hack session exists. */
+  hackPassword: string | null;
+  quests: SessionQuest[];
+  mapNodes: SessionNode[];
+  recipes: { id: string }[];
   /** Local movement only. `applySnapshot` does not replace this. */
   predictedCell: CellPoint | null;
   predictedSteps: PredictedStep[];
@@ -191,6 +210,70 @@ function readSnapshot(snapshot: unknown): {
   };
 }
 
+function readSessionExtras(snapshot: unknown): {
+  hackPassword?: string | null;
+  quests?: SessionQuest[];
+  mapNodes?: SessionNode[];
+  recipes?: { id: string }[];
+} {
+  if (!isPlainObject(snapshot)) {
+    return {};
+  }
+  const extra: {
+    hackPassword?: string | null;
+    quests?: SessionQuest[];
+    mapNodes?: SessionNode[];
+    recipes?: { id: string }[];
+  } = {};
+  if ('hackPassword' in snapshot) {
+    extra.hackPassword = typeof snapshot.hackPassword === 'string' ? snapshot.hackPassword : null;
+  }
+  if (Array.isArray(snapshot.quests)) {
+    extra.quests = snapshot.quests.flatMap((quest) => {
+      if (!isPlainObject(quest) || typeof quest.id !== 'string') {
+        return [];
+      }
+      const objectives = Array.isArray(quest.objectives)
+        ? quest.objectives.flatMap((objective) => {
+            if (!isPlainObject(objective) || typeof objective.id !== 'string') {
+              return [];
+            }
+            const target = readNumber(objective.target) ?? 1;
+            const current = readNumber(objective.current) ?? undefined;
+            return [{ id: objective.id, target, ...(current === undefined ? {} : { current }) }];
+          })
+        : [];
+      return [
+        {
+          id: quest.id,
+          ...(quest.story === true ? { story: true } : {}),
+          ...(typeof quest.difficulty === 'string' ? { difficulty: quest.difficulty } : {}),
+          objectives,
+        },
+      ];
+    });
+  }
+  if (Array.isArray(snapshot.mapNodes)) {
+    extra.mapNodes = snapshot.mapNodes.flatMap((node) => {
+      if (!isPlainObject(node) || typeof node.id !== 'string' || typeof node.kind !== 'string') {
+        return [];
+      }
+      const x = readNumber(node.x);
+      const y = readNumber(node.y);
+      return [{ id: node.id, kind: node.kind, ...(x === null ? {} : { x }), ...(y === null ? {} : { y }) }];
+    });
+  }
+  if (Array.isArray(snapshot.recipes)) {
+    extra.recipes = snapshot.recipes.flatMap((recipe) => {
+      if (!isPlainObject(recipe) || typeof recipe.id !== 'string') {
+        return [];
+      }
+      return [{ id: recipe.id }];
+    });
+  }
+  return extra;
+}
+
 function readPredicted(input: { cell: CellPoint | null; steps: PredictedStep[] }): {
   cell: CellPoint | null;
   steps: PredictedStep[];
@@ -223,15 +306,24 @@ export function createClientStore(): ClientStore {
     inventory: [],
     log: [],
     connected: false,
+    hackPassword: null,
+    quests: [],
+    mapNodes: [],
+    recipes: [],
     predictedCell: null,
     predictedSteps: [],
     applySnapshot: (snapshot) => {
       const next = readSnapshot(snapshot);
-      set({
+      const extra = readSessionExtras(snapshot);
+      set((state) => ({
         self: next.self,
         entities: next.entities,
         inventory: next.inventory,
-      });
+        hackPassword: extra.hackPassword === undefined ? state.hackPassword : extra.hackPassword,
+        quests: extra.quests === undefined ? state.quests : extra.quests,
+        mapNodes: extra.mapNodes === undefined ? state.mapNodes : extra.mapNodes,
+        recipes: extra.recipes === undefined ? state.recipes : extra.recipes,
+      }));
     },
     setConnected: (connected) => {
       set({ connected });

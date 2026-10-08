@@ -39,6 +39,17 @@ export interface CharacterRequest {
       perception: number;
       technique: number;
     };
+    appearance: {
+      skin: string;
+      hair: string;
+      eyes: string;
+      horns: boolean;
+      ears: string;
+      tattoos: string;
+      scars: string;
+      heightCm: number;
+      build: string;
+    };
   };
 }
 
@@ -71,6 +82,18 @@ const CREATION_POINTS = {
   technique: 0,
 } as const;
 
+const CREATION_APPEARANCE = {
+  skin: 'fair',
+  hair: 'brown',
+  eyes: 'green',
+  horns: false,
+  ears: 'round',
+  tattoos: 'none',
+  scars: 'none',
+  heightCm: 180,
+  build: 'average',
+} as const;
+
 export function characterBody(input: {
   accountId: string;
   name: string;
@@ -85,6 +108,7 @@ export function characterBody(input: {
       raceId: input.raceId,
       clean: false,
       points: { ...CREATION_POINTS },
+      appearance: { ...CREATION_APPEARANCE },
     },
   };
 }

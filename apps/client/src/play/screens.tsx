@@ -53,24 +53,21 @@ export function PlayPanels({ session }: { session: PlaySession }): ReactElement 
     return <InventoryScreen model={inventoryModel(inventoryItems(session), true)} />;
   }
   if (session.screen === 'craft') {
-    return <CraftScreen recipes={[{ id: 'rusty_sword' }]} />;
+    const recipes = session.store.getState().recipes;
+    return <CraftScreen recipes={recipes.length > 0 ? recipes : [{ id: 'rusty_sword' }]} />;
   }
   if (session.screen === 'quests') {
+    const quests = session.store.getState().quests;
     return (
       <QuestScreen
-        model={questModel([{ id: 'tutorial', objectives: [] }])}
+        model={questModel(quests.length > 0 ? quests : [{ id: 'tutorial', objectives: [] }])}
       />
     );
   }
   if (session.screen === 'map') {
-    return (
-      <MapScreen
-        model={mapModel(
-          [{ id: 'fort_humans', kind: 'city' }],
-          ['fort_humans'],
-        )}
-      />
-    );
+    const nodes = session.store.getState().mapNodes;
+    const shown = nodes.length > 0 ? nodes : [{ id: 'fort_humans', kind: 'city' }];
+    return <MapScreen model={mapModel(shown, shown.map((node) => node.id))} />;
   }
   if (session.screen === 'chat') {
     return (
@@ -95,17 +92,18 @@ export function PlayPanels({ session }: { session: PlaySession }): ReactElement 
     );
   }
   if (session.screen === 'hack') {
-    return (
-      <HackScreen
-        model={hackModel({
-          kind: 'patrol',
-          technique: 0,
-          attemptsLeft: 3,
-          bulls: null,
-          hasDeck: true,
-        })}
-      />
-    );
+    const hint = session.store.getState().hackPassword;
+    const model = hackModel({
+      kind: 'patrol',
+      technique: 0,
+      attemptsLeft: 3,
+      bulls: null,
+      hasDeck: true,
+    });
+    if (hint !== null && hint.length > 0) {
+      return <HackScreen model={model} hint={hint} />;
+    }
+    return <HackScreen model={model} />;
   }
   if (session.screen === 'settings') {
     return <SettingsScreen model={settingsModel({ scale: 1, colorblind: 'none', locale: session.locale })} />;
