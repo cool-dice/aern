@@ -20,9 +20,16 @@ import {
   textHitsBlacklist,
 } from '@rift/domain/moderation';
 import { hashSeed, mulberry32 } from '@rift/domain/rng';
-import { EQUIP_SLOTS, STARTING_DURABILITY, type EquipSlot, type GradeId } from '@rift/domain/items';
+import {
+  EQUIP_SLOTS,
+  STARTING_DURABILITY,
+  effectiveBonuses,
+  type EquipSlot,
+  type GradeId,
+  type ItemBonus,
+} from '@rift/domain/items';
 import { openChest, type ChestTier } from '@rift/domain/loot';
-import { MAX_LEVEL, STAT_IDS, derive, emptyPoints, type StatBlock } from '@rift/domain/stats';
+import { MAX_LEVEL, STAT_IDS, derive, emptyPoints, type StatBlock, type StatId } from '@rift/domain/stats';
 import { pvpXp, pvpXpAllowed } from '@rift/domain/progression';
 import type { Appearance, RaceId } from '@rift/domain/character';
 import Fastify, { type FastifyInstance } from 'fastify';
@@ -3010,6 +3017,56 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
   }
 
+  /**
+   * Equipped stacks keep their catalog bonuses. An unmet requirement is stored with the piece
+   * so combat can halve that piece through `effectiveBonuses`.
+   */
+  async function stampWornGear(): Promise<void> {
+    const entities: SimEntity[] = [];
+    for (const entity of simWorld.entities) {
+      if (entity.monsterId !== undefined) {
+        entities.push({ ...entity, gearPieces: [] });
+        continue;
+      }
+      const state = carried.get(entity.id);
+      const record = await repos.characters.findById(entity.id);
+      const stats = record?.stats;
+      const pieces: NonNullable<SimEntity['gearPieces']> = [];
+      for (const stack of state?.stacks ?? []) {
+        if (!stack.equipped || !(stack.durability > 0)) {
+          continue;
+        }
+        const item = catalog.items.find((row) => row.id === stack.itemId);
+        if (item === undefined) {
+          continue;
+        }
+        const bonuses: ItemBonus[] = [];
+        for (const bonus of item.bonuses ?? []) {
+          if (!isGearStat(bonus.stat) || !(bonus.amount >= 0) || !Number.isFinite(bonus.amount)) {
+            continue;
+          }
+          bonuses.push({ stat: bonus.stat, amount: bonus.amount });
+        }
+        let requirementMet = true;
+        for (const requirement of item.requirements ?? []) {
+          if (!isGearStat(requirement.stat)) {
+            continue;
+          }
+          if ((stats?.[requirement.stat] ?? 0) < requirement.min) {
+            requirementMet = false;
+          }
+        }
+        pieces.push({ bonuses, requirementMet });
+      }
+      entities.push({ ...entity, gearPieces: pieces });
+    }
+    simWorld = { ...simWorld, entities };
+  }
+
+  function isGearStat(stat: string): stat is StatId {
+    return (STAT_IDS as readonly string[]).includes(stat);
+  }
+
   function keeperKindOf(monsterId: string): KeeperKind {
     if (monsterId.includes('patrol')) {
       return 'patrol';
@@ -5963,6 +6020,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
     stampGuildDoctrines();
     await stampWornRelics();
+    await stampWornGear();
     stampKeeperSilence();
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
     spawnNeutralGuards();
@@ -7316,6 +7374,21 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/node/strike', action: 'node_strike' },
 ];
 
+function gearStat(entity: SimEntity, stat: StatId): number {
+  const pieces = entity.gearPieces ?? [];
+  const applied =
+    pieces.length === 0
+      ? effectiveBonuses([], true)
+      : pieces.flatMap((piece) => effectiveBonuses(piece.bonuses, piece.requirementMet));
+  let total = 0;
+  for (const bonus of applied) {
+    if (bonus.stat === stat) {
+      total += bonus.amount;
+    }
+  }
+  return total;
+}
+
 function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
   return {
     id: entity.id,
@@ -7338,6 +7411,7 @@ function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
     nnLimit: entity.nnLimit ?? 0,
     relicArmor: entity.relicArmor ?? 0,
     keeperSilent: entity.keeperSilent === true,
+    gearAccuracy: gearStat(entity, 'accuracy'),
     guildId: entity.guildId ?? null,
     reputation: entity.reputation ?? {},
     dungeonId: entity.dungeonId ?? null,

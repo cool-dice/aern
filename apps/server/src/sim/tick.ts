@@ -1,4 +1,5 @@
 import { neuroshockScale } from '@rift/domain/build';
+import { effectiveBonuses, type ItemBonus } from '@rift/domain/items';
 import { applyDoctrine } from '@rift/domain/guild';
 import type { DoctrineId } from '@rift/domain/guild';
 import type { LootEntry } from '@rift/domain/loot';
@@ -125,6 +126,8 @@ export interface SimEntity {
   relicPerception?: number;
   /** A hacked keeper does not attack until this is false. */
   keeperSilent?: boolean;
+  /** Equipped item bonuses. Combat calls `effectiveBonuses` on these pieces. */
+  gearPieces?: { bonuses: ItemBonus[]; requirementMet: boolean }[];
   /** Unscaled max hp, so fortitude does not compound each tick. */
   doctrineBaseMaxHp?: number;
   /** Sim time of the war death. `applyRespawn` waits `WAR_RESPAWN_DELAY_MS`. */
@@ -1250,17 +1253,43 @@ function enterCombat(entity: SimEntity): void {
   entity.odFrac = 1;
 }
 
+function gearBonusesOf(entity: SimEntity): ItemBonus[] {
+  const pieces = entity.gearPieces ?? [];
+  if (pieces.length === 0) {
+    return effectiveBonuses([], true);
+  }
+  return pieces.flatMap((piece) => effectiveBonuses(piece.bonuses, piece.requirementMet));
+}
+
 function toCombatant(entity: SimEntity, accuracyPenalty: number): Combatant {
   const relicAccuracy = entity.relicAccuracy ?? 0;
   const relicReaction = entity.relicReaction ?? 0;
   const relicPerception = entity.relicPerception ?? 0;
+  let gearReaction = 0;
+  let gearAccuracy = 0;
+  let gearPerception = 0;
+  for (const bonus of gearBonusesOf(entity)) {
+    if (bonus.stat === 'reaction') {
+      gearReaction += bonus.amount;
+    } else if (bonus.stat === 'accuracy') {
+      gearAccuracy += bonus.amount;
+    } else if (bonus.stat === 'perception') {
+      gearPerception += bonus.amount;
+    }
+  }
   const armor = entity.doctrineId === 'guard' ? applyDoctrine('guard', entity.armor) : entity.armor;
   return {
     id: entity.id,
-    reaction: entity.reaction + relicReaction,
-    accuracyStat: entity.accuracyStat + relicAccuracy,
-    accuracyScore: entity.accuracyScore - accuracyPenalty + relicAccuracy + Math.floor(relicPerception / 2),
-    evasion: entity.evasion + relicReaction + relicPerception,
+    reaction: entity.reaction + relicReaction + gearReaction,
+    accuracyStat: entity.accuracyStat + relicAccuracy + gearAccuracy,
+    accuracyScore:
+      entity.accuracyScore -
+      accuracyPenalty +
+      relicAccuracy +
+      Math.floor(relicPerception / 2) +
+      gearAccuracy +
+      Math.floor(gearPerception / 2),
+    evasion: entity.evasion + relicReaction + relicPerception + gearReaction + gearPerception,
     armor: armor + (entity.relicArmor ?? 0),
     od: entity.od,
     hp: entity.hp,

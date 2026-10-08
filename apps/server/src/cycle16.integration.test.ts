@@ -403,3 +403,35 @@ test('invasionReward pays when an invasion reaches done', async () => {
   expect(done.invasion).toBe('done');
   expect(done.invasionRewards).toEqual([]);
 });
+
+test('effectiveBonuses changes combat accuracy from equipped gear', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const tick = readFileSync(new URL('./sim/tick.ts', import.meta.url), 'utf8');
+  const once = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('function simSnapshot'),
+  );
+  const combat = tick.slice(tick.indexOf('function gearBonusesOf'), tick.indexOf('function commitCombatant'));
+  expect(once.includes('stampWornGear(')).toBe(true);
+  expect(combat.includes('effectiveBonuses(')).toBe(true);
+  expect(combat.includes('gearBonusesOf(')).toBe(true);
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-gear',
+    controller: 'player',
+    name: 'Gear',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  expect(await graph.inventory.service.equip(characterId, 'rusty_sword')).toMatchObject({ ok: true });
+  graph.enterCharacter('account-gear', characterId);
+  await graph.tickOnce();
+  const self = (graph.state() as { self: { gearAccuracy?: number } | null }).self;
+  expect(self?.gearAccuracy).toBe(1);
+});
