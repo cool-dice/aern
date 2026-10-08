@@ -65,6 +65,7 @@ export interface SimEntity {
   phases?: readonly BossPhase[];
   speedMultiplier?: number;
   rank?: 'basic' | 'boss';
+  bindNodeId?: string;
 }
 
 export interface SimCorpse {

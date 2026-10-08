@@ -33,6 +33,7 @@ import { createBus } from './shared/bus';
 import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
 import { toSimCommand } from './sim/commands';
+import { prototypeEncounter } from './sim/population';
 import { stepTick, type SimCommand, type SimWorld } from './sim/tick';
 import { renderMetrics, type MetricsSnapshot } from './metrics';
 
@@ -62,6 +63,8 @@ export interface ComposeOptions {
 export interface ServerComposition {
   modules: readonly GameModule[];
   tickOnce: () => void;
+  submit: (command: ClientCommand) => void;
+  enterWorld: (playerId: string, bindNodeId?: string) => void;
   snapshot: () => MetricsSnapshot;
   auth: AuthModule;
   character: CharacterModule;
@@ -227,7 +230,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     let players = 0;
     let bots = 0;
     for (const entity of simWorld.entities) {
-      if (entity.phase !== 'online') {
+      if (entity.phase !== 'online' || entity.monsterId !== undefined) {
         continue;
       }
       if (entity.isBot) {
@@ -239,9 +242,26 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return { ticks: simWorld.tick, rejected: rejectedTotal, players, bots };
   }
 
+  function submit(command: ClientCommand): void {
+    pending.push(command);
+  }
+
+  function enterWorld(playerId: string, bindNodeId = 'fort_humans'): void {
+    if (simWorld.entities.some((entity) => entity.id === playerId)) {
+      return;
+    }
+    const arrived = prototypeEncounter({ playerId, bindNodeId });
+    simWorld = {
+      ...simWorld,
+      entities: [...simWorld.entities, ...arrived],
+    };
+  }
+
   return {
     modules,
     tickOnce,
+    submit,
+    enterWorld,
     snapshot,
     auth,
     character,

@@ -80,6 +80,23 @@ test('prototype stubs stay feature_stub', async () => {
   ).toEqual({ ok: false, code: 'feature_stub' });
 });
 
+test('enterWorld puts the player and prototype monsters on the tick', () => {
+  const graph = compose({ catalog: minimalCatalog(), nowMs: 1_000, jwtSecret: 'test-secret' });
+  expect(graph.snapshot()).toMatchObject({ players: 0, bots: 0 });
+  graph.enterWorld('lia');
+  expect(graph.snapshot()).toMatchObject({ players: 1, bots: 0 });
+  graph.submit({
+    commandId: 's1',
+    seq: 1,
+    issuedAtMs: 1_000,
+    action: 'step_e',
+    params: { entityId: 'lia' },
+  });
+  graph.tickOnce();
+  expect(graph.snapshot().ticks).toBe(1);
+  expect(graph.snapshot().players).toBe(1);
+});
+
 test('renderMetrics names the four series', () => {
   const text = renderMetrics({ ticks: 2, rejected: 1, players: 3, bots: 4 });
   expect(text).toContain('rift_tick_total 2');

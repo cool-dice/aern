@@ -1,6 +1,6 @@
 # 102. Тик содержит игрока и монстров
 
-status: pending
+status: done
 
 ## Правило GDD
 
