@@ -227,8 +227,15 @@ test('quest model lists the prototype quests', () => {
     'gather_spores',
     'first_craft',
     'visit_hub',
+    'act1_light',
+    'act1_dark',
+    'act2_light',
+    'act2_dark',
+    'act3_light',
+    'act3_dark',
   ]);
   expect(model.quests.find((quest) => quest.id === 'tutorial')?.countsTowardLimit).toBe(false);
+  expect(model.quests.find((quest) => quest.id === 'act1_light')?.countsTowardLimit).toBe(false);
   expect(model.activeLimit).toBe(20);
 });
 
