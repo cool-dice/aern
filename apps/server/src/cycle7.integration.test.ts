@@ -452,7 +452,9 @@ test('mercenary kind changes patrol, combat, and escort outcomes', async () => {
   expect(tick.includes('kind: contract.kind')).toBe(true);
   expect(tick.includes('duty: contractDuty(contract)')).toBe(true);
   const once = composeSource.slice(composeSource.indexOf('function tickOnce'), composeSource.indexOf('function simSnapshot'));
-  expect(once.includes('tickContracts(')).toBe(true);
+  expect(once.includes('await tickContracts(')).toBe(true);
+  expect(once.includes('await tickVassalTithes(')).toBe(true);
+  expect(once.includes('void tickContracts(')).toBe(false);
 
   const graph = compose({ nowMs: 0 });
   graph.enterWorld('lia', 'plains_mine');
@@ -500,6 +502,25 @@ test('mercenary kind changes patrol, combat, and escort outcomes', async () => {
   expect(
     (graph.state() as { mercenaries: { kind: string; status: string }[] }).mercenaries.find((row) => row.kind === 'attack')
       ?.status,
+  ).toBe('complete');
+
+  const patrolOnly = await graph.act('mercenary', {
+    guildId,
+    characterId: 'lia',
+    mercenaryId: 'blade',
+    nodeId: 'plains_mine',
+    kind: 'patrol',
+    rewardGold: 50,
+    durationMs: 1_000,
+  });
+  expect(patrolOnly.ok).toBe(true);
+  for (let step = 0; step < 10; step += 1) {
+    await graph.tickOnce();
+  }
+  expect(
+    (graph.state() as { mercenaries: { kind: string; status: string; rewardGold: number }[] }).mercenaries.find(
+      (row) => row.kind === 'patrol' && row.rewardGold === 50,
+    )?.status,
   ).toBe('complete');
 });
 

@@ -142,7 +142,7 @@ export interface ComposeOptions {
 
 export interface ServerComposition {
   modules: readonly GameModule[];
-  tickOnce: () => void;
+  tickOnce: () => Promise<void>;
   submit: (command: ClientCommand) => void;
   enterWorld: (playerId: string, bindNodeId?: string) => void;
   creditGuildGold: (characterId: string, amount: number) => void;
@@ -187,7 +187,7 @@ export interface ServerComposition {
 
 export interface BuiltServer {
   app: FastifyInstance;
-  tickOnce: () => void;
+  tickOnce: () => Promise<void>;
   close: () => Promise<void>;
   modules: readonly GameModule[];
   economy: EconomyModule;
@@ -2065,7 +2065,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
   }
 
-  function tickOnce(): void {
+  async function tickOnce(): Promise<void> {
     if (runtimeError !== null) {
       throw runtimeError;
     }
@@ -2162,9 +2162,6 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     });
     resourceNodes = tickedNodes.nodes;
     applyNodeSeizure(tickedNodes.seized);
-    void tickContracts(SIM_TICK_MS);
-    void tickVassalTithes();
-    tickAllianceBreaks();
     for (const entity of simWorld.entities) {
       if (entity.monsterId !== undefined || entity.nodeId === undefined) {
         continue;
@@ -2255,6 +2252,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     void repos.flush().catch((error: unknown) => {
       runtimeError = error;
     });
+    await tickContracts(SIM_TICK_MS);
+    await tickVassalTithes();
+    tickAllianceBreaks();
   }
 
   function simSnapshot(): {

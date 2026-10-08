@@ -11,7 +11,7 @@ const built = await buildApp({
 });
 
 setInterval(() => {
-  built.tickOnce();
+  void built.tickOnce();
 }, 100);
 
 await built.app.listen({ port, host: '127.0.0.1' });
