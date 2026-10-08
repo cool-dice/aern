@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import type { Appearance } from '@rift/domain/character';
+import { DAY_MS, EPOCH_MS } from '@rift/domain/events';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { emptyPoints } from '@rift/domain/stats';
 import { expect, test } from 'vitest';
@@ -371,4 +372,34 @@ test('canVote refuses a novice on the guild vote route', async () => {
   expect(await graph.act('guild_vote', { guildId, voterId: 'lia', choice: 'yes' })).toMatchObject({
     ok: true,
   });
+});
+
+test('invasionReward pays when an invasion reaches done', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const once = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('function simSnapshot'),
+  );
+  const skip = composeSource.slice(
+    composeSource.indexOf('async function skipMs'),
+    composeSource.indexOf('function guardAllies'),
+  );
+  const settle = composeSource.slice(
+    composeSource.indexOf('async function settleInvasion'),
+    composeSource.indexOf('function simSnapshot'),
+  );
+  expect(once.includes('settleInvasion(')).toBe(true);
+  expect(skip.includes('settleInvasion(')).toBe(true);
+  expect(settle.includes("invasionReward('monsters_10')")).toBe(true);
+  expect(settle.includes("invasionReward('elite')")).toBe(true);
+  expect(settle.includes("invasionReward('invasion_boss')")).toBe(true);
+  const graph = compose({ nowMs: EPOCH_MS + 308 * DAY_MS });
+  graph.enterCharacter('account-lia', 'lia');
+  await graph.tickOnce();
+  expect((graph.state() as { invasion: string | null }).invasion).toBe('prepare');
+  await graph.skipMs(60 * 60 * 1000);
+  await graph.tickOnce();
+  const done = graph.state() as { invasion: string | null; invasionRewards: unknown[] };
+  expect(done.invasion).toBe('done');
+  expect(done.invasionRewards).toEqual([]);
 });

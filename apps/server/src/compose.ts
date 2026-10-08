@@ -75,6 +75,7 @@ import { readWiki, type WikiArticleSide } from '@rift/domain/wiki';
 import { PARTY_MAX, matchmake, type PartyRole } from '@rift/domain/social';
 import { chatPresentation, gainUpy, type LanguageId } from '@rift/domain/language';
 import type { KeeperKind } from '@rift/domain/hack';
+import { invasionReward, type InvasionReward } from '@rift/domain/events';
 import {
   askHostilePortal,
   isCityService,
@@ -859,6 +860,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const sockets = new Set<{ send(data: string): void }>();
   const parked = spawnNamed('keeper_enhanced', 'content:keeper_enhanced');
   const keeperQuietUntil = new Map<KeeperKind, number>();
+  const invasionTallies = new Map<string, { kills: number; elites: number; bosses: number }>();
+  let invasionRewardPaid = false;
+  const invasionGrants: { characterId: string; kind: string; gold: number; xp: number; itemId?: string }[] = [];
 
   const livePorts: LivePorts = {
     now: () => clock.now(),
@@ -2441,6 +2445,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await advanceLanguage(ms);
     await advanceForgetting(ms);
     refreshPortalLifts();
+    await settleInvasion();
     await sampleBalance();
   }
 
@@ -5932,6 +5937,21 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         entity.monsterId === undefined ? [] : [[entity.id, entity.monsterId] as const],
       ),
     );
+    const invasionMeta = new Map(
+      simWorld.entities.flatMap((entity) =>
+        entity.monsterId === undefined
+          ? []
+          : [
+              [
+                entity.id,
+                {
+                  elite: entity.eliteId != null && entity.eliteId !== '',
+                  boss: entity.rank === 'boss',
+                },
+              ] as const,
+            ],
+      ),
+    );
     const eventFields = {
       seasonSpawn: simWorld.seasonSpawn,
       holidayCraft: simWorld.holidayCraft,
@@ -6003,6 +6023,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
       if (corpse.killerId !== undefined) {
         noteWarBlow(corpse.killerId, corpse.victimId);
+        noteInvasionKill(live.invasion, corpse.killerId, invasionMeta.get(corpse.victimId));
       }
       if (killer !== undefined && killer.monsterId === undefined) {
         void reportKind(killer.id, 'kill', monsterOf.get(corpse.victimId));
@@ -6091,7 +6112,96 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await advanceForgetting(SIM_TICK_MS);
     clockPhase = dayPhase(clock.now());
     refreshPortalLifts();
+    await settleInvasion();
     await sampleBalance();
+  }
+
+  function noteInvasionKill(
+    phase: string | null,
+    killerId: string,
+    meta: { elite: boolean; boss: boolean } | undefined,
+  ): void {
+    if (phase === null || phase === 'done' || meta === undefined) {
+      return;
+    }
+    const killer = simWorld.entities.find((entity) => entity.id === killerId);
+    if (killer === undefined || killer.monsterId !== undefined) {
+      return;
+    }
+    const row = invasionTallies.get(killerId) ?? { kills: 0, elites: 0, bosses: 0 };
+    row.kills += 1;
+    if (meta.elite) {
+      row.elites += 1;
+    }
+    if (meta.boss && phase === 'climax') {
+      row.bosses += 1;
+    }
+    invasionTallies.set(killerId, row);
+  }
+
+  async function grantInvasionPay(characterId: string, reward: InvasionReward, kind: string): Promise<void> {
+    if (reward.gold > 0) {
+      creditGold(characterId, reward.gold);
+    }
+    if (reward.xp > 0) {
+      await character.service.grantXp(characterId, reward.xp);
+    }
+    const stamp = `${characterId}|${kind}|${String(invasionGrants.length)}`;
+    let itemId: string | undefined;
+    if (reward.relicShardChance > 0 && mulberry32(hashSeed(`${stamp}|shard`)).nextUnit() < reward.relicShardChance) {
+      itemId = 'relic_shard';
+    }
+    if (
+      itemId === undefined &&
+      reward.uniqueComponentChance > 0 &&
+      mulberry32(hashSeed(`${stamp}|unique`)).nextUnit() < reward.uniqueComponentChance
+    ) {
+      itemId = 'unique_component';
+    }
+    if (
+      itemId === undefined &&
+      reward.coreChance > 0 &&
+      mulberry32(hashSeed(`${stamp}|core`)).nextUnit() < reward.coreChance
+    ) {
+      itemId = 'core';
+    }
+    if (itemId !== undefined) {
+      giveItems(characterId, [{ itemId, qty: 1 }]);
+    }
+    invasionGrants.push({
+      characterId,
+      kind,
+      gold: reward.gold,
+      xp: reward.xp,
+      ...(itemId !== undefined ? { itemId } : {}),
+    });
+  }
+
+  async function settleInvasion(): Promise<void> {
+    const snap = event.service.snapshot(clock.now(), 'plains', simWorld.safeZone === true);
+    if (snap.invasion === null) {
+      invasionTallies.clear();
+      invasionRewardPaid = false;
+      return;
+    }
+    if (snap.invasion !== 'done' || invasionRewardPaid) {
+      return;
+    }
+    invasionRewardPaid = true;
+    const monsterPay = invasionReward('monsters_10');
+    const elitePay = invasionReward('elite');
+    const bossPay = invasionReward('invasion_boss');
+    for (const [characterId, tally] of invasionTallies) {
+      if (tally.kills >= 10) {
+        await grantInvasionPay(characterId, monsterPay, 'monsters_10');
+      }
+      for (let index = 0; index < tally.elites; index += 1) {
+        await grantInvasionPay(characterId, elitePay, 'elite');
+      }
+      for (let index = 0; index < tally.bosses; index += 1) {
+        await grantInvasionPay(characterId, bossPay, 'invasion_boss');
+      }
+    }
   }
 
   function simSnapshot(): {
@@ -6430,6 +6540,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       holidayCraft: simWorld.holidayCraft ?? 1,
       holidayKeeper: simWorld.holidayKeeper ?? 1,
       invasion: simWorld.invasion ?? null,
+      invasionRewards: invasionGrants.map((grant) => ({ ...grant })),
       barrierDown: simWorld.barrierDown === true,
       primordialOpened: simWorld.primordialOpened === true,
       self: focus === undefined ? null : entityView(focus, walletGold(focus.id)),
