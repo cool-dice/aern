@@ -24,6 +24,7 @@ import {
 } from './types';
 
 export function createEconomyService(repository: EconomyRepository): EconomyService {
+  const tax = { guild: 0, void: 0 };
   return {
     async sell(characterId, itemId) {
       const character = repository.getCharacter(characterId);
@@ -311,8 +312,21 @@ export function createEconomyService(repository: EconomyRepository): EconomyServ
       repository.saveCharacter(buyer);
       repository.saveCharacter(nextSeller);
       repository.deleteLot(lot.id);
-      auctionTaxSink(lot.guildCity);
+      const destination = auctionTaxSink(lot.guildCity);
+      if (destination.taxSink === 'guild') {
+        tax.guild += paid.tax;
+      } else {
+        tax.void += paid.tax;
+      }
       return ok({ price: placed.value.price, buyout: true });
+    },
+
+    taxLedger() {
+      return { guild: tax.guild, void: tax.void };
+    },
+
+    balance(characterId) {
+      return repository.getCharacter(characterId)?.gold ?? null;
     },
   };
 }

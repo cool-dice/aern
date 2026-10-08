@@ -16,7 +16,15 @@ interface Session {
   kind: KeeperKind;
 }
 
+export interface HackView {
+  password: string;
+  attemptsLeft: number;
+  lockoutUntilMs: number;
+}
+
 export interface HackService {
+  /** Server password for the 4×4 grid. Null when this character has no session. */
+  view(characterId: string): HackView | null;
   start(input: {
     characterId: string;
     kind: KeeperKind;
@@ -35,6 +43,17 @@ export function createHackService(rng: Rng, bus: Bus): HackService {
   const sessions = new Map<string, Session>();
 
   return {
+    view(characterId) {
+      const session = sessions.get(characterId);
+      if (session === undefined) {
+        return null;
+      }
+      return {
+        password: session.password,
+        attemptsLeft: session.attemptsLeft,
+        lockoutUntilMs: session.lockoutUntilMs,
+      };
+    },
     start(input) {
       if (!input.hasDeck) {
         return err('deck');

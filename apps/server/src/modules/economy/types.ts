@@ -105,4 +105,8 @@ export interface EconomyService {
     bidderId: string;
     bid: number;
   }): Result<{ price: number; buyout: boolean }, string>;
+  /** Gold already sent to the guild bank or the neutral sink. */
+  taxLedger(): { guild: number; void: number };
+  /** Character wallet. Guild create and auction settlement debit this gold. */
+  balance(characterId: string): number | null;
 }
