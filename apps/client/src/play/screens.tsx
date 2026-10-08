@@ -52,10 +52,16 @@ export function PlayPanels({
   session,
   onCraft,
   onTrade,
+  onPortal,
+  onDungeon,
+  onDungeonSolo,
 }: {
   session: PlaySession;
   onCraft?: () => void;
   onTrade?: () => void;
+  onPortal?: () => void;
+  onDungeon?: () => void;
+  onDungeonSolo?: () => void;
 }): ReactElement | null {
   if (session.screen === 'inventory') {
     return <InventoryScreen model={inventoryModel(inventoryItems(session), true)} />;
@@ -82,9 +88,33 @@ export function PlayPanels({
     );
   }
   if (session.screen === 'map') {
-    const nodes = session.store.getState().mapNodes;
+    const state = session.store.getState();
+    const nodes = state.mapNodes;
     const shown = nodes.length > 0 ? nodes : [{ id: 'fort_humans', kind: 'city' }];
-    return <MapScreen model={mapModel(shown, shown.map((node) => node.id))} />;
+    const portalNode = typeof state.portalResult?.nodeId === 'string' ? state.portalResult.nodeId : '';
+    const instanceId = typeof state.dungeonResult?.instanceId === 'string' ? state.dungeonResult.instanceId : '';
+    const hold = state.captures[0];
+    return (
+      <section>
+        <MapScreen model={mapModel(shown, shown.map((node) => node.id))} />
+        <button type="button" data-portal="start" onClick={() => onPortal?.()}>
+          portal
+        </button>
+        <button type="button" data-dungeon="share" onClick={() => onDungeon?.()}>
+          share
+        </button>
+        <button type="button" data-dungeon="solo" onClick={() => onDungeonSolo?.()}>
+          solo
+        </button>
+        {portalNode.length > 0 ? <p data-portal-node={portalNode}>{portalNode}</p> : null}
+        {instanceId.length > 0 ? <p data-dungeon-instance={instanceId}>{instanceId}</p> : null}
+        {hold !== undefined ? (
+          <p data-capture={hold.cityId}>
+            {hold.guildId ?? ''}:{String(hold.heldMs)}
+          </p>
+        ) : null}
+      </section>
+    );
   }
   if (session.screen === 'chat') {
     return (

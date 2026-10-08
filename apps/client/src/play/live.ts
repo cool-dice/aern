@@ -82,3 +82,48 @@ export async function completeTrade(input: {
   input.store.getState().pushLog(accepted.ok ? `trade:${status}` : `trade:${String(accepted.body.code ?? 'error')}`);
   return accepted;
 }
+
+/** Posts `/portal` and stores the fee, cooldown, and destination. */
+export async function startPortal(input: {
+  server: string;
+  characterId: string;
+  toNodeId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  const posted = await postJson(input.fetchImpl ?? fetch, `${input.server}/portal`, {
+    characterId: input.characterId,
+    toNodeId: input.toNodeId,
+  });
+  input.store.getState().setPortalResult(posted.body);
+  const nodeId = typeof posted.body.nodeId === 'string' ? posted.body.nodeId : String(posted.body.code ?? 'error');
+  input.store.getState().pushLog(posted.ok ? `portal:${nodeId}` : `portal:${nodeId}`);
+  return posted;
+}
+
+/**
+ * Posts `/dungeon`. A shared `groupId` and party size place both characters
+ * on the seed for that window. Party size 1 is a solo enter.
+ */
+export async function enterDungeon(input: {
+  server: string;
+  characterId: string;
+  store: ClientStore;
+  groupId: string;
+  partySize: number;
+  nodeId?: string;
+  edgeId?: string;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  const posted = await postJson(input.fetchImpl ?? fetch, `${input.server}/dungeon`, {
+    characterId: input.characterId,
+    nodeId: input.nodeId ?? 'light_dungeon',
+    edgeId: input.edgeId ?? 'edge_light__fort_humans',
+    groupId: input.groupId,
+    partySize: input.partySize,
+  });
+  input.store.getState().setDungeonResult(posted.body);
+  const instanceId = typeof posted.body.instanceId === 'string' ? posted.body.instanceId : String(posted.body.code ?? 'error');
+  input.store.getState().pushLog(posted.ok ? `dungeon:${instanceId}` : `dungeon:${instanceId}`);
+  return posted;
+}

@@ -41,7 +41,14 @@ export interface SessionQuest {
   id: string;
   story?: boolean;
   difficulty?: string;
-  objectives: { id: string; target: number; current?: number }[];
+  objectives: { id: string; target: number; current?: number; scene?: string }[];
+}
+
+export interface CaptureView {
+  cityId: string;
+  guildId: string | null;
+  heldMs: number;
+  won: boolean;
 }
 
 export interface SessionNode {
@@ -66,6 +73,14 @@ export interface ClientState {
   craftJob: Record<string, unknown> | null;
   /** Last trade offer and accept bodies. Null until the play session posts them. */
   tradeResult: Record<string, unknown> | null;
+  /** Last `/portal` body. Null until the play session posts one. */
+  portalResult: Record<string, unknown> | null;
+  /** Last `/dungeon` body. Null until the play session posts one. */
+  dungeonResult: Record<string, unknown> | null;
+  /** City flags from the world snapshot. */
+  captures: CaptureView[];
+  /** NPC reputation for the focused character, keyed by NPC id. */
+  reputation: Record<string, number>;
   /** Local movement only. `applySnapshot` does not replace this. */
   predictedCell: CellPoint | null;
   predictedSteps: PredictedStep[];
@@ -74,6 +89,8 @@ export interface ClientState {
   pushLog(line: string): void;
   setCraftJob(job: Record<string, unknown> | null): void;
   setTradeResult(result: Record<string, unknown> | null): void;
+  setPortalResult(result: Record<string, unknown> | null): void;
+  setDungeonResult(result: Record<string, unknown> | null): void;
   setPredicted(input: { cell: CellPoint | null; steps: PredictedStep[] }): void;
 }
 
@@ -221,6 +238,8 @@ function readSessionExtras(snapshot: unknown): {
   quests?: SessionQuest[];
   mapNodes?: SessionNode[];
   recipes?: { id: string }[];
+  captures?: CaptureView[];
+  reputation?: Record<string, number>;
 } {
   if (!isPlainObject(snapshot)) {
     return {};
@@ -230,6 +249,8 @@ function readSessionExtras(snapshot: unknown): {
     quests?: SessionQuest[];
     mapNodes?: SessionNode[];
     recipes?: { id: string }[];
+    captures?: CaptureView[];
+    reputation?: Record<string, number>;
   } = {};
   if ('hackPassword' in snapshot) {
     extra.hackPassword = typeof snapshot.hackPassword === 'string' ? snapshot.hackPassword : null;
@@ -246,7 +267,15 @@ function readSessionExtras(snapshot: unknown): {
             }
             const target = readNumber(objective.target) ?? 1;
             const current = readNumber(objective.current) ?? undefined;
-            return [{ id: objective.id, target, ...(current === undefined ? {} : { current }) }];
+            const scene = typeof objective.scene === 'string' ? objective.scene : undefined;
+            return [
+              {
+                id: objective.id,
+                target,
+                ...(current === undefined ? {} : { current }),
+                ...(scene === undefined ? {} : { scene }),
+              },
+            ];
           })
         : [];
       return [
@@ -276,6 +305,26 @@ function readSessionExtras(snapshot: unknown): {
       }
       return [{ id: recipe.id }];
     });
+  }
+  if (Array.isArray(snapshot.captures)) {
+    extra.captures = snapshot.captures.flatMap((row) => {
+      if (!isPlainObject(row) || typeof row.cityId !== 'string') {
+        return [];
+      }
+      const heldMs = readNumber(row.heldMs) ?? 0;
+      const guildId = typeof row.guildId === 'string' ? row.guildId : null;
+      return [{ cityId: row.cityId, guildId, heldMs, won: row.won === true }];
+    });
+  }
+  if (isPlainObject(snapshot.reputation)) {
+    const reputation: Record<string, number> = {};
+    for (const [npcId, value] of Object.entries(snapshot.reputation)) {
+      const stored = readNumber(value);
+      if (stored !== null) {
+        reputation[npcId] = stored;
+      }
+    }
+    extra.reputation = reputation;
   }
   return extra;
 }
@@ -318,6 +367,10 @@ export function createClientStore(): ClientStore {
     recipes: [],
     craftJob: null,
     tradeResult: null,
+    portalResult: null,
+    dungeonResult: null,
+    captures: [],
+    reputation: {},
     predictedCell: null,
     predictedSteps: [],
     applySnapshot: (snapshot) => {
@@ -331,6 +384,8 @@ export function createClientStore(): ClientStore {
         quests: extra.quests === undefined ? state.quests : extra.quests,
         mapNodes: extra.mapNodes === undefined ? state.mapNodes : extra.mapNodes,
         recipes: extra.recipes === undefined ? state.recipes : extra.recipes,
+        captures: extra.captures === undefined ? state.captures : extra.captures,
+        reputation: extra.reputation === undefined ? state.reputation : extra.reputation,
       }));
     },
     setConnected: (connected) => {
@@ -344,6 +399,12 @@ export function createClientStore(): ClientStore {
     },
     setTradeResult: (result) => {
       set({ tradeResult: result });
+    },
+    setPortalResult: (result) => {
+      set({ portalResult: result });
+    },
+    setDungeonResult: (result) => {
+      set({ dungeonResult: result });
     },
     setPredicted: (input) => {
       const predicted = readPredicted(input);

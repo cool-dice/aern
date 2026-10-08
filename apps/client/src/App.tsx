@@ -11,7 +11,7 @@ import { t } from './i18n/translate';
 import { hudModel } from './ui/models';
 import { CreationScreen, HudScreen } from './ui/screens';
 import { PlayPanels } from './play/screens';
-import { completeTrade, startCraft } from './play/live';
+import { completeTrade, enterDungeon, startCraft, startPortal } from './play/live';
 import { spawnMockSidecar, type SidecarHandle } from './play/sidecar';
 import {
   bindKeyboard,
@@ -420,6 +420,44 @@ export function App() {
                 characterId,
                 counterpartyId: session.tradePartner,
                 gold: 1,
+                store: plan.store,
+              });
+            }}
+            onPortal={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void startPortal({
+                server: SERVER,
+                characterId,
+                toNodeId: 'fort_humans',
+                store: plan.store,
+              });
+            }}
+            onDungeon={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void enterDungeon({
+                server: SERVER,
+                characterId,
+                groupId: 'party',
+                partySize: 2,
+                store: plan.store,
+              });
+            }}
+            onDungeonSolo={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void enterDungeon({
+                server: SERVER,
+                characterId,
+                groupId: characterId,
+                partySize: 1,
                 store: plan.store,
               });
             }}
