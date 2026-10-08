@@ -81,6 +81,7 @@ export function App() {
   const [sidecarError, setSidecarError] = useState<string | null>(null);
   const [renderError, setRenderError] = useState<string | null>(null);
   const [accountId, setAccountId] = useState<string | null>(null);
+  const [serverPhase, setServerPhase] = useState<'day' | 'night' | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const netRef = useRef<ClientNet | null>(null);
   const sidecarRef = useRef<SidecarHandle | null>(null);
@@ -181,9 +182,12 @@ export function App() {
     };
   }, [accountId, plan, session]);
 
-  function applyServer(payload: { nowMs?: number; observation?: number[] }): void {
+  function applyServer(payload: { nowMs?: number; observation?: number[]; dayPhase?: string }): void {
     const now = typeof payload.nowMs === 'number' ? payload.nowMs : nowRef.current;
     nowRef.current = now;
+    if (payload.dayPhase === 'day' || payload.dayPhase === 'night') {
+      setServerPhase(payload.dayPhase);
+    }
     if (Array.isArray(payload.observation) && payload.observation.length === 896) {
       sidecarRef.current?.observe(payload.observation);
     }
@@ -917,6 +921,7 @@ export function App() {
               });
             }}
           />
+          {serverPhase !== null ? <p data-day-phase={serverPhase}>{serverPhase}</p> : null}
           <HudScreen
             model={hudModel({
               hp: self.hp,

@@ -328,3 +328,31 @@ test('a teacher lesson costs 100 gold under the cap, and passive gain waits two 
     code: 'cooldown',
   });
 });
+
+test('dayPhase is stamped from the server clock on tickOnce and skipMs', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const tickBody = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('function simSnapshot'),
+  );
+  const skipBody = composeSource.slice(
+    composeSource.indexOf('async function skipMs'),
+    composeSource.indexOf('function guardAllies'),
+  );
+  expect(tickBody.includes('dayPhase(')).toBe(true);
+  expect(skipBody.includes('dayPhase(')).toBe(true);
+  expect(app.includes('data-day-phase')).toBe(true);
+  expect(app.includes('payload.dayPhase')).toBe(true);
+});
+
+test('the published phase follows the two-hour cosmetic day', async () => {
+  const graph = compose({ nowMs: 0 });
+  expect(graph.state().dayPhase).toBe('day');
+  await graph.skipMs(60 * 60 * 1000);
+  expect(graph.state().dayPhase).toBe('night');
+  await graph.tickOnce();
+  expect(graph.state().dayPhase).toBe('night');
+  await graph.skipMs(60 * 60 * 1000);
+  expect(graph.state().dayPhase).toBe('day');
+});

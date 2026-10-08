@@ -155,7 +155,7 @@ import {
   type ResourceNode,
 } from '@rift/domain/guild';
 import { DIRS, type Dir } from '@rift/domain/movement';
-import { SIM_TICK_MS } from '@rift/domain/time';
+import { SIM_TICK_MS, dayPhase } from '@rift/domain/time';
 import { canBind, canPortal } from '@rift/domain/world';
 import { newEconomyCharacter } from './modules/economy/repository';
 import type { EconomyCharacter } from './modules/economy/types';
@@ -427,6 +427,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const purifyingIds = new Set<string>();
   const lfgRoles = new Map<string, PartyRole>();
   const upyMemory = new Map<string, { lastLessonMs: Partial<Record<LanguageId, number>>; onlineMs: number }>();
+  let clockPhase: 'day' | 'night' = dayPhase(0);
   /** Deposits and reads posted to a coalition. There is still no shared balance. */
   const coalitionLedger = new Map<
     string,
@@ -2353,6 +2354,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     clock.advance(ms);
     simWorld = { ...simWorld, nowMs: clock.now() };
+    clockPhase = dayPhase(clock.now());
     spawnNeutralGuards();
     captures = tickCaptures({
       holds: captures,
@@ -5283,6 +5285,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await reviewCheatStrikes();
     await finishPurifications();
     await advanceLanguage(SIM_TICK_MS);
+    clockPhase = dayPhase(clock.now());
     refreshPortalLifts();
     await sampleBalance();
   }
@@ -5614,6 +5617,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     const graph = world.service.graph();
     return {
       nowMs: simWorld.nowMs,
+      dayPhase: clockPhase,
       weatherId: simWorld.weatherId ?? null,
       vision: simWorld.vision ?? 1,
       gatherSpeed: simWorld.gatherSpeed ?? 1,
