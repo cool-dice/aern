@@ -261,6 +261,21 @@ describe('loadCatalog', () => {
       levelMax: 50,
       hub: 'obsidian_tower',
     });
+    const scenes = catalog.quests.flatMap((quest) => quest.objectives.map((objective) => objective.scene ?? ''));
+    for (const phrase of [
+      'Barrier',
+      'outer ring',
+      'middle ring',
+      'inner ring',
+      'Archive',
+      'Shutdown',
+      'other side',
+      'council',
+      'Koval',
+      'Archivists',
+    ]) {
+      expect(scenes.some((scene) => scene.includes(phrase))).toBe(true);
+    }
     expect(catalog.quests.every((quest) => quest.prototype)).toBe(true);
     const tutorial = catalog.quests.find((quest) => quest.id === 'tutorial');
     expect(tutorial?.story).toBe(true);

@@ -98,6 +98,8 @@ export interface SimEntity {
   roomId?: number;
   dungeonRooms?: { id: number; x: number; y: number }[];
   dungeonEdges?: [number, number][];
+  /** Geography site the story beat placed this character on. */
+  nodeId?: string;
 }
 
 export interface MonsterRespawn {
@@ -190,6 +192,9 @@ export interface SimWorld {
   holidayKeeper?: number;
   invasion?: string | null;
   seasonResource?: string;
+  /** World-layer story flags. Personal quest text does not set these. */
+  barrierDown?: boolean;
+  primordialOpened?: boolean;
 }
 
 interface StatusMods {

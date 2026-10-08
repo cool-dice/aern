@@ -30,6 +30,7 @@ function cloneProgress(progress: QuestProgress): QuestProgress {
       kind: objective.kind,
       target: objective.target,
       current: objective.current,
+      ...(objective.scene !== undefined ? { scene: objective.scene } : {}),
     })),
     itemIds: progress.itemIds.slice(),
     garbled: progress.garbled,

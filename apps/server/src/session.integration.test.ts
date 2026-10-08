@@ -444,6 +444,59 @@ test('dungeon, craft, trade, and barrier-day invasion run from the live routes',
   expect(events.seasonResource).toBeTypeOf('string');
 });
 
+test('story acts publish artifact scenes and live events advance them', async () => {
+  const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  graph.enterWorld('lia');
+  expect(await graph.act('quest_accept', { characterId: 'lia', questId: 'act1_light' })).toMatchObject({
+    ok: true,
+  });
+  expect(await graph.act('quest_accept', { characterId: 'lia', questId: 'act3_light' })).toMatchObject({
+    ok: true,
+  });
+  const opened = graph.state() as {
+    players: { quests: { id: string; objectives: { id: string; scene?: string; current: number }[] }[] }[];
+  };
+  const scenes = opened.players
+    .flatMap((player) => player.quests)
+    .flatMap((quest) => quest.objectives.map((objective) => objective.scene ?? ''));
+  for (const phrase of ['Barrier', 'Koval', 'council', 'outer ring', 'Archive', 'Shutdown', 'other side']) {
+    expect(scenes.some((scene) => scene.includes(phrase))).toBe(true);
+  }
+
+  expect(await graph.act('wiki', { characterId: 'lia', articleId: 'barrier' })).toMatchObject({ ok: true });
+  const studied = graph.state() as {
+    players: { quests: { id: string; objectives: { id: string; current: number }[] }[] }[];
+  };
+  const act1 = studied.players[0]?.quests.find((quest) => quest.id === 'act1_light');
+  const act3 = studied.players[0]?.quests.find((quest) => quest.id === 'act3_light');
+  expect(act1?.objectives.find((objective) => objective.id === 'barrier')?.current).toBe(1);
+  expect(act3?.objectives.find((objective) => objective.id === 'archive')?.current).toBe(1);
+
+  expect(await graph.act('hack_start', { characterId: 'lia' })).toMatchObject({ ok: true });
+  const password = (graph.state() as { hackPassword: string | null }).hackPassword;
+  expect(password).toHaveLength(4);
+  const guessed = await graph.act('hack_guess', { characterId: 'lia', attempt: password });
+  expect(guessed).toMatchObject({ ok: true, value: { correct: true } });
+  const fallen = graph.state() as { barrierDown: boolean };
+  expect(fallen.barrierDown).toBe(true);
+
+  expect(await graph.act('dungeon_enter', { characterId: 'lia' })).toMatchObject({ ok: true });
+  expect(await graph.act('dungeon_enter', { characterId: 'lia' })).toMatchObject({ ok: true });
+  const rings = graph.state() as {
+    primordialOpened: boolean;
+    self: { nodeId: string | null; cell: { x: number; y: number }; roomId: number | null } | null;
+    players: { quests: { id: string; objectives: { id: string; current: number }[] }[] }[];
+  };
+  expect(rings.primordialOpened).toBe(true);
+  expect(rings.self?.nodeId).toBe('primordial_outer');
+  expect(rings.self?.cell).toEqual({ x: 60, y: 0 });
+  expect(rings.self?.roomId).toBeNull();
+  const outer = rings.players[0]?.quests
+    .find((quest) => quest.id === 'act3_light')
+    ?.objectives.find((objective) => objective.id === 'outer_ring');
+  expect(outer?.current).toBe(2);
+});
+
 test('auction buyout records the 5% tax destination', async () => {
   const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
   try {

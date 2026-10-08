@@ -152,11 +152,14 @@
     "levelMax": 20,
     "hub": "fort_humans",
     "objectives": [
-      { "id": "settle", "kind": "survive", "target": 1 },
-      { "id": "barrier", "kind": "investigate", "target": 1 },
-      { "id": "fragments", "kind": "collect", "target": 1 },
-      { "id": "escort", "kind": "escort", "target": 1 },
-      { "id": "defend", "kind": "defend", "target": 1 }
+      { "id": "survive", "kind": "survive", "target": 1, "scene": "Survive the first days in Fort Humans." },
+      { "id": "council", "kind": "talk", "target": 1, "scene": "The council head of Fort Humans sets the new arrival to work." },
+      { "id": "koval", "kind": "craft", "target": 1, "scene": "Master Koval. Buy gear and learn the forge." },
+      { "id": "barrier", "kind": "investigate", "target": 1, "scene": "The Barrier. A wall at the edge of the world that nobody walks." },
+      { "id": "fragments", "kind": "collect", "target": 1, "scene": "First fragments. Scraps of the First Ones' records." },
+      { "id": "escort", "kind": "escort", "target": 1, "scene": "The Captain of the Guard escorts a patrol across the plains." },
+      { "id": "orden", "kind": "learn", "target": 1, "scene": "Magister Orden. The Rift is told as the day of wrath." },
+      { "id": "keepers", "kind": "defend", "target": 1, "scene": "The first Keepers. Iron spirits of the ruins." }
     ]
   },
   {
@@ -170,10 +173,14 @@
     "levelMax": 20,
     "hub": "obsidian_tower",
     "objectives": [
-      { "id": "survive_dark", "kind": "survive", "target": 1 },
-      { "id": "barrier_dark", "kind": "learn", "target": 1 },
-      { "id": "capture", "kind": "capture", "target": 1 },
-      { "id": "investigate", "kind": "investigate", "target": 1 }
+      { "id": "survive", "kind": "survive", "target": 1, "scene": "Survive the first days in the Obsidian Tower." },
+      { "id": "council", "kind": "talk", "target": 1, "scene": "The council head of the Obsidian Tower. Survive and find work." },
+      { "id": "mechanic", "kind": "craft", "target": 1, "scene": "The Goblin Mechanic. Buy gear in the tower." },
+      { "id": "barrier", "kind": "learn", "target": 1, "scene": "The Barrier. A wall at the edge of the world with no way back." },
+      { "id": "archivist", "kind": "lore", "target": 1, "scene": "The Ash Archivist keeps the first scraps of the First Ones." },
+      { "id": "watcher", "kind": "investigate", "target": 1, "scene": "The Watcher. Rumors of the Rift as a test of strength." },
+      { "id": "keepers", "kind": "defend", "target": 1, "scene": "The first Keepers. Slaves of the ancients." },
+      { "id": "capture", "kind": "capture", "target": 1, "scene": "Hold the first ruins of the First Ones." }
     ]
   },
   {
@@ -187,10 +194,15 @@
     "levelMax": 40,
     "hub": "fort_humans",
     "objectives": [
-      { "id": "fragments_light", "kind": "collect", "target": 3 },
-      { "id": "city", "kind": "discover", "target": 1 },
-      { "id": "rescue", "kind": "rescue", "target": 1 },
-      { "id": "sabotage", "kind": "sabotage", "target": 1 }
+      { "id": "fragments", "kind": "collect", "target": 3, "scene": "Gather the lore fragments of the First Ones." },
+      { "id": "archivists", "kind": "learn", "target": 1, "scene": "The Archivists decode the first fragments." },
+      { "id": "primordial", "kind": "discover", "target": 1, "scene": "The Primordial City stands at the center of the continent." },
+      { "id": "approach", "kind": "visit", "target": 1, "scene": "The approaches to the Primordial City." },
+      { "id": "keepers", "kind": "capture", "target": 1, "scene": "Fight the high Keepers on the approaches." },
+      { "id": "access_mark", "kind": "deliver", "target": 1, "scene": "Carry the access mark into the approaches." },
+      { "id": "other_side_rumor", "kind": "investigate", "target": 1, "scene": "Records of the other side, not yet understood." },
+      { "id": "rescue", "kind": "rescue", "target": 1, "scene": "Rescue a captive on the approaches." },
+      { "id": "sabotage", "kind": "sabotage", "target": 1, "scene": "The official history does not match the fragments." }
     ]
   },
   {
@@ -204,9 +216,13 @@
     "levelMax": 40,
     "hub": "obsidian_tower",
     "objectives": [
-      { "id": "discover", "kind": "discover", "target": 1 },
-      { "id": "learn", "kind": "learn", "target": 1 },
-      { "id": "hack_gate", "kind": "hack", "target": 1 }
+      { "id": "fragments", "kind": "collect", "target": 3, "scene": "Gather the lore fragments of the First Ones." },
+      { "id": "ash_keepers", "kind": "learn", "target": 1, "scene": "The Ash Keepers decode the first fragments." },
+      { "id": "primordial", "kind": "discover", "target": 1, "scene": "The Primordial City stands at the center of the continent." },
+      { "id": "approach", "kind": "visit", "target": 1, "scene": "The approaches to the Primordial City." },
+      { "id": "keepers", "kind": "capture", "target": 1, "scene": "Fight the high Keepers on the approaches." },
+      { "id": "access_mark", "kind": "hack", "target": 1, "scene": "Take the access mark from a Keeper lock." },
+      { "id": "other_side_rumor", "kind": "investigate", "target": 1, "scene": "Records of the other side, not yet understood." }
     ]
   },
   {
@@ -220,10 +236,15 @@
     "levelMax": 50,
     "hub": "fort_humans",
     "objectives": [
-      { "id": "enter_city", "kind": "visit", "target": 1 },
-      { "id": "deliver_mark", "kind": "deliver", "target": 1 },
-      { "id": "trade", "kind": "trade", "target": 1 },
-      { "id": "pvp", "kind": "pvp", "target": 1 }
+      { "id": "enter_city", "kind": "visit", "target": 1, "scene": "Enter the Primordial City." },
+      { "id": "outer_ring", "kind": "visit", "target": 2, "scene": "The outer ring of the Primordial City." },
+      { "id": "middle_ring", "kind": "visit", "target": 3, "scene": "The middle ring of the Primordial City." },
+      { "id": "inner_ring", "kind": "visit", "target": 4, "scene": "The inner ring of the Primordial City." },
+      { "id": "archive", "kind": "lore", "target": 1, "scene": "The Archive. Read the records of the First Ones." },
+      { "id": "shutdown", "kind": "hack", "target": 1, "scene": "Shutdown. Start the mechanism that drops the Barrier." },
+      { "id": "other_side", "kind": "talk", "target": 1, "scene": "The other side. The dark side is not a myth." },
+      { "id": "trade", "kind": "trade", "target": 1, "scene": "Trade with the other side after the Barrier falls." },
+      { "id": "pvp", "kind": "pvp", "target": 1, "scene": "The sides see each other and the first blow can fall." }
     ]
   },
   {
@@ -237,8 +258,15 @@
     "levelMax": 50,
     "hub": "obsidian_tower",
     "objectives": [
-      { "id": "lore", "kind": "lore", "target": 1 },
-      { "id": "meet", "kind": "talk", "target": 1 }
+      { "id": "enter_city", "kind": "visit", "target": 1, "scene": "Enter the Primordial City." },
+      { "id": "outer_ring", "kind": "visit", "target": 2, "scene": "The outer ring of the Primordial City." },
+      { "id": "middle_ring", "kind": "visit", "target": 3, "scene": "The middle ring of the Primordial City." },
+      { "id": "inner_ring", "kind": "visit", "target": 4, "scene": "The inner ring of the Primordial City." },
+      { "id": "archive", "kind": "lore", "target": 1, "scene": "The Archive. Read the records of the First Ones." },
+      { "id": "shutdown", "kind": "hack", "target": 1, "scene": "Shutdown. Start the mechanism that drops the Barrier." },
+      { "id": "other_side", "kind": "talk", "target": 1, "scene": "The other side. The light side is not a myth." },
+      { "id": "trade", "kind": "trade", "target": 1, "scene": "Trade with the other side after the Barrier falls." },
+      { "id": "pvp", "kind": "pvp", "target": 1, "scene": "The sides see each other and the first blow can fall." }
     ]
   }
 ]

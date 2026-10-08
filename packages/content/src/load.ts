@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RACES, type RaceId } from '../../domain/src/character';
+import { QUEST_OBJECTIVE_KINDS } from '../../domain/src/quests';
 import { assertCatalogId } from '../../domain/src/ids';
 import { type StatId } from '../../domain/src/stats';
 import { PROTOTYPE_NODE_IDS, prototypeWorld } from '../../domain/src/world';
@@ -238,6 +239,8 @@ export interface QuestObjective {
   itemId?: string;
   side?: 'light' | 'dark';
   hub?: string;
+  /** Named beat. Story acts require it; errands omit it. */
+  scene?: string;
 }
 
 export interface QuestDef {
@@ -603,11 +606,18 @@ export function assertRefs(catalog: Catalog): void {
       throw new Error(`quest prototype: ${quest.id}`);
     }
     const objectiveIds = new Set<string>();
+    const storyAct = quest.story && quest.id.startsWith('act');
     for (const objective of quest.objectives) {
       if (objectiveIds.has(objective.id)) {
         throw new Error(`duplicate id: ${objective.id}`);
       }
       objectiveIds.add(objective.id);
+      if (!(QUEST_OBJECTIVE_KINDS as readonly string[]).includes(objective.kind)) {
+        throw new Error(`quest kind: ${quest.id}.${objective.id}`);
+      }
+      if (storyAct && (objective.scene === undefined || objective.scene.length < 8)) {
+        throw new Error(`quest scene: ${quest.id}.${objective.id}`);
+      }
       if (objective.monsterId !== undefined && !monsterIds.has(objective.monsterId)) {
         throw new Error(`unknown monster: ${objective.monsterId}`);
       }

@@ -362,11 +362,11 @@ async function dungeon(body: Record<string, unknown>, ports: LivePorts): Promise
   if (!entered.ok) {
     return { ok: false, code: entered.code };
   }
+  ports.enterDungeon(characterId, entered.value.instanceId, entered.value.layout);
   await ports.note(characterId, 'visit');
   if (partySize > 1) {
     await ports.note(characterId, 'escort');
   }
-  ports.enterDungeon(characterId, entered.value.instanceId, entered.value.layout);
   return {
     ok: true,
     value: { instanceId: entered.value.instanceId, roomId: entered.value.layout.entranceId },

@@ -40,6 +40,7 @@ function templateOf(offer: QuestOffer): QuestProgress {
       kind: objective.kind as QuestObjectiveKind,
       target: objective.target,
       current: 0,
+      ...(objective.scene !== undefined ? { scene: objective.scene } : {}),
     })),
     itemIds: offer.itemIds ? offer.itemIds.slice() : [],
     garbled: false,

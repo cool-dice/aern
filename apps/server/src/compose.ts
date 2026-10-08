@@ -41,7 +41,7 @@ import { createBus } from './shared/bus';
 import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
 import { OBSERVATION_LENGTH } from '@rift/domain/ai';
-import type { QuestObjectiveKind } from '@rift/domain/quests';
+import { setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import { nnUsed, type BuildState } from '@rift/domain/build';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
 import { newEconomyCharacter } from './modules/economy/repository';
@@ -274,16 +274,62 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   let simWorld = emptyWorld(clock.now());
 
   function applyLife(characterId: string, kind: QuestObjectiveKind): void {
+    let barrierDown = simWorld.barrierDown === true;
+    let primordialOpened = simWorld.primordialOpened === true;
+    const entities = simWorld.entities.map((entity) => {
+      if (entity.id !== characterId || entity.progress === undefined || entity.quests === undefined) {
+        return entity;
+      }
+      const before = entity.quests;
+      const next = onObjective({ progress: entity.progress, quests: entity.quests }, kind);
+      const settled = settleStoryBeats({ ...entity, progress: next.progress, quests: next.quests }, before);
+      barrierDown = barrierDown || settled.barrierDown;
+      primordialOpened = primordialOpened || settled.primordialOpened;
+      return settled.entity;
+    });
     simWorld = {
       ...simWorld,
-      entities: simWorld.entities.map((entity) => {
-        if (entity.id !== characterId || entity.progress === undefined || entity.quests === undefined) {
-          return entity;
-        }
-        const next = onObjective({ progress: entity.progress, quests: entity.quests }, kind);
-        return { ...entity, progress: next.progress, quests: next.quests };
-      }),
+      entities,
+      ...(barrierDown ? { barrierDown: true } : {}),
+      ...(primordialOpened ? { primordialOpened: true } : {}),
     };
+  }
+
+  function settleStoryBeats(
+    entity: SimEntity,
+    before: readonly QuestProgress[],
+  ): { entity: SimEntity; barrierDown: boolean; primordialOpened: boolean } {
+    const finished = new Set<string>();
+    for (const quest of entity.quests ?? []) {
+      const prior = before.find((row) => row.questId === quest.questId);
+      for (const objective of quest.objectives) {
+        const previous = prior?.objectives.find((row) => row.id === objective.id)?.current ?? 0;
+        if (previous < objective.target && objective.current >= objective.target) {
+          finished.add(objective.id);
+        }
+      }
+    }
+    let flags = { barrierDown: false, primordialOpened: false };
+    if (finished.has('shutdown')) {
+      flags = setWorldFlagOnce(flags, 'barrierDown');
+    }
+    if (finished.has('outer_ring')) {
+      flags = setWorldFlagOnce(flags, 'primordialOpened');
+    }
+    if (!flags.primordialOpened) {
+      return { entity, barrierDown: flags.barrierDown, primordialOpened: flags.primordialOpened };
+    }
+    const site = catalog.world.sites?.find((row) => row.id === 'primordial_outer');
+    const placed: SimEntity = {
+      ...entity,
+      nodeId: 'primordial_outer',
+      ...(site !== undefined ? { cell: { x: site.x, y: site.y } } : {}),
+    };
+    delete placed.dungeonId;
+    delete placed.roomId;
+    delete placed.dungeonRooms;
+    delete placed.dungeonEdges;
+    return { entity: placed, barrierDown: flags.barrierDown, primordialOpened: flags.primordialOpened };
   }
 
   async function reportKind(characterId: string, kind: QuestObjectiveKind): Promise<void> {
@@ -555,6 +601,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       holidayKeeper: simWorld.holidayKeeper,
       invasion: simWorld.invasion,
       seasonResource: simWorld.seasonResource,
+      ...(simWorld.barrierDown === true ? { barrierDown: true } : {}),
+      ...(simWorld.primordialOpened === true ? { primordialOpened: true } : {}),
     };
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
     dungeon.service.tickTtl(simWorld.nowMs, true);
@@ -716,6 +764,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       holidayCraft: simWorld.holidayCraft ?? 1,
       holidayKeeper: simWorld.holidayKeeper ?? 1,
       invasion: simWorld.invasion ?? null,
+      barrierDown: simWorld.barrierDown === true,
+      primordialOpened: simWorld.primordialOpened === true,
       self: focus === undefined ? null : entityView(focus, walletGold(focus.id)),
       entities: simWorld.entities
         .filter((entity) => entity.monsterId !== undefined)
@@ -791,8 +841,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       story: quest.story,
       objectives: quest.objectives.map((objective) => ({
         id: objective.id,
+        kind: objective.kind,
         target: objective.target,
         current: objective.current,
+        ...(objective.scene !== undefined ? { scene: objective.scene } : {}),
       })),
     }));
   }
@@ -1262,6 +1314,7 @@ function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
     seasonTag: entity.seasonTag ?? null,
     legsDestroyed: entity.legsDestroyed ?? 0,
     roomId: entity.roomId ?? null,
+    nodeId: entity.nodeId ?? null,
     nn: entity.nn ?? 0,
     nnLimit: entity.nnLimit ?? 0,
   };

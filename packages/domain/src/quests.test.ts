@@ -443,6 +443,22 @@ test('advance clamps at the target and ignores an unknown objective', () => {
   expect(advance(quest, 'rats', -2)).toBe(quest);
 });
 
+test('a story scene stays on the objective when the counter advances', () => {
+  const quest = progress({
+    questId: 'act3_light',
+    story: true,
+    objectives: [{ id: 'shutdown', kind: 'hack', target: 1, current: 0, scene: 'Shutdown. Start the mechanism that drops the Barrier.' }],
+  });
+  const advanced = advance(quest, 'shutdown', 1);
+  expect(advanced.objectives[0]).toEqual({
+    id: 'shutdown',
+    kind: 'hack',
+    target: 1,
+    current: 1,
+    scene: 'Shutdown. Start the mechanism that drops the Barrier.',
+  });
+});
+
 test('every objective kind is a counter capped at its target', () => {
   expect(QUEST_OBJECTIVE_KINDS).toEqual([
     'kill',

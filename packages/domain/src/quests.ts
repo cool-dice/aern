@@ -55,6 +55,8 @@ export interface QuestObjective {
   kind: QuestObjectiveKind;
   target: number;
   current: number;
+  /** Named story beat from artifact 20.6. Errand objectives omit it. */
+  scene?: string;
 }
 
 export interface QuestProgress {
@@ -92,6 +94,7 @@ function copyObjective(objective: QuestObjective): QuestObjective {
     kind: objective.kind,
     target: objective.target,
     current: objective.current,
+    ...(objective.scene !== undefined ? { scene: objective.scene } : {}),
   };
 }
 
