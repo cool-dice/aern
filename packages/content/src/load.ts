@@ -217,10 +217,17 @@ export interface RegionDef {
   side: 'light' | 'dark' | 'center';
 }
 
+export interface GeographySite extends WorldNodeDef {
+  role: 'racial_city' | 'neutral_city' | 'ring' | 'region_node';
+}
+
 export interface WorldCatalog {
   nodes: WorldNodeDef[];
   edges: WorldEdgeDef[];
   regions: RegionDef[];
+  /** Racial cities, neutral cities, regional nodes, and primordial rings from artifact 20.2. */
+  sites?: GeographySite[];
+  siteEdges?: WorldEdgeDef[];
 }
 
 export interface QuestObjective {

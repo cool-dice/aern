@@ -9,17 +9,17 @@
     "objectives": [
       {
         "id": "wake",
-        "kind": "wake",
+        "kind": "survive",
         "target": 1
       },
       {
         "id": "look",
-        "kind": "look",
+        "kind": "investigate",
         "target": 1
       },
       {
         "id": "steps",
-        "kind": "steps",
+        "kind": "visit",
         "target": 10
       },
       {
@@ -29,7 +29,7 @@
       },
       {
         "id": "equip",
-        "kind": "equip",
+        "kind": "collect",
         "target": 1
       },
       {
@@ -40,12 +40,12 @@
       },
       {
         "id": "loot",
-        "kind": "loot",
+        "kind": "collect",
         "target": 1
       },
       {
         "id": "inventory",
-        "kind": "inventory",
+        "kind": "lore",
         "target": 1
       },
       {
@@ -55,7 +55,7 @@
       },
       {
         "id": "bind",
-        "kind": "bind",
+        "kind": "visit",
         "target": 1
       }
     ]
@@ -152,6 +152,9 @@
     "levelMax": 20,
     "hub": "fort_humans",
     "objectives": [
+      { "id": "settle", "kind": "survive", "target": 1 },
+      { "id": "barrier", "kind": "investigate", "target": 1 },
+      { "id": "fragments", "kind": "collect", "target": 1 },
       { "id": "escort", "kind": "escort", "target": 1 },
       { "id": "defend", "kind": "defend", "target": 1 }
     ]
@@ -167,6 +170,8 @@
     "levelMax": 20,
     "hub": "obsidian_tower",
     "objectives": [
+      { "id": "survive_dark", "kind": "survive", "target": 1 },
+      { "id": "barrier_dark", "kind": "learn", "target": 1 },
       { "id": "capture", "kind": "capture", "target": 1 },
       { "id": "investigate", "kind": "investigate", "target": 1 }
     ]
@@ -182,6 +187,8 @@
     "levelMax": 40,
     "hub": "fort_humans",
     "objectives": [
+      { "id": "fragments_light", "kind": "collect", "target": 3 },
+      { "id": "city", "kind": "discover", "target": 1 },
       { "id": "rescue", "kind": "rescue", "target": 1 },
       { "id": "sabotage", "kind": "sabotage", "target": 1 }
     ]
@@ -198,7 +205,8 @@
     "hub": "obsidian_tower",
     "objectives": [
       { "id": "discover", "kind": "discover", "target": 1 },
-      { "id": "learn", "kind": "learn", "target": 1 }
+      { "id": "learn", "kind": "learn", "target": 1 },
+      { "id": "hack_gate", "kind": "hack", "target": 1 }
     ]
   },
   {
@@ -212,6 +220,8 @@
     "levelMax": 50,
     "hub": "fort_humans",
     "objectives": [
+      { "id": "enter_city", "kind": "visit", "target": 1 },
+      { "id": "deliver_mark", "kind": "deliver", "target": 1 },
       { "id": "trade", "kind": "trade", "target": 1 },
       { "id": "pvp", "kind": "pvp", "target": 1 }
     ]
@@ -227,7 +237,8 @@
     "levelMax": 50,
     "hub": "obsidian_tower",
     "objectives": [
-      { "id": "lore", "kind": "lore", "target": 1 }
+      { "id": "lore", "kind": "lore", "target": 1 },
+      { "id": "meet", "kind": "talk", "target": 1 }
     ]
   }
 ]
