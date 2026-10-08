@@ -1,6 +1,6 @@
 # 108. Модуль добычи
 
-status: pending
+status: done
 
 ## Правило GDD
 

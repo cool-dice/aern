@@ -1,6 +1,6 @@
 # 109. Модуль взлома Хранителя
 
-status: pending
+status: done
 
 ## Правило GDD
 

@@ -1,6 +1,6 @@
 # 110. Модуль вики
 
-status: pending
+status: done
 
 ## Правило GDD
 
