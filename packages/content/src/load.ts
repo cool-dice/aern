@@ -202,6 +202,8 @@ export interface WorldNodeDef {
   x: number;
   y: number;
   unlocked?: boolean;
+  /** Guild registration place on a city: `hall` or `registrar`. A bare city omits it. */
+  place?: 'hall' | 'registrar';
 }
 
 export interface WorldEdgeDef {
@@ -219,7 +221,7 @@ export interface RegionDef {
 }
 
 export interface GeographySite extends WorldNodeDef {
-  role: 'racial_city' | 'neutral_city' | 'ring' | 'region_node';
+  role: 'racial_city' | 'neutral_city' | 'ring' | 'region_node' | 'hall';
 }
 
 export interface WorldCatalog {

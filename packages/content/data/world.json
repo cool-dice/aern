@@ -7,7 +7,8 @@
       "side": "light",
       "regionId": "plains",
       "x": 0,
-      "y": 0
+      "y": 0,
+      "place": "hall"
     },
     {
       "id": "edge_light",
@@ -70,7 +71,8 @@
       "side": "dark",
       "regionId": "lava",
       "x": 0,
-      "y": 100
+      "y": 100,
+      "place": "hall"
     },
     {
       "id": "cross_dark",
@@ -250,12 +252,20 @@
     }
   ],
   "sites": [
-    { "id": "forest_city", "kind": "city", "safe": true, "side": "light", "regionId": "forest", "x": 0, "y": 40, "role": "racial_city" },
-    { "id": "dwarf_fortress", "kind": "city", "safe": true, "side": "light", "regionId": "mountains", "x": 0, "y": 80, "role": "racial_city" },
-    { "id": "troll_refuge", "kind": "city", "safe": true, "side": "light", "regionId": "caves", "x": 0, "y": 120, "role": "racial_city" },
-    { "id": "ogre_camp", "kind": "city", "safe": true, "side": "dark", "regionId": "wastes", "x": 0, "y": 140, "role": "racial_city" },
-    { "id": "ash_spire", "kind": "city", "safe": true, "side": "dark", "regionId": "ash", "x": 0, "y": 180, "role": "racial_city" },
-    { "id": "goblin_workshop", "kind": "city", "safe": true, "side": "dark", "regionId": "dark_caves", "x": 0, "y": 220, "role": "racial_city" },
+    { "id": "forest_city", "kind": "city", "safe": true, "side": "light", "regionId": "forest", "x": 0, "y": 40, "role": "racial_city", "place": "hall" },
+    { "id": "dwarf_fortress", "kind": "city", "safe": true, "side": "light", "regionId": "mountains", "x": 0, "y": 80, "role": "racial_city", "place": "hall" },
+    { "id": "troll_refuge", "kind": "city", "safe": true, "side": "light", "regionId": "caves", "x": 0, "y": 120, "role": "racial_city", "place": "hall" },
+    { "id": "ogre_camp", "kind": "city", "safe": true, "side": "dark", "regionId": "wastes", "x": 0, "y": 140, "role": "racial_city", "place": "hall" },
+    { "id": "ash_spire", "kind": "city", "safe": true, "side": "dark", "regionId": "ash", "x": 0, "y": 180, "role": "racial_city", "place": "hall" },
+    { "id": "goblin_workshop", "kind": "city", "safe": true, "side": "dark", "regionId": "dark_caves", "x": 0, "y": 220, "role": "racial_city", "place": "hall" },
+    { "id": "fort_humans_hall", "kind": "hub", "safe": true, "side": "light", "regionId": "plains", "x": 1, "y": 1, "role": "hall", "place": "hall" },
+    { "id": "obsidian_tower_hall", "kind": "hub", "safe": true, "side": "dark", "regionId": "lava", "x": 1, "y": 101, "role": "hall", "place": "hall" },
+    { "id": "forest_city_hall", "kind": "hub", "safe": true, "side": "light", "regionId": "forest", "x": 1, "y": 41, "role": "hall", "place": "hall" },
+    { "id": "dwarf_fortress_hall", "kind": "hub", "safe": true, "side": "light", "regionId": "mountains", "x": 1, "y": 81, "role": "hall", "place": "hall" },
+    { "id": "troll_refuge_hall", "kind": "hub", "safe": true, "side": "light", "regionId": "caves", "x": 1, "y": 121, "role": "hall", "place": "hall" },
+    { "id": "ogre_camp_hall", "kind": "hub", "safe": true, "side": "dark", "regionId": "wastes", "x": 1, "y": 141, "role": "hall", "place": "hall" },
+    { "id": "ash_spire_hall", "kind": "hub", "safe": true, "side": "dark", "regionId": "ash", "x": 1, "y": 181, "role": "hall", "place": "hall" },
+    { "id": "goblin_workshop_hall", "kind": "hub", "safe": true, "side": "dark", "regionId": "dark_caves", "x": 1, "y": 221, "role": "hall", "place": "hall" },
     { "id": "plains_market", "kind": "city", "safe": true, "side": "light", "regionId": "plains", "x": -20, "y": 0, "role": "neutral_city" },
     { "id": "forest_market", "kind": "city", "safe": true, "side": "light", "regionId": "forest", "x": -20, "y": 40, "role": "neutral_city" },
     { "id": "mountains_market", "kind": "city", "safe": true, "side": "light", "regionId": "mountains", "x": -20, "y": 80, "role": "neutral_city" },
@@ -329,6 +339,14 @@
     { "id": "primordial_middle__primordial_outer", "a": "primordial_outer", "b": "primordial_middle", "length": 10 },
     { "id": "primordial_inner__primordial_middle", "a": "primordial_middle", "b": "primordial_inner", "length": 10 },
     { "id": "primordial_archive__primordial_inner", "a": "primordial_inner", "b": "primordial_archive", "length": 10 },
-    { "id": "primordial_city__primordial_outer", "a": "primordial_city", "b": "primordial_outer", "length": 10 }
+    { "id": "primordial_city__primordial_outer", "a": "primordial_city", "b": "primordial_outer", "length": 10 },
+    { "id": "fort_humans__fort_humans_hall", "a": "fort_humans", "b": "fort_humans_hall", "length": 1 },
+    { "id": "obsidian_tower__obsidian_tower_hall", "a": "obsidian_tower", "b": "obsidian_tower_hall", "length": 1 },
+    { "id": "forest_city__forest_city_hall", "a": "forest_city", "b": "forest_city_hall", "length": 1 },
+    { "id": "dwarf_fortress__dwarf_fortress_hall", "a": "dwarf_fortress", "b": "dwarf_fortress_hall", "length": 1 },
+    { "id": "troll_refuge__troll_refuge_hall", "a": "troll_refuge", "b": "troll_refuge_hall", "length": 1 },
+    { "id": "ogre_camp__ogre_camp_hall", "a": "ogre_camp", "b": "ogre_camp_hall", "length": 1 },
+    { "id": "ash_spire__ash_spire_hall", "a": "ash_spire", "b": "ash_spire_hall", "length": 1 },
+    { "id": "goblin_workshop__goblin_workshop_hall", "a": "goblin_workshop", "b": "goblin_workshop_hall", "length": 1 }
   ]
 }

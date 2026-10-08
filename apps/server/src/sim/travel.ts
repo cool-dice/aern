@@ -11,6 +11,8 @@ export interface GeoNode {
   safe: boolean;
   side: 'light' | 'dark' | 'center';
   regionId: string;
+  /** `hall` or `registrar` when this node is the guild registration place. */
+  place?: 'hall' | 'registrar';
 }
 
 export interface Geography {

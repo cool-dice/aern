@@ -216,6 +216,38 @@ describe('loadCatalog', () => {
     });
   });
 
+  it('gives every racial city a hall the guild registrar can stand in', () => {
+    const racial = [
+      'fort_humans',
+      'obsidian_tower',
+      'forest_city',
+      'dwarf_fortress',
+      'troll_refuge',
+      'ogre_camp',
+      'ash_spire',
+      'goblin_workshop',
+    ];
+    const nodes = [...catalog.world.nodes, ...(catalog.world.sites ?? [])];
+    const edges = [...catalog.world.edges, ...(catalog.world.siteEdges ?? [])];
+    for (const id of racial) {
+      const city = nodes.find((node) => node.id === id);
+      expect(city?.place === 'hall' || city?.place === 'registrar').toBe(true);
+      const hallId = `${id}_hall`;
+      expect(nodes.find((node) => node.id === hallId)).toMatchObject({
+        kind: 'hub',
+        place: 'hall',
+      });
+      expect(
+        edges.some(
+          (edge) =>
+            (edge.a === id && edge.b === hallId) || (edge.a === hallId && edge.b === id),
+        ),
+      ).toBe(true);
+    }
+    expect(nodes.find((node) => node.id === 'plains_market')).toMatchObject({ kind: 'city' });
+    expect(nodes.find((node) => node.id === 'plains_market')?.place).toBeUndefined();
+  });
+
   it('ships the prototype quests, fragment, and starter kit', () => {
     expect(catalog.quests.map((quest) => quest.id)).toEqual([
       'tutorial',
