@@ -13,6 +13,8 @@ export interface CharacterState {
   automuteAtMs: number[];
   recentTexts: string[];
   recentMs: number[];
+  guildId?: string;
+  titles: string[];
 }
 
 export interface SocialRepository {
@@ -26,6 +28,10 @@ export interface SocialRepository {
   deleteParty(leaderId: string): void;
   addDelivery(listenerId: string, message: HeardMessage): void;
   inbox(listenerId: string): readonly HeardMessage[];
+  saveMail(mail: { id: string; fromId: string; toId: string; subject: string; body: string }): void;
+  grantTitle(characterId: string, titleId: string): { ok: true; value: { titleId: string } } | { ok: false; code: 'missing' | 'duplicate' };
+  titlesOf(characterId: string): readonly string[];
+  mailbox(toId: string): readonly { id: string; fromId: string; toId: string; subject: string; body: string }[];
 }
 
 function copyParty(party: Party): Party {
@@ -46,6 +52,8 @@ function copyCharacter(character: CharacterState): CharacterState {
     automuteAtMs: [...character.automuteAtMs],
     recentTexts: [...character.recentTexts],
     recentMs: [...character.recentMs],
+    ...(character.guildId !== undefined ? { guildId: character.guildId } : {}),
+    titles: [...character.titles],
   };
 }
 
@@ -54,6 +62,8 @@ export function createSocialRepository(): SocialRepository {
   const characters = new Map<string, CharacterState>();
   const parties: Party[] = [];
   const heard = new Map<string, HeardMessage[]>();
+  const mail: { id: string; fromId: string; toId: string; subject: string; body: string }[] = [];
+  let mailSeq = 0;
 
   return {
     register(input) {
@@ -69,6 +79,8 @@ export function createSocialRepository(): SocialRepository {
           automuteAtMs: [],
           recentTexts: [],
           recentMs: [],
+          ...(input.guildId !== undefined ? { guildId: input.guildId } : {}),
+          titles: [],
         });
         return;
       }
@@ -76,6 +88,9 @@ export function createSocialRepository(): SocialRepository {
       existing.language = input.language;
       if (input.upy !== undefined) {
         existing.upy = input.upy;
+      }
+      if (input.guildId !== undefined) {
+        existing.guildId = input.guildId;
       }
     },
 
@@ -161,6 +176,46 @@ export function createSocialRepository(): SocialRepository {
         text: message.text,
         mode: message.mode,
       }));
+    },
+
+    saveMail(entry) {
+      mailSeq += 1;
+      mail.push({
+        id: entry.id.length > 0 ? entry.id : `mail-${mailSeq}`,
+        fromId: entry.fromId,
+        toId: entry.toId,
+        subject: entry.subject,
+        body: entry.body,
+      });
+    },
+
+    grantTitle(characterId, titleId) {
+      const character = characters.get(characterId);
+      if (character === undefined) {
+        return { ok: false, code: 'missing' };
+      }
+      if (character.titles.includes(titleId)) {
+        return { ok: false, code: 'duplicate' };
+      }
+      character.titles.push(titleId);
+      return { ok: true, value: { titleId } };
+    },
+
+    titlesOf(characterId) {
+      const character = characters.get(characterId);
+      return character === undefined ? [] : [...character.titles];
+    },
+
+    mailbox(toId) {
+      return mail
+        .filter((entry) => entry.toId === toId)
+        .map((entry) => ({
+          id: entry.id,
+          fromId: entry.fromId,
+          toId: entry.toId,
+          subject: entry.subject,
+          body: entry.body,
+        }));
     },
   };
 }

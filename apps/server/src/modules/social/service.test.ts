@@ -80,30 +80,98 @@ test('party chat at UPY 0 delivers the original string', async () => {
   expect(events).toEqual([{ channel: 'party', senderId: 'leader' }]);
 });
 
-test('mail and guild channels and titles are feature stubs and write nothing', async () => {
+test('mail delivers the letter, guild chat stays raw, and a title is stored once', async () => {
   const { service, events } = harness();
-  service.register({ id: 'speaker', nodeId: 'square', language: 'common_light', upy: 0 });
-  service.register({ id: 'listener', nodeId: 'square', language: 'common_dark', upy: 100 });
+  service.register({ id: 'speaker', nodeId: 'square', language: 'common_light', upy: 0, guildId: 'wolves' });
+  service.register({ id: 'listener', nodeId: 'far', language: 'common_dark', upy: 0 });
+  service.register({ id: 'mate', nodeId: 'square', language: 'common_dark', upy: 0, guildId: 'wolves' });
+  service.register({ id: 'outsider', nodeId: 'square', language: 'common_light', upy: 100 });
 
   const mail = await service.say({
     senderId: 'speaker',
     channel: 'mail',
     text: 'a letter',
+    subject: 'news',
+    recipientId: 'listener',
     nowMs: START_MS,
   });
+  expect(mail).toEqual({ ok: true, value: { delivered: 1 } });
+  expect(service.inbox('listener')).toEqual([
+    { channel: 'mail', senderId: 'speaker', text: 'a letter', mode: 'raw' },
+  ]);
+  expect(service.mailbox('listener')).toEqual([
+    {
+      id: `mail-${START_MS}-speaker-listener`,
+      fromId: 'speaker',
+      toId: 'listener',
+      subject: 'news',
+      body: 'a letter',
+    },
+  ]);
+  expect(
+    await service.say({
+      senderId: 'speaker',
+      channel: 'mail',
+      text: 'body',
+      subject: 'x'.repeat(81),
+      recipientId: 'listener',
+      nowMs: START_MS,
+    }),
+  ).toEqual({ ok: false, code: 'subject' });
+  expect(
+    await service.say({
+      senderId: 'speaker',
+      channel: 'mail',
+      text: '',
+      subject: 'news',
+      recipientId: 'listener',
+      nowMs: START_MS,
+    }),
+  ).toEqual({ ok: false, code: 'body' });
+  expect(
+    await service.say({
+      senderId: 'speaker',
+      channel: 'mail',
+      text: 'orphan',
+      nowMs: START_MS,
+    }),
+  ).toEqual({ ok: false, code: 'missing' });
+
   const guild = await service.say({
     senderId: 'speaker',
     channel: 'guild',
-    text: 'a letter',
+    text: 'rally',
     nowMs: START_MS,
   });
+  expect(guild).toEqual({ ok: true, value: { delivered: 2 } });
+  expect(service.inbox('mate')).toEqual([
+    { channel: 'guild', senderId: 'speaker', text: 'rally', mode: 'raw' },
+  ]);
+  expect(service.inbox('outsider')).toEqual([]);
+  service.register({ id: 'loner', nodeId: 'square', language: 'common_light', upy: 0 });
+  expect(
+    await service.say({
+      senderId: 'loner',
+      channel: 'guild',
+      text: 'hello',
+      nowMs: START_MS,
+    }),
+  ).toEqual({ ok: false, code: 'no_guild' });
 
-  expect(mail).toEqual({ ok: false, code: 'feature_stub' });
-  expect(guild).toEqual({ ok: false, code: 'feature_stub' });
-  expect(service.grantTitle()).toEqual({ ok: false, code: 'feature_stub' });
-  expect(service.inbox('speaker')).toEqual([]);
-  expect(service.inbox('listener')).toEqual([]);
-  expect(events).toEqual([]);
+  expect(service.grantTitle({ characterId: 'nobody', titleId: 'scout' })).toEqual({
+    ok: false,
+    code: 'missing',
+  });
+  expect(service.grantTitle({ characterId: 'speaker', titleId: 'scout' })).toEqual({
+    ok: true,
+    value: { titleId: 'scout' },
+  });
+  expect(service.grantTitle({ characterId: 'speaker', titleId: 'scout' })).toEqual({
+    ok: false,
+    code: 'duplicate',
+  });
+  expect(service.titlesOf('speaker')).toEqual(['scout']);
+  expect(events.map((event) => event.channel)).toEqual(['mail', 'guild']);
   expect(service.sanctionOf('speaker')).toBe('none');
 });
 
@@ -420,7 +488,11 @@ test('say before start throws and does not read Date.now or Math.random', async 
     });
     expect(said).toEqual({ ok: true, value: { delivered: 2 } });
     expect(await service.invite('speaker', 'mate', 'flex')).toEqual({ ok: true, value: undefined });
-    expect(service.grantTitle()).toEqual({ ok: false, code: 'feature_stub' });
+    expect(service.grantTitle({ characterId: 'speaker', titleId: 'scout' })).toEqual({
+      ok: true,
+      value: { titleId: 'scout' },
+    });
+    expect(service.titlesOf('speaker')).toEqual(['scout']);
     expect(await service.leave('speaker')).toEqual({ ok: true, value: undefined });
   } finally {
     Date.now = realNow;

@@ -55,7 +55,7 @@ test('compose wires modules in registration order without listening', () => {
   }
 });
 
-test('guild creation is live and auction lists lots', async () => {
+test('guild, auction, mail, and titles follow the live domain rules', async () => {
   const graph = compose({ catalog: minimalCatalog(), nowMs: 1_000, jwtSecret: 'test-secret' });
   expect(graph.economy.service.listAuction()).toEqual({ ok: true, value: [] });
   expect(await graph.guild.service.create({})).toEqual({ ok: false, code: 'member' });
@@ -79,24 +79,10 @@ test('guild creation is live and auction lists lots', async () => {
     gold: 10_000,
   });
   expect(created.ok).toBe(true);
-  expect(graph.social.service.grantTitle()).toEqual({ ok: false, code: 'feature_stub' });
-  expect(
-    await graph.social.service.say({
-      senderId: 'lia',
-      channel: 'mail',
-      text: 'hello',
-      nowMs: 1_000,
-    }),
-  ).toEqual({ ok: false, code: 'feature_stub' });
-  expect(
-    await graph.social.service.say({
-      senderId: 'lia',
-      channel: 'guild',
-      text: 'hello',
-      nowMs: 1_000,
-    }),
-  ).toEqual({ ok: false, code: 'feature_stub' });
-});
+  expect(graph.social.service.grantTitle({ characterId: 'lia', titleId: 'scout' })).toEqual({
+    ok: false,
+    code: 'missing',
+  });
   graph.social.service.register({ id: 'lia', nodeId: 'fort_humans', language: 'common_light' });
   graph.social.service.register({ id: 'kai', nodeId: 'far', language: 'common_dark' });
   expect(

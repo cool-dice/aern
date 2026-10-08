@@ -6,8 +6,8 @@ import type { Result } from '../../../../../packages/domain/src/result';
 /** Channels `say` accepts. `system` is not a player entry. */
 export type SocialChannel = 'local' | 'party' | 'guild' | 'trade' | 'mail';
 
-/** Channels that actually deliver a line. Mail and guild are prototype stubs. */
-export type DeliveredChannel = 'local' | 'party' | 'trade';
+/** Channels that deliver a line. Guild bypasses language garble. */
+export type DeliveredChannel = 'local' | 'party' | 'trade' | 'mail' | 'guild';
 
 export interface SocialCharacterInput {
   id: string;
@@ -19,6 +19,7 @@ export interface SocialCharacterInput {
    * Omitted on a later register leaves the stored value unchanged. Default 0.
    */
   upy?: number;
+  guildId?: string;
 }
 
 /** One rendered line in a character's in-memory inbox. */
@@ -35,6 +36,8 @@ export interface SocialService {
     channel: SocialChannel;
     text: string;
     nowMs: number;
+    subject?: string;
+    recipientId?: string;
   }): Promise<Result<{ delivered: number }, string>>;
   invite(partyLeaderId: string, targetId: string, role: string): Promise<Result<void, string>>;
   /**
@@ -42,7 +45,9 @@ export interface SocialService {
    * member. The last member dissolves the party.
    */
   leave(characterId: string): Promise<Result<void, string>>;
-  grantTitle(): Result<never, 'feature_stub'>;
+  grantTitle(input: { characterId: string; titleId: string }): Result<{ titleId: string }, string>;
+  titlesOf(characterId: string): readonly string[];
+  mailbox(characterId: string): readonly { id: string; fromId: string; toId: string; subject: string; body: string }[];
   /** Upsert the in-memory character projection this module owns. */
   register(input: SocialCharacterInput): void;
   /** Lines this listener has actually received, oldest first. */

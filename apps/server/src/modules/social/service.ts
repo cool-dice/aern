@@ -3,6 +3,7 @@ import {
   deliverChat,
   invite as addPartyMember,
   leave as leaveParty,
+  sendMail,
   type Party,
   type PartyRole,
 } from '@rift/domain/social';
@@ -108,17 +109,23 @@ export function createSocialService(
       return repository.character(characterId)?.sanction ?? 'none';
     },
 
-    grantTitle() {
-      return err('feature_stub');
+    grantTitle(input) {
+      const granted = repository.grantTitle(input.characterId, input.titleId);
+      if (!granted.ok) {
+        return err(granted.code);
+      }
+      return ok(granted.value);
+    },
+
+    titlesOf(characterId) {
+      return repository.titlesOf(characterId);
+    },
+
+    mailbox(characterId) {
+      return repository.mailbox(characterId);
     },
 
     async say(input) {
-      // Mail is a prototype stub and must not persist. The guild channel is a
-      // stub too: this module does not import guild, so there is nowhere to write.
-      if (input.channel === 'mail' || input.channel === 'guild') {
-        return err('feature_stub');
-      }
-
       const sender = repository.character(input.senderId);
       if (sender === null) {
         return err('missing');
@@ -126,6 +133,21 @@ export function createSocialService(
       const bus = getBus();
       if (bus === null) {
         throw new Error('social module is not started');
+      }
+
+      let mailLetter: { subject: string; body: string } | null = null;
+      if (input.channel === 'mail') {
+        const mailed = sendMail({
+          subject: input.subject ?? input.text.slice(0, 80),
+          body: input.text,
+        });
+        if (!mailed.ok) {
+          return err(mailed.code);
+        }
+        if (input.recipientId === undefined || repository.character(input.recipientId) === null) {
+          return err('missing');
+        }
+        mailLetter = mailed.value;
       }
 
       const sanction = classifyMessage({
@@ -147,10 +169,23 @@ export function createSocialService(
       }
 
       const channel: DeliveredChannel = input.channel;
-      const audience =
-        channel === 'party' ? partyAudience(sender.id) : repository.charactersAt(sender.nodeId);
+      let audience: CharacterState[] | null;
+      if (channel === 'party') {
+        audience = partyAudience(sender.id);
+      } else if (channel === 'guild') {
+        if (sender.guildId === undefined) {
+          return err('no_guild');
+        }
+        const guildId = sender.guildId;
+        audience = repository.charactersAt(sender.nodeId).filter((listener) => listener.guildId === guildId);
+      } else if (channel === 'mail') {
+        const recipient = repository.character(input.recipientId ?? '');
+        audience = recipient === null ? null : [recipient];
+      } else {
+        audience = repository.charactersAt(sender.nodeId);
+      }
       if (audience === null) {
-        return err('no_party');
+        return err(channel === 'party' ? 'no_party' : 'missing');
       }
 
       const muted = senderMuted(sender, input.nowMs);
@@ -165,7 +200,7 @@ export function createSocialService(
           translated: input.text,
           sameLocation: listener.nodeId === sender.nodeId,
           sameParty: sharesParty(repository, sender.id, listener.id),
-          sameGuild: false,
+          sameGuild: sender.guildId !== undefined && listener.guildId === sender.guildId,
           muted,
           rng: mulberry32(hashSeed(`${sender.id}|${listener.id}|${input.nowMs}|${input.text}`)),
         });
@@ -185,6 +220,16 @@ export function createSocialService(
 
       if (delivered === 0) {
         return err(failure ?? 'empty');
+      }
+
+      if (mailLetter !== null && input.recipientId !== undefined) {
+        repository.saveMail({
+          id: `mail-${input.nowMs}-${sender.id}-${input.recipientId}`,
+          fromId: sender.id,
+          toId: input.recipientId,
+          subject: mailLetter.subject,
+          body: mailLetter.body,
+        });
       }
 
       repository.remember(sender.id, input.text, input.nowMs);

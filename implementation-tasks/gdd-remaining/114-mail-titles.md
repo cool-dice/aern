@@ -1,6 +1,6 @@
 # 114. Почта и титулы
 
-status: pending
+status: done
 
 ## Правило GDD
 
