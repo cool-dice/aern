@@ -112,6 +112,7 @@ export interface LivePorts {
   encodeAncientText(body: Record<string, unknown>): LiveResult;
   decipherAncient(body: Record<string, unknown>): LiveResult;
   useCoalitionBank(body: Record<string, unknown>): LiveResult;
+  startPurify(body: Record<string, unknown>): Promise<LiveResult>;
   memberDoctrine(characterId: string): DoctrineId | null;
   holdWithdrawal(input: {
     guildId: string;
@@ -245,6 +246,7 @@ const LIVE_ACTIONS = new Set([
   'ancient_encode',
   'ancient_decipher',
   'coalition_bank',
+  'purify',
   'node_strike',
   'coalition_say',
 ]);
@@ -385,6 +387,8 @@ export async function runLive(
       return ports.decipherAncient(body);
     case 'coalition_bank':
       return ports.useCoalitionBank(body);
+    case 'purify':
+      return ports.startPurify(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':

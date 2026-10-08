@@ -50,7 +50,7 @@ import type { GameModule, ModuleContext } from './shared/module';
 import { OBSERVATION_LENGTH, utilityAction } from '@rift/domain/ai';
 import { NODES } from '@rift/domain/gathering';
 import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
-import { nnUsed, type BuildState } from '@rift/domain/build';
+import { beginPurify, completePurify, nnUsed, type BuildState } from '@rift/domain/build';
 import { RACES } from '@rift/domain/character';
 import {
   askHostilePortal,
@@ -414,6 +414,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const CHEAT_STRIKE_WINDOW_MS = 24 * 60 * 60 * 1000;
   const cheatStrikes = new Map<string, number[]>();
   const cheatRepeat = new Set<string>();
+  const purifyingIds = new Set<string>();
   const accountByCharacter = new Map<string, string>();
   let playerReports: {
     id: string;
@@ -921,6 +922,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     encodeAncientText,
     decipherAncient,
     useCoalitionBank,
+    startPurify,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -2366,6 +2368,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await relieveAbsentLeaders(ms);
     await inspectRewardFreezes();
     await reviewCheatStrikes();
+    await finishPurifications();
     refreshPortalLifts();
     await sampleBalance();
   }
@@ -3300,6 +3303,95 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }
       warRosters.set(war.id, roster);
     }
+  }
+
+  /**
+   * The character row keeps one relic install: free sockets left after that install,
+   * echo programs in those sockets, and the relic's echo ids. It does not keep a stack.
+   */
+  function storedRelicsLeft(record: {
+    build?: { programs: { kind: string }[]; relicSocketFree: number; echoIds: string[] } | null;
+  }): number {
+    const build = record.build;
+    if (build === null || build === undefined) {
+      return 0;
+    }
+    const echoes = build.programs.filter((program) => program.kind === 'echo').length;
+    if (build.relicSocketFree > 0 || echoes > 0 || build.echoIds.length > 0) {
+      return 1;
+    }
+    return 0;
+  }
+
+  function implantCoresLeft(state: BuildState): number {
+    return state.cores.filter((core) => core.implant).length;
+  }
+
+  /**
+   * Artifact 6 §6.4–6.5. A clean return starts only after every relic and implant
+   * core is gone, then waits `PURIFY_MS` (24 hours). Implant cores are the stored
+   * `cores` with `implant`. A worn relic is the socket remainder or echo ids the
+   * relic route writes on the character row. The request does not supply those counts.
+   */
+  async function startPurify(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    if (characterId.length === 0) {
+      return { ok: false, code: 'character' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const state = await buildOf(characterId);
+    const started = beginPurify(state, storedRelicsLeft(record), implantCoresLeft(state), clock.now());
+    if (!started.ok) {
+      return { ok: false, code: started.code };
+    }
+    await persistPurify(characterId, started.value);
+    purifyingIds.add(characterId);
+    return {
+      ok: true,
+      value: { purifyingUntilMs: started.value.purifyingUntilMs, clean: started.value.clean },
+    };
+  }
+
+  /** Closes a purification once `nowMs` reaches the deadline `beginPurify` stored. */
+  async function finishPurifications(): Promise<void> {
+    const now = clock.now();
+    for (const characterId of [...purifyingIds]) {
+      const state = await buildOf(characterId);
+      if (state.purifyingUntilMs === null) {
+        purifyingIds.delete(characterId);
+        continue;
+      }
+      const done = completePurify(state, now);
+      if (done.purifyingUntilMs !== null) {
+        continue;
+      }
+      await persistPurify(characterId, done);
+      purifyingIds.delete(characterId);
+    }
+  }
+
+  async function persistPurify(characterId: string, state: BuildState): Promise<void> {
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return;
+    }
+    await repos.characters.update({
+      ...record,
+      clean: state.clean,
+      build: {
+        programs: state.programs.map((program) => ({ ...program })),
+        cores: state.cores.map((core) => ({ ...core })),
+        relicSocketFree: state.relicSocketFree,
+        relicGrade: record.build?.relicGrade ?? 'common',
+        purifyingUntilMs: state.purifyingUntilMs,
+        echoIds: [...(record.build?.echoIds ?? [])],
+      },
+    });
   }
 
   function noteWarBlow(attackerId: string, targetId: string): void {
@@ -4906,6 +4998,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await relieveAbsentLeaders(SIM_TICK_MS);
     await inspectRewardFreezes();
     await reviewCheatStrikes();
+    await finishPurifications();
     refreshPortalLifts();
     await sampleBalance();
   }
@@ -6000,6 +6093,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/ancient/encode', action: 'ancient_encode' },
   { path: '/ancient/decipher', action: 'ancient_decipher' },
   { path: '/coalition/bank', action: 'coalition_bank' },
+  { path: '/purify', action: 'purify' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

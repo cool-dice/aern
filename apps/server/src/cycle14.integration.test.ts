@@ -1,8 +1,24 @@
 import { readFileSync } from 'node:fs';
 import { buildPermutation, encodeAncient } from '@rift/domain/ancient';
+import type { Appearance } from '@rift/domain/character';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
+import { emptyPoints } from '@rift/domain/stats';
 import { expect, test } from 'vitest';
 import { compose } from './compose';
+
+const appearance: Appearance = {
+  skin: 'fair',
+  hair: 'brown',
+  eyes: 'green',
+  horns: false,
+  ears: 'round',
+  tattoos: 'none',
+  scars: 'none',
+  heightCm: 180,
+  build: 'average',
+};
+
+const PURIFY_MS = 24 * 60 * 60_000;
 
 test('posted contracts carry the resource and relic rewards the artifact names', () => {
   const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
@@ -321,4 +337,117 @@ test('coalition members can post a deposit and a read, and the artifact keeps th
     ok: false,
     code: 'member',
   });
+});
+
+test('purification starts from the live route and completes from tickOnce and skipMs', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const tickBody = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('function simSnapshot'),
+  );
+  const skipBody = composeSource.slice(
+    composeSource.indexOf('async function skipMs'),
+    composeSource.indexOf('function guardAllies'),
+  );
+  const route = composeSource.slice(
+    composeSource.indexOf('async function startPurify'),
+    composeSource.indexOf('async function finishPurifications'),
+  );
+  const finish = composeSource.slice(
+    composeSource.indexOf('async function finishPurifications'),
+    composeSource.indexOf('async function persistPurify'),
+  );
+  expect(tickBody.includes('finishPurifications(')).toBe(true);
+  expect(skipBody.includes('finishPurifications(')).toBe(true);
+  expect(route.includes('beginPurify(')).toBe(true);
+  expect(route.includes('storedRelicsLeft(')).toBe(true);
+  expect(route.includes('implantCoresLeft(')).toBe(true);
+  expect(route.includes('body.relicsLeft')).toBe(false);
+  expect(route.includes('body.implantCoresLeft')).toBe(false);
+  expect(finish.includes('completePurify(')).toBe(true);
+  expect(dispatch.includes("case 'purify'")).toBe(true);
+  expect(dispatch.includes('startPurify(')).toBe(true);
+  expect(composeSource.includes("path: '/purify'")).toBe(true);
+  expect(app.includes('postPurify(')).toBe(true);
+});
+
+test('a worn relic or implant core blocks purification, and an empty body cleans after 24 hours', async () => {
+  const graph = compose({ nowMs: 0 });
+  const points = { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 };
+  const relic = await graph.character.service.create({
+    accountId: 'account-relic',
+    controller: 'player',
+    name: 'Rel',
+    clean: false,
+    points,
+    appearance,
+  });
+  const implant = await graph.character.service.create({
+    accountId: 'account-implant',
+    controller: 'player',
+    name: 'Imp',
+    clean: false,
+    points,
+    appearance,
+  });
+  const body = await graph.character.service.create({
+    accountId: 'account-body',
+    controller: 'player',
+    name: 'Noa',
+    clean: false,
+    points,
+    appearance,
+  });
+  expect(relic.ok && implant.ok && body.ok).toBe(true);
+  if (!relic.ok || !implant.ok || !body.ok) {
+    return;
+  }
+  const relicId = relic.value.characterId;
+  const implantId = implant.value.characterId;
+  const bodyId = body.value.characterId;
+  await graph.character.service.grantXp(bodyId, 500);
+  graph.creditGold(bodyId, 200);
+  expect(await graph.act('relic_install', { characterId: relicId, subtype: 'spore' })).toMatchObject({
+    ok: true,
+  });
+  expect(
+    await graph.act('purify', { characterId: relicId, relicsLeft: 0, implantCoresLeft: 0 }),
+  ).toMatchObject({ ok: false, code: 'still_impure' });
+  expect(
+    await graph.act('core_equip', { characterId: implantId, templateId: 'titan', implant: true }),
+  ).toMatchObject({ ok: true, value: { cores: 1 } });
+  expect(await graph.act('purify', { characterId: implantId })).toMatchObject({
+    ok: false,
+    code: 'still_impure',
+  });
+  expect(await graph.act('path_learn', { characterId: bodyId, templateId: 'ward' })).toMatchObject({
+    ok: false,
+    code: 'incompatible',
+  });
+  const started = await graph.act('purify', { characterId: bodyId });
+  expect(started).toMatchObject({
+    ok: true,
+    value: { purifyingUntilMs: PURIFY_MS, clean: false },
+  });
+  expect(await graph.act('purify', { characterId: bodyId })).toMatchObject({ ok: false, code: 'busy' });
+  await graph.skipMs(PURIFY_MS - 100);
+  expect(await graph.act('purify', { characterId: bodyId })).toMatchObject({ ok: false, code: 'busy' });
+  expect(await graph.act('path_learn', { characterId: bodyId, templateId: 'ward' })).toMatchObject({
+    ok: false,
+    code: 'incompatible',
+  });
+  await graph.tickOnce();
+  expect(await graph.act('path_learn', { characterId: bodyId, templateId: 'ward' })).toMatchObject({
+    ok: true,
+  });
+  const again = await graph.act('purify', { characterId: bodyId });
+  expect(again).toMatchObject({ ok: true, value: { clean: false } });
+  const againUntil = (again.value as { purifyingUntilMs: number }).purifyingUntilMs;
+  expect(await graph.act('purify', { characterId: bodyId })).toMatchObject({ ok: false, code: 'busy' });
+  await graph.skipMs(PURIFY_MS);
+  const restarted = await graph.act('purify', { characterId: bodyId });
+  expect(restarted.ok).toBe(true);
+  expect((restarted.value as { purifyingUntilMs: number }).purifyingUntilMs).toBe(againUntil + PURIFY_MS);
 });

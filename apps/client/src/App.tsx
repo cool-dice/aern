@@ -32,6 +32,7 @@ import {
   postGuildQuest,
   postMercenary,
   postPatrol,
+  postPurify,
   readBankLog,
   registerContender,
   renewPact,
@@ -761,6 +762,17 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onPurify={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postPurify({
+                server: SERVER,
+                characterId,
                 store: plan.store,
               });
             }}

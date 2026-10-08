@@ -576,6 +576,23 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/purify`. Artifact 6: relics and implant cores must already be gone; the wait is 24 hours. */
+export async function postPurify(input: {
+  server: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/purify',
+    body: { characterId: input.characterId },
+    store: input.store,
+    log: 'purify',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/coalition/bank`. Artifact 17 §9.2: a coalition has no shared bank. */
 export async function postCoalitionBank(input: {
   server: string;
