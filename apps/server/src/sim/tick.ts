@@ -20,6 +20,7 @@ import {
   type LootStack as CorpseStack,
 } from '@rift/domain/death';
 import { cellsFor, chebyshev, move, step, type Cell, type Dir } from '@rift/domain/movement';
+import { neighborStep, type Geography } from './travel';
 import type { Rng } from '@rift/domain/rng';
 import { derive, emptyPoints } from '@rift/domain/stats';
 import { tickStatuses, tryApplyStatus, type StatusInstance } from '@rift/domain/status';
@@ -100,6 +101,10 @@ export interface SimEntity {
   dungeonEdges?: [number, number][];
   /** Geography site the story beat placed this character on. */
   nodeId?: string;
+  /** Flat prototype combat. Graph steps ignore this entity until it is false. */
+  inEncounter?: boolean;
+  /** Prototype pack this monster belongs to. Pursuit stays inside that pack. */
+  instanceId?: string;
 }
 
 export interface MonsterRespawn {
@@ -127,6 +132,8 @@ export interface MoveCommand {
   dir: Dir;
   running: boolean;
   issuedAtMs: number;
+  /** Direct neighbor. When set, the direction does not pick the edge. */
+  to?: string;
 }
 
 export interface AttackCommand {
@@ -195,6 +202,10 @@ export interface SimWorld {
   /** World-layer story flags. Personal quest text does not set these. */
   barrierDown?: boolean;
   primordialOpened?: boolean;
+  /** Racial cities, regional nodes, and primordial rings. Absent in grid-only tests. */
+  geography?: Geography;
+  /** Cities whose war has started. PvP in a safe city follows this list. */
+  warCities?: readonly string[];
 }
 
 interface StatusMods {
@@ -267,7 +278,10 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
   const ordered = orderCommands(entities, commands, rng);
   for (const command of ordered) {
     if (command.type === 'move') {
-      applyMove(entities, command, rejections, mods, obstacles, weather);
+      applyMove(entities, command, rejections, mods, obstacles, weather, {
+        geography: world.geography,
+        barrierDown: world.barrierDown === true,
+      });
     } else if (command.type === 'attack') {
       applyAttack(entities, command, rejections, mods, nowMs, weather, rng);
     }
@@ -306,6 +320,11 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     vision: weather.vision,
     gatherSpeed: weather.speed,
     ...(world.seasonSpawn !== undefined ? { seasonSpawn: world.seasonSpawn } : {}),
+    ...(world.barrierDown !== undefined ? { barrierDown: world.barrierDown } : {}),
+    ...(world.primordialOpened !== undefined ? { primordialOpened: world.primordialOpened } : {}),
+    ...(world.geography !== undefined ? { geography: world.geography } : {}),
+    ...(world.warCities !== undefined ? { warCities: world.warCities } : {}),
+    ...(world.invasion !== undefined ? { invasion: world.invasion } : {}),
   };
   const prior = world.history.map(cloneWorld);
   return { ...next, history: [...prior, cloneWorld(next)].slice(-LAG_HISTORY) };
@@ -372,7 +391,11 @@ function pursuePlayers(
   rng: Rng,
 ): void {
   const players = entities.filter(
-    (entity) => entity.monsterId === undefined && entity.phase === 'online' && entity.hp > 0,
+    (entity) =>
+      entity.monsterId === undefined &&
+      entity.phase === 'online' &&
+      entity.hp > 0 &&
+      entity.inEncounter === true,
   );
   if (players.length === 0) {
     return;
@@ -381,12 +404,16 @@ function pursuePlayers(
     if (monster.monsterId === undefined || monster.hp <= 0 || monster.phase !== 'online') {
       continue;
     }
-    let nearest = players[0];
-    if (nearest === undefined) {
-      return;
+    const quarry = players.filter(
+      (player) => monster.instanceId === undefined || monster.instanceId === player.id,
+    );
+    const nearestStart = quarry[0];
+    if (nearestStart === undefined) {
+      continue;
     }
+    let nearest = nearestStart;
     let best = chebyshev(monster.cell, nearest.cell);
-    for (const player of players) {
+    for (const player of quarry) {
       const distance = chebyshev(monster.cell, player.cell);
       if (distance < best) {
         nearest = player;
@@ -677,6 +704,8 @@ function applyRespawn(
   entity.hp = spawned.life.hp;
   entity.inventory = [];
   entity.inCombat = false;
+  entity.inEncounter = false;
+  entity.nodeId = entity.bindNodeId ?? entity.nodeId;
   entity.cell = entity.bindCell ?? { x: 0, y: 0 };
   entity.od = spawned.od;
   entity.odFrac = spawned.od;
@@ -761,6 +790,7 @@ function applyMove(
   mods: ReadonlyMap<string, StatusMods>,
   obstacles: readonly Cell[],
   weather: WeatherMods,
+  travel: { geography?: Geography; barrierDown: boolean },
 ): void {
   const entity = findEntity(entities, command.entityId);
   if (entity === undefined) {
@@ -777,6 +807,13 @@ function applyMove(
   }
   if (entity.roomId !== undefined && entity.dungeonEdges !== undefined) {
     stepDungeon(entity, command, rejections);
+    return;
+  }
+  if (travel.geography !== undefined && entity.inEncounter !== true && entity.nodeId !== undefined) {
+    stepNode(entity, command, rejections, mods, weather, {
+      geography: travel.geography,
+      barrierDown: travel.barrierDown,
+    });
     return;
   }
 
@@ -830,6 +867,67 @@ function applyMove(
   }
   spendOd(entity, result.value.od);
   entity.cell = cell;
+}
+
+function stepNode(
+  entity: SimEntity,
+  command: MoveCommand,
+  rejections: SimRejection[],
+  mods: ReadonlyMap<string, StatusMods>,
+  weather: WeatherMods,
+  travel: { geography: Geography; barrierDown: boolean },
+): void {
+  const nodeId = entity.nodeId;
+  if (nodeId === undefined) {
+    rejections.push({ entityId: entity.id, code: 'no_edge' });
+    return;
+  }
+  const downed = entity.phase === 'downed';
+  const paced = move({
+    from: entity.cell,
+    dir: command.dir,
+    inCombat: entity.inCombat,
+    od: entity.od,
+    reaction: entity.reaction,
+    running: command.running,
+    overloaded: entity.overloaded === true,
+    legsDestroyed: entity.legsDestroyed ?? 0,
+    downed,
+    blocked: () => false,
+  });
+  if (!paced.ok) {
+    rejections.push({ entityId: entity.id, code: paced.code });
+    return;
+  }
+  const speed =
+    (mods.get(entity.id)?.speedMultiplier ?? 1) *
+    neuroshockScale(1, neuralOverload(entity)) *
+    weather.speed *
+    (entity.speedMultiplier ?? 1);
+  const pace = cellsFor({
+    reaction: entity.reaction,
+    running: command.running,
+    overloaded: entity.overloaded === true,
+    legsDestroyed: entity.legsDestroyed ?? 0,
+    downed,
+  });
+  if (speed !== 1 && Math.floor(pace * speed) < 1) {
+    rejections.push({ entityId: entity.id, code: 'slow' });
+    return;
+  }
+  const stepped = neighborStep({
+    geography: { ...travel.geography, barrierDown: travel.barrierDown || travel.geography.barrierDown },
+    fromId: nodeId,
+    dir: command.dir,
+    ...(command.to !== undefined ? { to: command.to } : {}),
+  });
+  if (!stepped.ok) {
+    rejections.push({ entityId: entity.id, code: stepped.code });
+    return;
+  }
+  spendOd(entity, paced.value.od);
+  entity.cell = stepped.value.cell;
+  entity.nodeId = stepped.value.nodeId;
 }
 
 function neuralOverload(entity: SimEntity): boolean {
@@ -1041,6 +1139,11 @@ function cloneWorld(world: SimWorld): SimWorld {
     ...(world.vision !== undefined ? { vision: world.vision } : {}),
     ...(world.gatherSpeed !== undefined ? { gatherSpeed: world.gatherSpeed } : {}),
     ...(world.seasonSpawn !== undefined ? { seasonSpawn: world.seasonSpawn } : {}),
+    ...(world.barrierDown !== undefined ? { barrierDown: world.barrierDown } : {}),
+    ...(world.primordialOpened !== undefined ? { primordialOpened: world.primordialOpened } : {}),
+    ...(world.geography !== undefined ? { geography: world.geography } : {}),
+    ...(world.warCities !== undefined ? { warCities: world.warCities } : {}),
+    ...(world.invasion !== undefined ? { invasion: world.invasion } : {}),
   };
 }
 

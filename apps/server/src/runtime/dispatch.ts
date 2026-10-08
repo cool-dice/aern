@@ -59,6 +59,7 @@ export interface LivePorts {
   weatherSpeed(): number;
   seasonBonus(): boolean;
   addEncounter(monsterId: string): boolean;
+  enterEncounter(characterId: string): boolean;
 }
 
 const TOOLS: readonly ToolId[] = ['none', 'basic', 'advanced', 'master'];
@@ -88,6 +89,7 @@ const LIVE_ACTIONS = new Set([
   'mail',
   'title_grant',
   'encounter',
+  'encounter_enter',
   'dialogue',
 ]);
 
@@ -143,6 +145,8 @@ export async function runLive(
       return title(body, ports);
     case 'encounter':
       return encounter(body, ports);
+    case 'encounter_enter':
+      return encounterEnter(body, ports);
     case 'dialogue':
       return dialogue(body, ports);
     default:
@@ -581,6 +585,17 @@ async function dialogue(body: Record<string, unknown>, ports: LivePorts): Promis
     return { ok: false, code: 'inactive' };
   }
   return { ok: true, value: { choiceId, questId: text(body, 'questId') ?? null } };
+}
+
+async function encounterEnter(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  if (characterId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  if (!ports.enterEncounter(characterId)) {
+    return { ok: false, code: 'missing' };
+  }
+  return { ok: true, value: { characterId } };
 }
 
 async function encounter(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

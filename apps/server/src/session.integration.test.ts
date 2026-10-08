@@ -66,8 +66,9 @@ test('character create enters the world and a command moves that entity', async 
     expect(moved.statusCode).toBe(200);
     built.tickOnce();
     const after = await built.app.inject({ method: 'GET', url: '/state' });
-    const next = after.json() as { self: { cell: { x: number; y: number }; hp: number } };
-    expect(next.self.cell.x).toBeGreaterThan(0);
+    const next = after.json() as { self: { cell: { x: number; y: number }; hp: number; nodeId: string | null } };
+    expect(next.self.nodeId).toBe('edge_light');
+    expect(next.self.cell).toEqual({ x: 10, y: 0 });
   } finally {
     await built.close();
   }
@@ -176,11 +177,30 @@ test('accepted quests publish on /state and kill credit follows the attacker', a
   const alphaPlayed = played.players.find((player) => player.id === 'alpha');
   expect(alphaPlayed?.quests.find((quest) => quest.id === 'gather_metal')?.objectives[0]?.current).toBe(1);
   expect(alphaPlayed?.quests.find((quest) => quest.id === 'visit_hub')?.objectives[0]?.current).toBe(0);
+  expect(await graph.act('dungeon_leave', { characterId: 'alpha' })).toMatchObject({ ok: true });
+  for (const to of ['edge_light', 'cross_light']) {
+    graph.submit({
+      commandId: `walk-${to}`,
+      seq: 2,
+      issuedAtMs: 1_000,
+      action: 'step_e',
+      params: { entityId: 'alpha', to },
+    });
+    graph.tickOnce();
+  }
+  const walked = graph.state() as {
+    self: { nodeId: string | null } | null;
+    players: { id: string; quests: { id: string; objectives: { current: number }[] }[] }[];
+  };
+  expect(walked.self?.nodeId).toBe('cross_light');
+  const alphaWalked = walked.players.find((player) => player.id === 'alpha');
+  expect(alphaWalked?.quests.find((quest) => quest.id === 'visit_hub')?.objectives[0]?.current).toBe(1);
 });
 
-test('0 HP writes a corpse and respawnAtBind brings the player back', () => {
+test('0 HP writes a corpse and respawnAtBind brings the player back', async () => {
   const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
   graph.enterWorld('lia');
+  expect(await graph.act('encounter_enter', { characterId: 'lia' })).toMatchObject({ ok: true });
   graph.submit({
     commandId: 'hit-1',
     seq: 1,
@@ -230,6 +250,12 @@ test('death drops the inventory kit and the client respawn command restores the 
       },
     });
     const { characterId } = created.json() as { characterId: string };
+    const entered = await built.app.inject({
+      method: 'POST',
+      url: '/encounter/enter',
+      payload: { characterId },
+    });
+    expect(entered.statusCode).toBe(200);
     const before = await built.app.inject({ method: 'GET', url: `/characters/${characterId}/inventory` });
     const kit = before.json() as { items: { itemId: string }[] };
     expect(kit.items.map((item) => item.itemId)).toContain('rusty_sword');
@@ -505,11 +531,34 @@ test('story acts publish artifact scenes and live events advance them', async ()
     players: { quests: { id: string; objectives: { id: string; current: number }[] }[] }[];
   };
   expect(rings.primordialOpened).toBe(false);
-  expect(rings.self?.nodeId).toBeNull();
+  expect(rings.self?.nodeId).toBe('fort_humans');
+  expect(rings.self?.roomId).toBe(0);
   const act3 = rings.players[0]?.quests.find((quest) => quest.id === 'act3_light');
   expect(act3?.objectives.find((objective) => objective.id === 'outer_ring')?.current).toBe(0);
   expect(act3?.objectives.find((objective) => objective.id === 'middle_ring')?.current).toBe(0);
   expect(act3?.objectives.find((objective) => objective.id === 'archive')?.current).toBe(1);
+
+  expect(await graph.act('dungeon_leave', { characterId: 'lia' })).toMatchObject({ ok: true });
+  for (const to of ['forest_city', 'dwarf_fortress', 'troll_refuge', 'approach_light', 'primordial_outer']) {
+    graph.submit({
+      commandId: `ring-${to}`,
+      seq: 3,
+      issuedAtMs: 1_000,
+      action: 'step_s',
+      params: { entityId: 'lia', to },
+    });
+    graph.tickOnce();
+  }
+  const arrived = graph.state() as {
+    primordialOpened: boolean;
+    self: { nodeId: string | null; cell: { x: number; y: number } } | null;
+    players: { quests: { id: string; objectives: { id: string; current: number }[] }[] }[];
+  };
+  expect(arrived.self).toMatchObject({ nodeId: 'primordial_outer', cell: { x: 60, y: 0 } });
+  const ringsAfter = arrived.players[0]?.quests.find((quest) => quest.id === 'act3_light');
+  expect(ringsAfter?.objectives.find((objective) => objective.id === 'outer_ring')?.current).toBe(1);
+  expect(ringsAfter?.objectives.find((objective) => objective.id === 'middle_ring')?.current).toBe(0);
+  expect(arrived.primordialOpened).toBe(true);
 });
 
 test('utility runs after 200ms of sidecar silence and the action is played', async () => {

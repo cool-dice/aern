@@ -63,12 +63,14 @@ function toMove(command: ClientCommand): MoveCommand | null {
   if (typeof entityId !== 'string' || !isDir(dir)) {
     return null;
   }
+  const to = command.params.to;
   return {
     type: 'move',
     entityId,
     dir,
     running,
     issuedAtMs: command.issuedAtMs,
+    ...(typeof to === 'string' ? { to } : {}),
   };
 }
 

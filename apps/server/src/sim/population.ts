@@ -144,5 +144,6 @@ function toEntity(spawned: SpawnedMonster): SimEntity {
     phases: spawned.phases,
     speedMultiplier: spawned.speedMultiplier,
     rank: spawned.rank,
+    inEncounter: true,
   };
 }

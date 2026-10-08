@@ -28,6 +28,9 @@ test('step and run map onto the eight directions', () => {
     running: true,
     issuedAtMs: 50,
   });
+  expect(
+    toSimCommand(command({ action: 'step_s', params: { entityId: 'hero', to: 'plains_mine' } })),
+  ).toMatchObject({ type: 'move', dir: 's', to: 'plains_mine' });
 });
 
 test('attacks keep melee versus ranged and the catalog target', () => {

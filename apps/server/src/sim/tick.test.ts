@@ -70,6 +70,9 @@ function entity(partial: Partial<SimEntity> & Pick<SimEntity, 'id'>): SimEntity 
     dungeonEdges: partial.dungeonEdges,
     lastAttackerId: partial.lastAttackerId,
     seasonTag: partial.seasonTag,
+    nodeId: partial.nodeId,
+    inEncounter: partial.inEncounter,
+    instanceId: partial.instanceId,
   };
 }
 
@@ -83,6 +86,10 @@ function world(partial: Partial<SimWorld> & Pick<SimWorld, 'entities'>): SimWorl
     obstacles: partial.obstacles ?? [],
     history: partial.history ?? [],
     lootTables: partial.lootTables,
+    geography: partial.geography,
+    barrierDown: partial.barrierDown,
+    warCities: partial.warCities,
+    invasion: partial.invasion,
   };
 }
 
@@ -678,7 +685,7 @@ test('ten stepTick calls are deterministic', () => {
 test('an adjacent monster steps in and spends a melee attack on the player', () => {
   const start = world({
     entities: [
-      entity({ id: 'lia', hp: 40, maxHp: 40, armor: 0, evasion: 0, cell: { x: 0, y: 0 } }),
+      entity({ id: 'lia', hp: 40, maxHp: 40, armor: 0, evasion: 0, cell: { x: 0, y: 0 }, inEncounter: true }),
       entity({
         id: 'rat',
         monsterId: 'spore_rat',
@@ -694,6 +701,52 @@ test('an adjacent monster steps in and spends a melee attack on the player', () 
   const fought = stepTick(start, [], mulberry32(1));
   const player = fought.entities.find((entity) => entity.id === 'lia');
   expect(player?.hp).toBeLessThan(40);
+});
+
+test('a player on the geography graph is not chased, and a step uses the edge', () => {
+  const geography = {
+    barrierDown: false,
+    nodes: [
+      { id: 'fort_humans', x: 0, y: 0, kind: 'city' as const, safe: true, side: 'light' as const, regionId: 'plains' },
+      { id: 'edge_light', x: 10, y: 0, kind: 'dungeon' as const, safe: false, side: 'light' as const, regionId: 'plains' },
+    ],
+    edges: [{ id: 'a', a: 'fort_humans', b: 'edge_light', length: 10 }],
+  };
+  const start = world({
+    geography,
+    entities: [
+      entity({ id: 'lia', hp: 40, maxHp: 40, cell: { x: 0, y: 0 }, nodeId: 'fort_humans' }),
+      entity({
+        id: 'rat',
+        monsterId: 'spore_rat',
+        damage: 8,
+        hp: 12,
+        maxHp: 12,
+        cell: { x: 1, y: 0 },
+        inEncounter: true,
+        instanceId: 'lia',
+      }),
+    ],
+  });
+  const stayed = stepTick(start, [], mulberry32(1));
+  expect(stayed.entities.find((row) => row.id === 'lia')?.hp).toBe(40);
+  const moved = stepTick(
+    stayed,
+    [{ type: 'move', entityId: 'lia', dir: 'e', running: false, issuedAtMs: 0 }],
+    mulberry32(1),
+  );
+  expect(moved.entities.find((row) => row.id === 'lia')).toMatchObject({
+    nodeId: 'edge_light',
+    cell: { x: 10, y: 0 },
+  });
+  expect(moved.geography?.nodes).toHaveLength(2);
+  const refused = stepTick(
+    moved,
+    [{ type: 'move', entityId: 'lia', dir: 'nw', running: false, issuedAtMs: 0 }],
+    mulberry32(1),
+  );
+  expect(refused.rejections).toContainEqual({ entityId: 'lia', code: 'no_edge' });
+  expect(refused.entities.find((row) => row.id === 'lia')?.nodeId).toBe('edge_light');
 });
 
 function runWith(start: SimWorld, commands: AttackCommand[]): SimWorld {

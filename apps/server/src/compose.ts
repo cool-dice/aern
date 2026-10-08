@@ -56,6 +56,7 @@ import { onObjective } from './sim/progress';
 import { prototypeEncounter, spawnNamed } from './sim/population';
 import { PROTOTYPE_MONSTERS } from './sim/bestiary';
 import { stepTick, type SimCommand, type SimEntity, type SimWorld } from './sim/tick';
+import type { Geography } from './sim/travel';
 import { renderMetrics, type MetricsSnapshot } from './metrics';
 
 export { PRODUCTION_BCRYPT_COST };
@@ -283,7 +284,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     gameModule.start(context);
   }
 
-  let simWorld = emptyWorld(clock.now());
+  let simWorld: SimWorld = { ...emptyWorld(clock.now()), geography: geographyFrom(catalog) };
 
   function applyLife(characterId: string, kind: QuestObjectiveKind, subject?: string): void {
     let barrierDown = simWorld.barrierDown === true;
@@ -565,7 +566,20 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       if (spawned === null) {
         return false;
       }
-      simWorld = { ...simWorld, entities: [...simWorld.entities, spawned] };
+      simWorld = { ...simWorld, entities: [...simWorld.entities, { ...spawned, inEncounter: true }] };
+      return true;
+    },
+    enterEncounter(characterId) {
+      const present = simWorld.entities.some((entity) => entity.id === characterId && entity.monsterId === undefined);
+      if (!present) {
+        return false;
+      }
+      simWorld = {
+        ...simWorld,
+        entities: simWorld.entities.map((entity) =>
+          entity.id === characterId ? { ...entity, inEncounter: true, cell: { x: 0, y: 0 } } : entity,
+        ),
+      };
       return true;
     },
   };
@@ -649,6 +663,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         return { ...entity, inventory: kitOf(entity) };
       }),
     };
+    const beforeNodes = new Map(
+      simWorld.entities
+        .filter((entity) => entity.monsterId === undefined)
+        .map((entity) => [entity.id, entity.nodeId] as const),
+    );
     const beforeCorpses = new Set(simWorld.corpses.map((corpse) => corpse.victimId));
     const beforeHp = new Map(simWorld.entities.map((entity) => [entity.id, entity.hp]));
     const monsterOf = new Map(
@@ -666,6 +685,14 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ...(simWorld.primordialOpened === true ? { primordialOpened: true } : {}),
     };
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
+    for (const entity of simWorld.entities) {
+      if (entity.monsterId !== undefined || entity.nodeId === undefined) {
+        continue;
+      }
+      if (beforeNodes.get(entity.id) !== entity.nodeId) {
+        void note(entity.id, 'visit', entity.nodeId);
+      }
+    }
     dungeon.service.tickTtl(simWorld.nowMs, true);
     for (const corpse of simWorld.corpses) {
       if (beforeCorpses.has(corpse.victimId)) {
@@ -1063,13 +1090,26 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (simWorld.entities.some((entity) => entity.id === playerId)) {
       return;
     }
-    const arrived = prototypeEncounter({ playerId, bindNodeId });
+    const home = simWorld.geography?.nodes.find((node) => node.id === bindNodeId);
+    const homeCell = home === undefined ? { x: 0, y: 0 } : { x: home.x, y: home.y };
+    const arrived = prototypeEncounter({ playerId, bindNodeId }).map((entity) => {
+      if (entity.monsterId !== undefined) {
+        return { ...entity, inEncounter: true, instanceId: playerId };
+      }
+      return {
+        ...entity,
+        inEncounter: false,
+        nodeId: bindNodeId,
+        cell: homeCell,
+        bindCell: homeCell,
+      };
+    });
     simWorld = {
       ...simWorld,
       entities: [...simWorld.entities, ...arrived],
     };
     void applyStoredNeural(playerId);
-    void note(playerId, 'visit');
+    void note(playerId, 'visit', bindNodeId);
     void note(playerId, 'discover');
   }
 
@@ -1514,6 +1554,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/mail', action: 'mail' },
   { path: '/titles', action: 'title_grant' },
   { path: '/encounter', action: 'encounter' },
+  { path: '/encounter/enter', action: 'encounter_enter' },
   { path: '/dialogue', action: 'dialogue' },
 ];
 
@@ -1606,6 +1647,23 @@ function isRiftSim(
     const row = wallet as { characterId?: unknown; gold?: unknown };
     return typeof row.characterId === 'string' && typeof row.gold === 'number';
   });
+}
+
+function geographyFrom(catalog: Catalog): Geography {
+  const sites = catalog.world.sites ?? [];
+  return {
+    barrierDown: false,
+    nodes: [...catalog.world.nodes, ...sites].map((node) => ({
+      id: node.id,
+      x: node.x,
+      y: node.y,
+      kind: asNodeKind(node.kind),
+      safe: node.safe,
+      side: node.side,
+      regionId: node.regionId,
+    })),
+    edges: [...catalog.world.edges, ...(catalog.world.siteEdges ?? [])],
+  };
 }
 
 function emptyWorld(nowMs: number): SimWorld {
