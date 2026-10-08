@@ -38,6 +38,11 @@ test('the play screen posts craft and trade through App', () => {
   expect(app).toContain('declareWar(');
   expect(app).toContain('withdrawBank(');
   expect(app).toContain('postMercenary(');
+  expect(app).toContain("kind: 'escort'");
+  expect(app).toContain('destinationId:');
+  expect(app).toContain('castLeaderVote(');
+  expect(app).toContain('dissolveGuild(');
+  expect(app).toContain('strikeNode(');
   expect(app).toContain('postPatrol(');
   expect(app).toContain('onCraft=');
   expect(app).toContain('onTrade=');
@@ -301,4 +306,38 @@ test('the play session posts city fees, node commands, storage, war, and contrac
   expect(store.getState().serviceResult?.route).toBe('/patrol');
   expect(store.getState().captures).toEqual([{ cityId: 'fort_humans', guildId: 'wolves', heldMs: 1, won: true }]);
   expect(store.getState().resourceNodes[0]?.chest).toBe(4);
+});
+
+test('an escort posts the destination the live route already accepts', async () => {
+  const store = createClientStore();
+  const calls: { url: string; body: Record<string, unknown> }[] = [];
+  await postMercenary({
+    server: 'http://game.example',
+    guildId: 'wolves',
+    characterId: 'lia',
+    mercenaryId: 'blade',
+    nodeId: 'plains_mine',
+    kind: 'escort',
+    destinationId: 'fort_humans',
+    rewardGold: 100,
+    store,
+    fetchImpl: async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
+      return { ok: true, json: async () => ({ kind: 'escort' }) };
+    },
+  });
+  expect(calls).toEqual([
+    {
+      url: 'http://game.example/mercenary',
+      body: {
+        guildId: 'wolves',
+        characterId: 'lia',
+        mercenaryId: 'blade',
+        nodeId: 'plains_mine',
+        kind: 'escort',
+        rewardGold: 100,
+        destinationId: 'fort_humans',
+      },
+    },
+  ]);
 });

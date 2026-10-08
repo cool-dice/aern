@@ -14,8 +14,10 @@ import { PlayPanels } from './play/screens';
 import {
   askPortal,
   breakPact,
+  castLeaderVote,
   completeTrade,
   declareWar,
+  dissolveGuild,
   enterDungeon,
   grantNode,
   noticePact,
@@ -28,6 +30,7 @@ import {
   setCityFee,
   setNodeAccess,
   setNodeTax,
+  strikeNode,
   startCraft,
   startPortal,
   withdrawBank,
@@ -597,7 +600,8 @@ export function App() {
                 characterId,
                 mercenaryId: 'blade',
                 nodeId: 'plains_mine',
-                kind: 'patrol',
+                kind: 'escort',
+                destinationId: 'fort_humans',
                 rewardGold: 100,
                 store: plan.store,
               });
@@ -673,6 +677,44 @@ export function App() {
                 server: SERVER,
                 guildId: 'guild',
                 warId: 'war',
+                characterId,
+                store: plan.store,
+              });
+            }}
+            onVote={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void castLeaderVote({
+                server: SERVER,
+                guildId: 'guild',
+                voterId: characterId,
+                candidateId: 'm1',
+                store: plan.store,
+              });
+            }}
+            onDissolve={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void dissolveGuild({
+                server: SERVER,
+                guildId: 'guild',
+                characterId,
+                store: plan.store,
+              });
+            }}
+            onStrike={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void strikeNode({
+                server: SERVER,
+                guildId: 'guild',
+                nodeId: 'plains_mine',
                 characterId,
                 store: plan.store,
               });

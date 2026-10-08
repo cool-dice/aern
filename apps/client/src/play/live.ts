@@ -329,6 +329,7 @@ export async function postMercenary(input: {
   nodeId: string;
   kind: string;
   rewardGold: number;
+  destinationId?: string;
   store: ClientStore;
   fetchImpl?: FetchLike;
 }): Promise<LiveResponse> {
@@ -342,6 +343,7 @@ export async function postMercenary(input: {
       nodeId: input.nodeId,
       kind: input.kind,
       rewardGold: input.rewardGold,
+      ...(input.destinationId !== undefined ? { destinationId: input.destinationId } : {}),
     },
     store: input.store,
     log: 'mercenary',
@@ -442,6 +444,62 @@ export async function renewPact(input: {
     body: { pactId: input.pactId, characterId: input.characterId },
     store: input.store,
     log: 'pact-renew',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/guild/vote`. One character, one ballot. The server calls `castLeaderVote`. */
+export async function castLeaderVote(input: {
+  server: string;
+  guildId: string;
+  voterId: string;
+  candidateId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/guild/vote',
+    body: { guildId: input.guildId, voterId: input.voterId, candidateId: input.candidateId },
+    store: input.store,
+    log: 'vote',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/guild/dissolve`. Leader and council confirmation, then `dissolveShares`. */
+export async function dissolveGuild(input: {
+  server: string;
+  guildId: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/guild/dissolve',
+    body: { guildId: input.guildId, characterId: input.characterId },
+    store: input.store,
+    log: 'dissolve',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/node/strike`. Section 8.3 takes the flag down and pockets the chest. */
+export async function strikeNode(input: {
+  server: string;
+  guildId: string;
+  nodeId: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/node/strike',
+    body: { guildId: input.guildId, nodeId: input.nodeId, characterId: input.characterId },
+    store: input.store,
+    log: 'strike',
     ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
   });
 }

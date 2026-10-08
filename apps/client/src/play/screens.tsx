@@ -70,6 +70,9 @@ export function PlayPanels({
   onPactRenew,
   onContend,
   onCoalition,
+  onVote,
+  onDissolve,
+  onStrike,
 }: {
   session: PlaySession;
   onCraft?: () => void;
@@ -92,6 +95,9 @@ export function PlayPanels({
   onPactRenew?: () => void;
   onContend?: () => void;
   onCoalition?: () => void;
+  onVote?: () => void;
+  onDissolve?: () => void;
+  onStrike?: () => void;
 }): ReactElement | null {
   if (session.screen === 'inventory') {
     return <InventoryScreen model={inventoryModel(inventoryItems(session), true)} />;
@@ -192,6 +198,15 @@ export function PlayPanels({
         </button>
         <button type="button" data-coalition="say" onClick={() => onCoalition?.()}>
           coalition
+        </button>
+        <button type="button" data-vote="leader" onClick={() => onVote?.()}>
+          vote
+        </button>
+        <button type="button" data-dissolve="guild" onClick={() => onDissolve?.()}>
+          dissolve
+        </button>
+        <button type="button" data-node-strike="chest" onClick={() => onStrike?.()}>
+          strike
         </button>
         {typeof state.serviceResult?.route === 'string' ? (
           <p data-service-route={state.serviceResult.route}>{state.serviceResult.route}</p>
