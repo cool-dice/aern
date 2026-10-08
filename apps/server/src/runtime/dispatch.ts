@@ -110,7 +110,7 @@ export interface LivePorts {
   sayChat(body: Record<string, unknown>): Promise<LiveResult>;
   noteCheatStrike(body: Record<string, unknown>): Promise<LiveResult>;
   encodeAncientText(body: Record<string, unknown>): LiveResult;
-  decipherAncient(body: Record<string, unknown>): LiveResult;
+  decipherAncient(body: Record<string, unknown>): Promise<LiveResult>;
   useCoalitionBank(body: Record<string, unknown>): LiveResult;
   startPurify(body: Record<string, unknown>): Promise<LiveResult>;
   memberDoctrine(characterId: string): DoctrineId | null;

@@ -1,7 +1,14 @@
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadCatalog, type Catalog } from '@rift/content';
-import { buildPermutation, decipherAttempt, encodeAncient } from '@rift/domain/ancient';
+import {
+  botRecord,
+  buildPermutation,
+  decipherAttempt,
+  decodeAncient,
+  encodeAncient,
+  renderFragment,
+} from '@rift/domain/ancient';
 import type { NodeKind, WorldEdge, WorldNode } from '@rift/domain/world';
 import type { WorldRepository } from './modules/world/repository';
 import { parseClientCommand, type ClientCommand } from '@rift/protocol';
@@ -3212,42 +3219,71 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   }
 
   /**
-   * Artifact 3 §6. A substitution attempt either matches the server cipher or returns
-   * `mismatch`. A solved fragment shows its plaintext. Failures do not reveal it.
+   * Artifact 3 §6 and artifact 20 §10. A player sees `renderFragment` (ciphertext and
+   * the letter pairs already found). `decodeAncient` applies their substitution.
+   * `decipherAttempt` accepts it only when that reading matches the fragment.
+   * A bot does not solve the cipher: `botRecord` returns the structured fields.
+   * Those sections name no lockout, so a mismatch stays a mismatch.
    */
-  function decipherAncient(
+  async function decipherAncient(
     body: Record<string, unknown>,
-  ): { ok: boolean; code?: string; value?: unknown } {
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
     const characterId = typeof body.characterId === 'string' ? body.characterId : '';
     const fragmentId = typeof body.fragmentId === 'string' ? body.fragmentId : '';
     const attempt = typeof body.attempt === 'string' ? body.attempt : '';
-    if (characterId.length === 0 || fragmentId.length === 0 || attempt.length === 0) {
+    if (characterId.length === 0 || fragmentId.length === 0) {
       return { ok: false, code: 'fragment' };
     }
     const found = catalog.fragments.find((row) => row.id === fragmentId);
     if (found === undefined) {
       return { ok: false, code: 'fragment' };
     }
+    const record = await repos.characters.findById(characterId);
+    const fragment = {
+      id: found.id,
+      plaintext: found.lore,
+      x: found.x,
+      y: found.y,
+      recipeId: found.recipeId,
+      password: found.password,
+    };
+    if (record?.controller === 'bot') {
+      return {
+        ok: true,
+        value: botRecord({
+          id: found.id,
+          lore: found.lore,
+          x: found.x,
+          y: found.y,
+          recipeId: found.recipeId,
+          password: found.password,
+        }),
+      };
+    }
+    if (attempt.length === 0) {
+      return { ok: false, code: 'fragment' };
+    }
     const knownLetters = Array.isArray(body.knownLetters)
       ? body.knownLetters.filter((letter): letter is string => typeof letter === 'string')
       : [];
     const solved = solvedAncient.get(characterId)?.has(fragmentId) ?? false;
+    const rendered = renderFragment({
+      fragment,
+      permutation: ancientPermutation,
+      knownLetters,
+      solved,
+      upy: record?.languages.ancient ?? 0,
+    });
+    const decoded = decodeAncient(rendered.ciphertext, attempt);
     const result = decipherAttempt({
-      fragment: {
-        id: found.id,
-        plaintext: found.lore,
-        x: found.x,
-        y: found.y,
-        recipeId: found.recipeId,
-        password: found.password,
-      },
+      fragment,
       permutation: ancientPermutation,
       knownLetters,
       attempt,
       solved,
     });
-    if (!result.ok) {
-      return { ok: false, code: result.code };
+    if (!result.ok || decoded !== result.value.plaintext) {
+      return { ok: false, code: result.ok ? 'mismatch' : result.code };
     }
     const known = solvedAncient.get(characterId) ?? new Set<string>();
     known.add(fragmentId);
@@ -3258,6 +3294,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         plaintext: result.value.plaintext,
         solved: result.value.solved,
         firstSolve: result.value.firstSolve,
+        ciphertext: rendered.ciphertext,
+        knownLetters: rendered.knownLetters,
       },
     };
   }

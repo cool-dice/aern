@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
+import { buildPermutation, decodeAncient, encodeAncient } from '../../domain/src/ancient';
 import { prototypeWorld, PROTOTYPE_NODE_IDS } from '../../domain/src/world';
 import { loadCatalog as loadFromIndex } from './index';
 import {
@@ -341,12 +342,16 @@ describe('loadCatalog', () => {
     });
     expect(catalog.fragments[0]).toEqual({
       id: 'fragment_rift_01',
-      lore: 'Предтечи открыли Разлом в Изначальном городе',
+      lore: 'предтечи открыли разлом в изначальном городе',
       x: 40,
       y: 0,
       recipeId: 'energy_blade',
       password: 'X7#9@!',
     });
+    const riftLore = catalog.fragments[0]?.lore ?? '';
+    const permutation = buildPermutation('test-secret');
+    expect(riftLore.includes('.')).toBe(false);
+    expect(decodeAncient(encodeAncient(riftLore, permutation), permutation)).toBe(riftLore);
     expect(catalog.starter.weapon).toEqual({ itemId: 'rusty_sword', level: 1 });
     expect(catalog.starter.armor).toEqual({ itemId: 'leather_jacket', level: 1, slot: 'torso' });
     expect(catalog.items.find((item) => item.id === 'bandage')).toMatchObject({

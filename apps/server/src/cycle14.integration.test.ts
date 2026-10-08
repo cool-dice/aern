@@ -241,7 +241,7 @@ test('a matching substitution reveals the fragment and a mismatch does not lock 
   const value = opened.value as { plaintext: string; solved: boolean; firstSolve: boolean };
   expect(value.solved).toBe(true);
   expect(value.firstSolve).toBe(true);
-  expect(value.plaintext.includes('Предтечи')).toBe(true);
+  expect(value.plaintext.includes('предтечи')).toBe(true);
   const repeat = await graph.act('ancient_decipher', {
     characterId: 'lia',
     fragmentId: 'fragment_rift_01',
