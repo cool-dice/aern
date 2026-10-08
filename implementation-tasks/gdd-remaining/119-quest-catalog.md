@@ -1,6 +1,6 @@
 # 119. Виды целей и три акта
 
-status: pending
+status: done
 
 ## Правило GDD
 

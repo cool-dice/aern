@@ -24,6 +24,17 @@ export const QUEST_OBJECTIVE_KINDS = [
   'talk',
   'hack',
   'survive',
+  'escort',
+  'defend',
+  'capture',
+  'investigate',
+  'rescue',
+  'sabotage',
+  'discover',
+  'learn',
+  'trade',
+  'pvp',
+  'lore',
 ] as const;
 
 export type QuestObjectiveKind = (typeof QUEST_OBJECTIVE_KINDS)[number];

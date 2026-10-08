@@ -454,6 +454,17 @@ test('every objective kind is a counter capped at its target', () => {
     'talk',
     'hack',
     'survive',
+    'escort',
+    'defend',
+    'capture',
+    'investigate',
+    'rescue',
+    'sabotage',
+    'discover',
+    'learn',
+    'trade',
+    'pvp',
+    'lore',
   ]);
   for (const kind of QUEST_OBJECTIVE_KINDS) {
     const quest = progress({

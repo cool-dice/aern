@@ -241,6 +241,10 @@ export interface QuestDef {
   repeatable: boolean;
   difficulty: 'easy' | 'normal' | 'hard' | 'epic';
   objectives: QuestObjective[];
+  /** Story acts name a level band. Prototype errands omit it. */
+  levelMin?: number;
+  levelMax?: number;
+  hub?: string;
 }
 
 export interface Features {

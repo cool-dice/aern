@@ -140,5 +140,94 @@
         "hub": "own"
       }
     ]
+  },
+  {
+    "id": "act1_light",
+    "prototype": true,
+    "story": true,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "normal",
+    "levelMin": 1,
+    "levelMax": 20,
+    "hub": "fort_humans",
+    "objectives": [
+      { "id": "escort", "kind": "escort", "target": 1 },
+      { "id": "defend", "kind": "defend", "target": 1 }
+    ]
+  },
+  {
+    "id": "act1_dark",
+    "prototype": true,
+    "story": true,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "normal",
+    "levelMin": 1,
+    "levelMax": 20,
+    "hub": "obsidian_tower",
+    "objectives": [
+      { "id": "capture", "kind": "capture", "target": 1 },
+      { "id": "investigate", "kind": "investigate", "target": 1 }
+    ]
+  },
+  {
+    "id": "act2_light",
+    "prototype": true,
+    "story": true,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "hard",
+    "levelMin": 20,
+    "levelMax": 40,
+    "hub": "fort_humans",
+    "objectives": [
+      { "id": "rescue", "kind": "rescue", "target": 1 },
+      { "id": "sabotage", "kind": "sabotage", "target": 1 }
+    ]
+  },
+  {
+    "id": "act2_dark",
+    "prototype": true,
+    "story": true,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "hard",
+    "levelMin": 20,
+    "levelMax": 40,
+    "hub": "obsidian_tower",
+    "objectives": [
+      { "id": "discover", "kind": "discover", "target": 1 },
+      { "id": "learn", "kind": "learn", "target": 1 }
+    ]
+  },
+  {
+    "id": "act3_light",
+    "prototype": true,
+    "story": true,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "epic",
+    "levelMin": 40,
+    "levelMax": 50,
+    "hub": "fort_humans",
+    "objectives": [
+      { "id": "trade", "kind": "trade", "target": 1 },
+      { "id": "pvp", "kind": "pvp", "target": 1 }
+    ]
+  },
+  {
+    "id": "act3_dark",
+    "prototype": true,
+    "story": true,
+    "daily": false,
+    "repeatable": false,
+    "difficulty": "epic",
+    "levelMin": 40,
+    "levelMax": 50,
+    "hub": "obsidian_tower",
+    "objectives": [
+      { "id": "lore", "kind": "lore", "target": 1 }
+    ]
   }
 ]

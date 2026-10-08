@@ -353,5 +353,11 @@
   "quest.gather_spores.name": "Gather Spores",
   "quest.first_craft.name": "First Craft",
   "quest.visit_hub.name": "Visit the Hub",
+  "quest.act1_light.name": "Act I. Survival",
+  "quest.act1_dark.name": "Act I. Survival",
+  "quest.act2_light.name": "Act II. The Search",
+  "quest.act2_dark.name": "Act II. The Search",
+  "quest.act3_light.name": "Act III. The Rift",
+  "quest.act3_dark.name": "Act III. The Rift",
   "fragment.fragment_rift_01.name": "Rift Fragment 01"
 }

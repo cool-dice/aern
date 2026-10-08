@@ -224,7 +224,43 @@ describe('loadCatalog', () => {
       'gather_spores',
       'first_craft',
       'visit_hub',
+      'act1_light',
+      'act1_dark',
+      'act2_light',
+      'act2_dark',
+      'act3_light',
+      'act3_dark',
     ]);
+    const storyKinds = new Set(
+      catalog.quests.flatMap((quest) => quest.objectives.map((objective) => objective.kind)),
+    );
+    for (const kind of [
+      'escort',
+      'defend',
+      'capture',
+      'investigate',
+      'rescue',
+      'sabotage',
+      'discover',
+      'learn',
+      'trade',
+      'pvp',
+      'lore',
+    ]) {
+      expect(storyKinds.has(kind)).toBe(true);
+    }
+    expect(catalog.quests.find((quest) => quest.id === 'act1_light')).toMatchObject({
+      story: true,
+      levelMin: 1,
+      levelMax: 20,
+      hub: 'fort_humans',
+    });
+    expect(catalog.quests.find((quest) => quest.id === 'act3_dark')).toMatchObject({
+      story: true,
+      levelMin: 40,
+      levelMax: 50,
+      hub: 'obsidian_tower',
+    });
     expect(catalog.quests.every((quest) => quest.prototype)).toBe(true);
     const tutorial = catalog.quests.find((quest) => quest.id === 'tutorial');
     expect(tutorial?.story).toBe(true);

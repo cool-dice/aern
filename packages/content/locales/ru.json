@@ -353,5 +353,11 @@
   "quest.gather_spores.name": "Сбор спор",
   "quest.first_craft.name": "Первый крафт",
   "quest.visit_hub.name": "Визит в хаб",
+  "quest.act1_light.name": "Акт I. Выживание",
+  "quest.act1_dark.name": "Акт I. Выживание",
+  "quest.act2_light.name": "Акт II. Поиск",
+  "quest.act2_dark.name": "Акт II. Поиск",
+  "quest.act3_light.name": "Акт III. Разлом",
+  "quest.act3_dark.name": "Акт III. Разлом",
   "fragment.fragment_rift_01.name": "Фрагмент Разлома 01"
 }
