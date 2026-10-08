@@ -18,7 +18,7 @@ import {
   GUILD_NAME_BLACKLIST,
   sanctionForCheatStrikes,
 } from '@rift/domain/moderation';
-import { mulberry32 } from '@rift/domain/rng';
+import { hashSeed, mulberry32 } from '@rift/domain/rng';
 import { EQUIP_SLOTS, STARTING_DURABILITY, type EquipSlot, type GradeId } from '@rift/domain/items';
 import { openChest, type ChestTier } from '@rift/domain/loot';
 import { MAX_LEVEL, STAT_IDS, derive, emptyPoints, type StatBlock } from '@rift/domain/stats';
@@ -72,7 +72,7 @@ import { removeRelic, type RelicState } from '@rift/domain/relics';
 import { RACES } from '@rift/domain/character';
 import { readWiki, type WikiArticleSide } from '@rift/domain/wiki';
 import { PARTY_MAX, matchmake, type PartyRole } from '@rift/domain/social';
-import { gainUpy, type LanguageId } from '@rift/domain/language';
+import { chatPresentation, gainUpy, type LanguageId } from '@rift/domain/language';
 import {
   askHostilePortal,
   isCityService,
@@ -3168,6 +3168,18 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
   }
 
+  function muteRemainingMs(characterId: string): number {
+    const until = social.repository.character(characterId)?.sanctionUntilMs ?? null;
+    if (until === null) {
+      return 0;
+    }
+    return Math.max(0, until - clock.now());
+  }
+
+  /**
+   * Artifact 3 §7. The listener hears raw, garbled, or translated text from their UPY.
+   * `muteRemainingMs` is the chat sanction still in force, including a 24-hour false report.
+   */
   async function sayChat(
     body: Record<string, unknown>,
   ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
@@ -3177,17 +3189,46 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       return { ok: false, code: 'invalid' };
     }
     const nodeId = characterNode(characterId) ?? 'fort_humans';
-    social.service.register({ id: characterId, nodeId, language: 'common_light' });
+    const record = await repos.characters.findById(characterId);
+    const language = record === null ? 'common_light' : nativeLanguage(record.raceId);
+    const selfUpy = record?.languages[language] ?? 0;
+    social.service.register({ id: characterId, nodeId, language, upy: selfUpy });
+    for (const entity of simWorld.entities) {
+      if (entity.id === characterId || entity.monsterId !== undefined || entity.nodeId !== nodeId) {
+        continue;
+      }
+      const other = await repos.characters.findById(entity.id);
+      const listenerUpy = other?.languages[language] ?? 0;
+      const otherLanguage = other === null ? 'common_light' : nativeLanguage(other.raceId);
+      social.service.register({
+        id: entity.id,
+        nodeId,
+        language: otherLanguage,
+        upy: listenerUpy,
+      });
+    }
+    const nowMs = clock.now();
+    const presented = chatPresentation(
+      text,
+      selfUpy,
+      text,
+      mulberry32(hashSeed(`${characterId}|${characterId}|${nowMs}|${text}`)),
+    );
     const sent = await social.service.say({
       senderId: characterId,
       channel: 'local',
       text,
-      nowMs: clock.now(),
+      nowMs,
+      blacklist: [...GUILD_NAME_BLACKLIST],
     });
+    const muteRemaining = muteRemainingMs(characterId);
     if (!sent.ok) {
-      return { ok: false, code: sent.code };
+      return { ok: false, code: sent.code, value: { muteRemainingMs: muteRemaining, ...presented } };
     }
-    return { ok: true, value: sent.value };
+    return {
+      ok: true,
+      value: { ...sent.value, ...presented, muteRemainingMs: muteRemaining },
+    };
   }
 
   function recordCheatStrike(accountId: string, nowMs: number): number {

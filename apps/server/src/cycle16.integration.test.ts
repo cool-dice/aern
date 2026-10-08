@@ -86,3 +86,15 @@ test('a book is consumed, ruins pay once, and an interaction adds UPY', async ()
   const deal = await graph.act('language_interact', { characterId, language: 'common_dark' });
   expect(deal).toMatchObject({ ok: true, value: { upy: 5, gain: 'interaction' } });
 });
+
+test('chatPresentation runs from the live chat route', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const service = readFileSync(new URL('./modules/social/service.ts', import.meta.url), 'utf8');
+  const say = composeSource.slice(
+    composeSource.indexOf('async function sayChat'),
+    composeSource.indexOf('function recordCheatStrike'),
+  );
+  expect(say.includes('chatPresentation(')).toBe(true);
+  expect(service.includes('chatPresentation(')).toBe(true);
+  expect(say.includes('muteRemainingMs')).toBe(true);
+});

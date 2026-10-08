@@ -1,5 +1,7 @@
-import { CHAT_BAN_MS, MUTE_1H_MS, classifyMessage, type Sanction } from '@rift/domain/moderation';
+import { chatPresentation } from '@rift/domain/language';
+import { CHAT_BAN_MS, GUILD_NAME_BLACKLIST, MUTE_1H_MS, classifyMessage, type Sanction } from '@rift/domain/moderation';
 import {
+  chatBypass,
   deliverChat,
   invite as addPartyMember,
   leave as leaveParty,
@@ -159,7 +161,7 @@ export function createSocialService(
         recentTexts: sender.recentTexts,
         recentMs: sender.recentMs,
         nowMs: input.nowMs,
-        blacklist: [],
+        blacklist: [...(input.blacklist ?? GUILD_NAME_BLACKLIST)],
         automutesIn24h: automutesIn24h(sender, input.nowMs),
       });
       if (sanction !== 'none') {
@@ -196,27 +198,31 @@ export function createSocialService(
       let delivered = 0;
       let failure: string | null = null;
       for (const listener of audience) {
-        const presented = deliverChat({
+        const seed = hashSeed(`${sender.id}|${listener.id}|${input.nowMs}|${input.text}`);
+        const gate = deliverChat({
           channel,
           text: input.text,
           language: sender.language,
-          listenerUpy: listener.upy,
+          listenerUpy: chatBypass[channel] ? listener.upy : 0,
           translated: input.text,
           sameLocation: listener.nodeId === sender.nodeId,
           sameParty: sharesParty(repository, sender.id, listener.id),
           sameGuild: sender.guildId !== undefined && listener.guildId === sender.guildId,
           muted,
-          rng: mulberry32(hashSeed(`${sender.id}|${listener.id}|${input.nowMs}|${input.text}`)),
+          rng: mulberry32(seed),
         });
-        if (!presented.ok) {
-          failure = presented.code;
+        if (!gate.ok) {
+          failure = gate.code;
           continue;
         }
+        const presented = chatBypass[channel]
+          ? gate.value
+          : chatPresentation(input.text, listener.upy, input.text, mulberry32(seed));
         const message: HeardMessage = {
           channel,
           senderId: sender.id,
-          text: presented.value.text,
-          mode: presented.value.mode,
+          text: presented.text,
+          mode: presented.mode,
         };
         repository.addDelivery(listener.id, message);
         delivered += 1;

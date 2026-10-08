@@ -40,6 +40,8 @@ export interface SocialService {
     recipientId?: string;
     /** NPC this line is addressed to. Omitted lines do not advance a talk objective. */
     npcId?: string;
+    /** Whole-token blacklist. Omitted uses the guild-name list, whose only entry is `slug`. */
+    blacklist?: readonly string[];
   }): Promise<Result<{ delivered: number }, string>>;
   invite(partyLeaderId: string, targetId: string, role: string): Promise<Result<void, string>>;
   /**
