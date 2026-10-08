@@ -45,8 +45,10 @@ import { NODES } from '@rift/domain/gathering';
 import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import { nnUsed, type BuildState } from '@rift/domain/build';
 import { GUILD_CREATE_GOLD } from '@rift/domain/guild';
+import { DIRS, type Dir } from '@rift/domain/movement';
 import { newEconomyCharacter } from './modules/economy/repository';
 import type { EconomyCharacter } from './modules/economy/types';
+import type { StoredWar } from './modules/guild/types';
 import { observeEntity } from './modules/ai/observe';
 import { SIDECAR_TIMEOUT_MS } from './modules/ai/types';
 import { broadcastState } from './infra/ws/gateway';
@@ -56,7 +58,8 @@ import { onObjective } from './sim/progress';
 import { prototypeEncounter, spawnNamed } from './sim/population';
 import { PROTOTYPE_MONSTERS } from './sim/bestiary';
 import { stepTick, type SimCommand, type SimEntity, type SimWorld } from './sim/tick';
-import type { Geography } from './sim/travel';
+import { neighborStep, type Geography } from './sim/travel';
+import { combatZone } from './sim/zones';
 import { renderMetrics, type MetricsSnapshot } from './metrics';
 
 export { PRODUCTION_BCRYPT_COST };
@@ -139,6 +142,18 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const bus = createBus();
   const catalog = resolveCatalog(options);
   const repos = openRepositories(options.databaseUrl, clock, options.db);
+  const openWars: StoredWar[] = [];
+  const saveWar = repos.guilds.saveWar.bind(repos.guilds);
+  repos.guilds.saveWar = async (war) => {
+    const copy = { ...war };
+    const index = openWars.findIndex((row) => row.id === copy.id);
+    if (index >= 0) {
+      openWars[index] = copy;
+    } else {
+      openWars.push(copy);
+    }
+    await saveWar(war);
+  };
   const walletIds = new Set<string>();
   const saveWallet = repos.economy.saveCharacter.bind(repos.economy);
   repos.economy.saveCharacter = (character) => {
@@ -226,18 +241,18 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const event = createEventModule(createEventService(repos.events));
   const ai = createAiModule({
     validator: {
-      async validate() {
-        return { ok: true, value: true };
+      async validate(command) {
+        return validateCommand(command.characterId, command.action);
       },
     },
     presence: {
-      remove() {
-        return undefined;
+      remove(characterId) {
+        removePresence(characterId);
       },
     },
     corpse: {
-      create() {
-        return undefined;
+      create(characterId) {
+        createCorpse(characterId);
       },
     },
   });
@@ -616,6 +631,105 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
   }
 
+  const travelDirs = new Set<string>(DIRS);
+
+  function validateCommand(
+    characterId: string,
+    action: string,
+  ): { ok: true; value: true } | { ok: false; code: string } {
+    const entity = simWorld.entities.find((row) => row.id === characterId);
+    if (entity === undefined) {
+      return { ok: false, code: 'missing' };
+    }
+    if (action.startsWith('step_') || action.startsWith('run_')) {
+      if (
+        entity.inEncounter === true ||
+        entity.dungeonId !== undefined ||
+        entity.nodeId === undefined ||
+        simWorld.geography === undefined
+      ) {
+        return { ok: true, value: true };
+      }
+      const dir = action.slice(action.startsWith('run_') ? 4 : 5);
+      if (!travelDirs.has(dir)) {
+        return { ok: false, code: 'no_edge' };
+      }
+      const stepped = neighborStep({
+        geography: {
+          ...simWorld.geography,
+          barrierDown: simWorld.barrierDown === true || simWorld.geography.barrierDown,
+        },
+        fromId: entity.nodeId,
+        dir: dir as Dir,
+      });
+      if (!stepped.ok) {
+        return { ok: false, code: stepped.code };
+      }
+      return { ok: true, value: true };
+    }
+    if (action === 'attack_melee' || action === 'attack_ranged' || action === 'aim') {
+      const zone = combatZone({
+        geography: simWorld.geography,
+        nodeId: entity.nodeId,
+        inEncounter: entity.inEncounter === true,
+        inDungeon: entity.dungeonId !== undefined,
+        warCities: simWorld.warCities,
+        invasion: simWorld.invasion,
+      });
+      if (zone !== null && zone.safeZone && !zone.pvpOpen) {
+        return { ok: false, code: 'safe' };
+      }
+    }
+    return { ok: true, value: true };
+  }
+
+  function removePresence(characterId: string): void {
+    repos.social.forget(characterId);
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) => {
+        if (entity.id !== characterId || entity.phase === 'downed') {
+          return entity;
+        }
+        return { ...entity, phase: 'offline', carrierOffline: true };
+      }),
+    };
+  }
+
+  function createCorpse(characterId: string): void {
+    const entity = simWorld.entities.find((row) => row.id === characterId);
+    const stacks = (entity?.inventory ?? []).map((stack) => ({
+      itemId: stack.itemId,
+      qty: 1,
+      ...(stack.questItem === true ? { questItem: true } : {}),
+      ...(stack.questOwnerId !== undefined ? { questOwnerId: stack.questOwnerId } : {}),
+    }));
+    const existing = simWorld.corpses.find((corpse) => corpse.victimId === characterId);
+    if (existing !== undefined) {
+      if (existing.killerId === undefined && entity?.lastAttackerId !== undefined) {
+        existing.killerId = entity.lastAttackerId;
+      }
+      if ((existing.stacks?.length ?? 0) === 0 && stacks.length > 0) {
+        existing.stacks = stacks;
+      }
+      return;
+    }
+    simWorld = {
+      ...simWorld,
+      corpses: [
+        ...simWorld.corpses,
+        {
+          victimId: characterId,
+          createdAtMs: clock.now(),
+          stacks,
+          looted: false,
+          bindNodeId: entity?.bindNodeId ?? 'fort_humans',
+          ...(entity?.lastAttackerId !== undefined ? { killerId: entity.lastAttackerId } : {}),
+        },
+      ],
+    };
+  }
+
   function tickOnce(): void {
     if (runtimeError !== null) {
       throw runtimeError;
@@ -627,6 +741,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     const live = event.service.snapshot(clock.now(), 'plains', simWorld.safeZone === true);
     const seasonSpawn = live.spawnTagMultiplier;
+    const warCities = openWars.filter((war) => war.startsAtMs <= clock.now()).map((war) => war.cityId);
     simWorld = {
       ...simWorld,
       seasonSpawn,
@@ -634,6 +749,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       holidayKeeper: live.keeperBonus,
       invasion: live.invasion,
       seasonResource: live.resourceBonus,
+      warCities,
       ...(live.weatherId !== null ? { weatherId: live.weatherId } : {}),
     };
     topUpSeasonSpawns(Math.max(0, Math.round(PROTOTYPE_MONSTERS.length * seasonSpawn)), live.spawnTag);
@@ -697,6 +813,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     for (const corpse of simWorld.corpses) {
       if (beforeCorpses.has(corpse.victimId)) {
         continue;
+      }
+      createCorpse(corpse.victimId);
+      if (
+        simWorld.entities.some((entity) => entity.id === corpse.victimId && entity.monsterId === undefined)
+      ) {
+        removePresence(corpse.victimId);
       }
       clearDroppedKit(corpse.victimId);
       const killer = simWorld.entities.find((entity) => entity.id === corpse.killerId);
@@ -801,6 +923,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       repos.economy.saveLot(lot);
     }
     await repos.social.loadPersisted?.();
+    const wars = await repos.guilds.listWars();
+    openWars.length = 0;
+    for (const war of wars) {
+      openWars.push(war);
+    }
   }
 
   function topUpSeasonSpawns(budget: number, tag: string): void {
@@ -1219,8 +1346,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     bindGateway(server) {
       server.on('connection', (socket) => {
         sockets.add(socket);
+        const actors = new Set<string>();
         socket.on('close', () => {
           sockets.delete(socket);
+          for (const characterId of actors) {
+            ai.service.onCarrierOffline(characterId);
+          }
         });
         const seen = new Set<string>();
         const rateTimestamps: number[] = [];
@@ -1232,6 +1363,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
             seen,
             rateTimestamps,
             enqueue: (command) => {
+              const entityId = command.params.entityId;
+              if (typeof entityId === 'string') {
+                actors.add(entityId);
+              }
               pending.push(command);
             },
           });

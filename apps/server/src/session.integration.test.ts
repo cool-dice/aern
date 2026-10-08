@@ -144,6 +144,7 @@ test('accepted quests publish on /state and kill credit follows the attacker', a
   const beta = listed.players.find((player) => player.id === 'beta');
   expect(beta?.quests.map((quest) => quest.id)).toEqual(['kill_rats']);
   expect(beta?.quests[0]?.objectives[0]?.current).toBe(0);
+  expect(await graph.act('encounter_enter', { characterId: 'beta' })).toMatchObject({ ok: true });
 
   graph.submit({
     commandId: 'beta-hit',
@@ -217,10 +218,11 @@ test('0 HP writes a corpse and respawnAtBind brings the player back', async () =
   }
   const fallen = graph.state() as {
     nowMs: number;
-    corpses: { victimId: string }[];
+    corpses: { victimId: string; killerId?: string }[];
     self: { hp: number; phase: string } | null;
   };
   expect(fallen.corpses.some((corpse) => corpse.victimId === 'lia')).toBe(true);
+  expect(fallen.corpses.find((corpse) => corpse.victimId === 'lia')?.killerId).toEqual(expect.any(String));
   expect(fallen.self?.phase).toBe('downed');
   expect(fallen.self?.hp).toBeLessThanOrEqual(0);
   graph.submit({
@@ -370,7 +372,7 @@ test('relic sockets and echo slots persist, and path load can shock the characte
   expect(cara?.nn).toBeGreaterThan(cara?.nnLimit ?? 0);
 });
 
-test('season spawns use the live snapshot multiplier and tag', () => {
+test('season spawns use the live snapshot multiplier and tag', async () => {
   const nowMs = EPOCH_MS + 84 * DAY_MS;
   const season = seasonAt(nowMs);
   const tag = seasonSpawnTag(season);
@@ -378,6 +380,7 @@ test('season spawns use the live snapshot multiplier and tag', () => {
   expect(multiplier).not.toBe(1);
   const graph = compose({ nowMs, jwtSecret: 'test-secret' });
   graph.enterWorld('lia');
+  expect(await graph.act('encounter_enter', { characterId: 'lia' })).toMatchObject({ ok: true });
   const before = graph.state() as { entities: { id: string }[] };
   for (const entity of before.entities) {
     graph.submit({
@@ -877,4 +880,98 @@ test('guild create debits character gold and rejects a short roster', async () =
   } finally {
     await built.close();
   }
+});
+
+test('cities block attacks until war or an invasion wave, and disconnect removes presence', async () => {
+  const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  graph.enterWorld('lia');
+  graph.social.service.register({ id: 'lia', nodeId: 'fort_humans', language: 'common_light' });
+  const rat = (graph.state() as { entities: { id: string; hp: number }[] }).entities.find((entity) =>
+    entity.id.endsWith(':spore_rat'),
+  );
+  expect(rat).toBeDefined();
+  graph.submit({
+    commandId: 'city-hit',
+    seq: 1,
+    issuedAtMs: 1_000,
+    action: 'attack_ranged',
+    targetId: rat?.id,
+    params: { entityId: 'lia', weaponDamage: 500, range: 8, odCost: 0, pvpOpen: true, safeZone: false },
+  });
+  graph.tickOnce();
+  const blocked = graph.state() as { entities: { id: string; hp: number }[] };
+  expect(blocked.entities.find((entity) => entity.id === rat?.id)?.hp).toBe(rat?.hp);
+  expect(graph.snapshot().rejected).toBeGreaterThan(0);
+
+  const refused = await graph.ai.service.submit({
+    characterId: 'lia',
+    action: 'step_nw',
+    legal: ['step_nw'],
+    sidecarAtMs: 1_000,
+    nowMs: 1_000,
+    hp: 40,
+    maxHp: 40,
+    od: 2,
+    nearestEnemy: null,
+    weaponRange: 1,
+  });
+  expect(refused).toEqual({ ok: false, code: 'no_edge' });
+  const safe = await graph.ai.service.submit({
+    characterId: 'lia',
+    action: 'attack_melee',
+    legal: ['attack_melee'],
+    sidecarAtMs: 1_000,
+    nowMs: 1_000,
+    hp: 40,
+    maxHp: 40,
+    od: 2,
+    nearestEnemy: 1,
+    weaponRange: 1,
+  });
+  expect(safe).toEqual({ ok: false, code: 'safe' });
+
+  await graph.guild.repository.saveWar({
+    id: 'war-fort',
+    attackerGuildId: 'wolves',
+    cityId: 'fort_humans',
+    startsAtMs: 0,
+    gold: 1,
+    resources: 0,
+  });
+  graph.enterWorld('kai');
+  const beforeRejected = graph.snapshot().rejected;
+  graph.submit({
+    commandId: 'war-hit',
+    seq: 2,
+    issuedAtMs: 1_200,
+    action: 'attack_melee',
+    targetId: 'kai',
+    params: { entityId: 'lia', weaponDamage: 8, range: 1, odCost: 0 },
+  });
+  graph.tickOnce();
+  expect(graph.snapshot().rejected).toBe(beforeRejected);
+
+  const barrier = EPOCH_MS + 11 * 28 * DAY_MS;
+  const holiday = compose({ nowMs: barrier, jwtSecret: 'test-secret' });
+  holiday.event.service.startInvasion('plains', barrier - 10 * 60 * 1000);
+  holiday.enterWorld('lia');
+  holiday.enterWorld('kai');
+  const waveRejected = holiday.snapshot().rejected;
+  holiday.submit({
+    commandId: 'wave-hit',
+    seq: 1,
+    issuedAtMs: barrier,
+    action: 'attack_melee',
+    targetId: 'kai',
+    params: { entityId: 'lia', weaponDamage: 8, range: 1, odCost: 0 },
+  });
+  holiday.tickOnce();
+  expect((holiday.state() as { invasion: string | null }).invasion).toBe('wave1');
+  expect(holiday.snapshot().rejected).toBe(waveRejected);
+
+  graph.ai.service.onCarrierOffline('lia');
+  const left = graph.state() as { self: { id: string; phase: string } | null; corpses: { victimId: string }[] };
+  expect(left.self).toMatchObject({ id: 'lia', phase: 'offline' });
+  expect(left.corpses.some((corpse) => corpse.victimId === 'lia')).toBe(false);
+  expect(graph.social.repository.character('lia')).toBeNull();
 });

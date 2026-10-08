@@ -6,6 +6,7 @@ import type { SocialService } from './types';
 
 export interface SocialModule extends GameModule {
   readonly service: SocialService;
+  readonly repository: SocialRepository;
 }
 
 export function createSocialModule(
@@ -16,6 +17,7 @@ export function createSocialModule(
   return {
     name: 'social',
     service,
+    repository,
     start(ctx) {
       bus = ctx.bus;
     },

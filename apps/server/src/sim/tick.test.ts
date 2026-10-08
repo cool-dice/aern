@@ -749,6 +749,61 @@ test('a player on the geography graph is not chased, and a step uses the edge', 
   expect(refused.entities.find((row) => row.id === 'lia')?.nodeId).toBe('edge_light');
 });
 
+test('a city geography ignores client pvp flags until war, a wave, or the encounter', () => {
+  const geography = {
+    barrierDown: false,
+    nodes: [
+      { id: 'fort_humans', x: 0, y: 0, kind: 'city' as const, safe: true, side: 'light' as const, regionId: 'plains' },
+    ],
+    edges: [],
+  };
+  const fighters = [
+    entity({ id: 'lia', nodeId: 'fort_humans', cell: { x: 0, y: 0 }, hp: 40, maxHp: 40, evasion: 0, armor: 0 }),
+    entity({ id: 'kai', nodeId: 'fort_humans', cell: { x: 0, y: 0 }, hp: 40, maxHp: 40, evasion: 0, armor: 0 }),
+  ];
+  const hit = attack({
+    attackerId: 'lia',
+    targetId: 'kai',
+    melee: true,
+    range: 1,
+    weaponDamage: 12,
+    odCost: 0,
+    pvpOpen: true,
+    safeZone: false,
+  });
+  const blocked = stepTick(world({ geography, entities: fighters }), [hit], mulberry32(1));
+  expect(blocked.rejections).toContainEqual({ entityId: 'lia', code: 'safe' });
+  expect(blocked.entities.find((row) => row.id === 'kai')?.hp).toBe(40);
+
+  const war = stepTick(world({ geography, warCities: ['fort_humans'], entities: fighters }), [hit], mulberry32(1));
+  expect(war.entities.find((row) => row.id === 'kai')?.hp).toBeLessThan(40);
+
+  const wave = stepTick(world({ geography, invasion: 'wave1', entities: fighters }), [hit], mulberry32(1));
+  expect(wave.entities.find((row) => row.id === 'kai')?.hp).toBeLessThan(40);
+
+  const open = stepTick(
+    world({
+      geography,
+      entities: [
+        entity({
+          id: 'lia',
+          nodeId: 'fort_humans',
+          inEncounter: true,
+          cell: { x: 0, y: 0 },
+          hp: 40,
+          maxHp: 40,
+          evasion: 0,
+          armor: 0,
+        }),
+        fighters[1]!,
+      ],
+    }),
+    [hit],
+    mulberry32(1),
+  );
+  expect(open.entities.find((row) => row.id === 'kai')?.hp).toBeLessThan(40);
+});
+
 function runWith(start: SimWorld, commands: AttackCommand[]): SimWorld {
   let current = start;
   for (let i = 0; i < 10; i += 1) {

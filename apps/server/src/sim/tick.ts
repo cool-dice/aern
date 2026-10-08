@@ -21,6 +21,7 @@ import {
 } from '@rift/domain/death';
 import { cellsFor, chebyshev, move, step, type Cell, type Dir } from '@rift/domain/movement';
 import { neighborStep, type Geography } from './travel';
+import { combatZone } from './zones';
 import type { Rng } from '@rift/domain/rng';
 import { derive, emptyPoints } from '@rift/domain/stats';
 import { tickStatuses, tryApplyStatus, type StatusInstance } from '@rift/domain/status';
@@ -283,7 +284,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
         barrierDown: world.barrierDown === true,
       });
     } else if (command.type === 'attack') {
-      applyAttack(entities, command, rejections, mods, nowMs, weather, rng);
+      applyAttack(entities, command, rejections, mods, nowMs, weather, rng, zoneOf(world));
     }
   }
 
@@ -291,7 +292,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     applyLogout(entity);
   }
 
-  pursuePlayers(entities, rejections, mods, obstacles, nowMs, weather, rng);
+  pursuePlayers(entities, rejections, mods, obstacles, nowMs, weather, rng, zoneOf(world));
 
   const settled = settleMonsters(entities, world.corpses, rng, nowMs, world.lootTables, weather, respawns);
   settlePlayers(settled.entities, settled.corpses, nowMs);
@@ -381,6 +382,18 @@ function dirToward(from: Cell, to: Cell): Dir {
   return 'nw';
 }
 
+function zoneOf(world: SimWorld): {
+  geography?: Geography;
+  warCities?: readonly string[];
+  invasion?: string | null;
+} {
+  return {
+    ...(world.geography !== undefined ? { geography: world.geography } : {}),
+    ...(world.warCities !== undefined ? { warCities: world.warCities } : {}),
+    ...(world.invasion !== undefined ? { invasion: world.invasion } : {}),
+  };
+}
+
 function pursuePlayers(
   entities: SimEntity[],
   rejections: SimRejection[],
@@ -389,6 +402,7 @@ function pursuePlayers(
   nowMs: number,
   weather: WeatherMods,
   rng: Rng,
+  zone: { geography?: Geography; warCities?: readonly string[]; invasion?: string | null },
 ): void {
   const players = entities.filter(
     (entity) =>
@@ -448,6 +462,7 @@ function pursuePlayers(
         nowMs,
         weather,
         rng,
+        zone,
       );
       continue;
     }
@@ -955,6 +970,7 @@ function applyAttack(
   nowMs: number,
   weather: WeatherMods,
   rng: Rng,
+  zone: { geography?: Geography; warCities?: readonly string[]; invasion?: string | null },
 ): void {
   const attacker = findEntity(entities, command.attackerId);
   if (attacker === undefined) {
@@ -975,6 +991,23 @@ function applyAttack(
   const targetDraft = cloneEntity(target);
   enterCombat(attackerDraft);
   enterCombat(targetDraft);
+
+  let pvpOpen = command.pvpOpen;
+  let safeZone = command.safeZone;
+  if (attacker.monsterId === undefined) {
+    const derived = combatZone({
+      geography: zone.geography,
+      nodeId: attacker.nodeId,
+      inEncounter: attacker.inEncounter === true,
+      inDungeon: attacker.dungeonId !== undefined,
+      warCities: zone.warCities,
+      invasion: zone.invasion,
+    });
+    if (derived !== null) {
+      pvpOpen = derived.pvpOpen;
+      safeZone = derived.safeZone;
+    }
+  }
 
   const perceptionPenalty = weather.perception < 0 ? -weather.perception : 0;
   const weatherPenalty =
@@ -999,8 +1032,8 @@ function applyAttack(
     melee: command.melee,
     friendlyFire: command.friendlyFire,
     sameGroup: command.sameGroup,
-    pvpOpen: command.pvpOpen,
-    safeZone: command.safeZone,
+    pvpOpen,
+    safeZone,
     issuedAtMs: command.issuedAtMs,
   });
   if (!result.ok) {
