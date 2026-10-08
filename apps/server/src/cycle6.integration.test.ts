@@ -171,3 +171,56 @@ test('a neutral asking a hostile city is refused and an enemy is blocked', async
     value: { nodeId: 'fort_humans', cityFee: 1, gold: GUILD_CREATE_GOLD - 6 },
   });
 }, 60_000);
+
+test('resource node plant is advanced from the tick and visible on the snapshot', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const nodes = readFileSync(new URL('./sim/nodes.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  expect(composeSource.includes('tickResourceNodes(')).toBe(true);
+  expect(nodes.includes('advanceResourceNode(')).toBe(true);
+  expect(composeSource.includes('resourceNodes,')).toBe(true);
+  expect(dispatch.includes('resourceTax(')).toBe(true);
+  expect(dispatch.includes('addNodeChest(')).toBe(true);
+  expect(composeSource.includes('setNodeTax(')).toBe(true);
+});
+
+test('a guild member on a resource node starts the plant timer', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  const created = await graph.act('guild_create', {
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'lia', level: 5 },
+      { id: 'm1', level: 5 },
+      { id: 'm2', level: 5 },
+      { id: 'm3', level: 5 },
+    ],
+  });
+  expect(created.ok).toBe(true);
+  const before = graph.state() as { resourceNodes: { nodeId: string }[] };
+  expect(before.resourceNodes.some((node) => node.nodeId === 'plains_mine')).toBe(true);
+  graph.submit({
+    commandId: 'south',
+    seq: 1,
+    issuedAtMs: 0,
+    action: 'step_s',
+    params: { entityId: 'lia' },
+  });
+  let plantMs = 0;
+  for (let i = 0; i < 400 && plantMs < 100; i += 1) {
+    graph.tickOnce();
+    const state = graph.state() as {
+      self: { nodeId: string | null };
+      resourceNodes: { nodeId: string; plantMs: number }[];
+    };
+    if (state.self.nodeId === 'plains_mine') {
+      plantMs = state.resourceNodes.find((node) => node.nodeId === 'plains_mine')?.plantMs ?? 0;
+    }
+  }
+  expect(plantMs).toBeGreaterThanOrEqual(100);
+});

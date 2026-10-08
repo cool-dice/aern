@@ -22,6 +22,7 @@ export interface GatherInput {
   overloaded?: boolean;
   inCombat?: boolean;
   seasonBonus?: boolean;
+  taxRate?: number;
 }
 
 export interface GatheringService {
@@ -30,6 +31,7 @@ export interface GatheringService {
       qty: number;
       playerQty: number;
       quality: string;
+      tax: number;
       seconds: number;
       durability: number;
       destroyed: boolean;
@@ -60,7 +62,7 @@ export function createGatheringService(rng: Rng, bus: Bus): GatheringService {
         inCombat: input.inCombat === true,
         interrupted: false,
         occupiedByOther: false,
-        taxRate: 0,
+        taxRate: input.taxRate ?? 0,
         seasonBonus: input.seasonBonus === true,
         rng,
       });
@@ -75,6 +77,7 @@ export function createGatheringService(rng: Rng, bus: Bus): GatheringService {
         qty: rolled.value.qty,
         playerQty: rolled.value.playerQty,
         quality: rolled.value.quality,
+        tax: rolled.value.tax,
         seconds: rolled.value.seconds,
         durability: worn.durability,
         destroyed: worn.destroyed,

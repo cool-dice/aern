@@ -791,3 +791,116 @@ export function dissolveShares(
   const paid = shares.reduce((total, share) => total + share.gold, 0);
   return { shares, void: gold - paid };
 }
+
+/** Artifact 17 §8. One guild member plants a flag in 60 real seconds. */
+export const NODE_PLANT_MS = 60_000;
+/** No owning-guild member online for 30 real minutes drops the flag. */
+export const NODE_DROP_MS = 30 * 60 * 1000;
+export const NODE_CHEST_CAP = 10_000;
+export const NODE_TAX_MAX = 30;
+export const NODE_TAX_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+
+export type NodeAccess = 'open' | 'request' | 'closed';
+
+export interface ResourceNode {
+  nodeId: string;
+  guildId: string | null;
+  plantingGuildId: string | null;
+  plantMs: number;
+  absentMs: number;
+  taxPercent: number;
+  taxSetAtMs: number | null;
+  chest: number;
+  access: NodeAccess;
+}
+
+export function freshResourceNode(nodeId: string): ResourceNode {
+  return {
+    nodeId,
+    guildId: null,
+    plantingGuildId: null,
+    plantMs: 0,
+    absentMs: 0,
+    taxPercent: 0,
+    taxSetAtMs: null,
+    chest: 0,
+    access: 'open',
+  };
+}
+
+/**
+ * Plant while exactly one guild stands on a neutral node.
+ * Two guilds, or none, reset the plant timer.
+ * An owned node drops only after the owning guild has been absent for 30 minutes.
+ * The chest stays on the node when the flag drops.
+ */
+export function advanceResourceNode(input: {
+  node: ResourceNode;
+  presentGuildIds: readonly string[];
+  deltaMs: number;
+}): ResourceNode {
+  assertNonNegativeInteger(input.deltaMs, 'deltaMs');
+  const present = [...new Set(input.presentGuildIds)];
+  const next: ResourceNode = { ...input.node };
+  if (next.guildId !== null) {
+    const ownerHere = present.includes(next.guildId);
+    next.absentMs = ownerHere ? 0 : next.absentMs + input.deltaMs;
+    next.plantingGuildId = null;
+    next.plantMs = 0;
+    if (next.absentMs >= NODE_DROP_MS) {
+      next.guildId = null;
+      next.absentMs = 0;
+    }
+    return next;
+  }
+  next.absentMs = 0;
+  if (present.length !== 1) {
+    next.plantingGuildId = null;
+    next.plantMs = 0;
+    return next;
+  }
+  const planter = present[0] ?? null;
+  if (planter === null) {
+    return next;
+  }
+  if (next.plantingGuildId !== planter) {
+    next.plantingGuildId = planter;
+    next.plantMs = 0;
+  }
+  next.plantMs += input.deltaMs;
+  if (next.plantMs >= NODE_PLANT_MS) {
+    next.guildId = planter;
+    next.plantingGuildId = null;
+    next.plantMs = NODE_PLANT_MS;
+    next.absentMs = 0;
+  }
+  return next;
+}
+
+export function depositNodeChest(chest: number, amount: number): number {
+  assertNonNegativeInteger(chest, 'chest');
+  assertNonNegativeInteger(amount, 'amount');
+  return Math.min(NODE_CHEST_CAP, chest + amount);
+}
+
+export function setNodeTax(input: {
+  next: number;
+  nowMs: number;
+  taxSetAtMs: number | null;
+}): Result<{ taxPercent: number; taxSetAtMs: number }, 'tax' | 'cooldown'> {
+  if (!Number.isInteger(input.next) || input.next < 0 || input.next > NODE_TAX_MAX) {
+    return err('tax');
+  }
+  assertNonNegativeInteger(input.nowMs, 'nowMs');
+  if (input.taxSetAtMs !== null && input.nowMs < input.taxSetAtMs + NODE_TAX_COOLDOWN_MS) {
+    return err('cooldown');
+  }
+  return ok({ taxPercent: input.next, taxSetAtMs: input.nowMs });
+}
+
+export function setNodeAccess(access: string): Result<NodeAccess, 'access'> {
+  if (access !== 'open' && access !== 'request' && access !== 'closed') {
+    return err('access');
+  }
+  return ok(access);
+}

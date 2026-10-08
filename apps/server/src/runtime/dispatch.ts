@@ -57,6 +57,12 @@ export interface LivePorts {
   assignGuild(characterId: string, guildId: string): void;
   creditService(characterId: string, cost: number): Promise<number>;
   setOwnedCityFee(guildId: string, cityId: string, fee: number): Promise<LiveResult>;
+  resourceTax(characterId: string): number;
+  resourceAccess(characterId: string): { ok: true } | { ok: false; code: string };
+  addNodeChest(characterId: string, amount: number): number;
+  setResourceTax(guildId: string, nodeId: string, taxPercent: number): LiveResult;
+  setResourceAccess(guildId: string, nodeId: string, access: string): LiveResult;
+  grantResource(guildId: string, nodeId: string, characterId: string): LiveResult;
   placeQuest(characterId: string, questId: string): Promise<void>;
   loadBuild(characterId: string): Promise<BuildState>;
   relicGrade(characterId: string): Promise<GradeId>;
@@ -104,6 +110,9 @@ const LIVE_ACTIONS = new Set([
   'portal_grant',
   'repair',
   'city_fee',
+  'node_tax',
+  'node_access',
+  'node_grant',
 ]);
 
 export function isLiveAction(action: string): boolean {
@@ -172,6 +181,12 @@ export async function runLive(
       return repair(body, ports);
     case 'city_fee':
       return cityFee(body, ports);
+    case 'node_tax':
+      return nodeTax(body, ports);
+    case 'node_access':
+      return nodeAccess(body, ports);
+    case 'node_grant':
+      return nodeGrant(body, ports);
     default:
       return { ok: false, code: 'unknown' };
   }
@@ -182,6 +197,10 @@ async function gather(body: Record<string, unknown>, ports: LivePorts): Promise<
   const nodeId = text(body, 'nodeId');
   if (characterId === undefined || nodeId === undefined || !isNode(nodeId)) {
     return { ok: false, code: 'invalid' };
+  }
+  const gate = ports.resourceAccess(characterId);
+  if (!gate.ok) {
+    return { ok: false, code: gate.code };
   }
   const tool = enumOf(text(body, 'tool'), TOOLS) ?? 'basic';
   const toolKind = enumOf(text(body, 'toolKind'), TOOL_KINDS) ?? 'pick';
@@ -194,12 +213,43 @@ async function gather(body: Record<string, unknown>, ports: LivePorts): Promise<
     toolKind,
     durability: numberOf(body.durability, 100),
     seasonBonus: ports.seasonBonus(),
+    taxRate: ports.resourceTax(characterId),
   });
   if (!rolled.ok) {
     return { ok: false, code: rolled.code };
   }
+  const chest = ports.addNodeChest(characterId, rolled.value.tax);
   const seconds = weatheredGatherSeconds(rolled.value.seconds, numberOf(body.technique, 5), tool, true, ports.weatherSpeed());
-  return { ok: true, value: { ...rolled.value, seconds } };
+  return { ok: true, value: { ...rolled.value, seconds, chest } };
+}
+
+async function nodeTax(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const guildId = text(body, 'guildId');
+  const nodeId = text(body, 'nodeId');
+  if (guildId === undefined || nodeId === undefined || typeof body.taxPercent !== 'number') {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.setResourceTax(guildId, nodeId, body.taxPercent);
+}
+
+async function nodeAccess(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const guildId = text(body, 'guildId');
+  const nodeId = text(body, 'nodeId');
+  const access = text(body, 'access');
+  if (guildId === undefined || nodeId === undefined || access === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.setResourceAccess(guildId, nodeId, access);
+}
+
+async function nodeGrant(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const guildId = text(body, 'guildId');
+  const nodeId = text(body, 'nodeId');
+  const characterId = text(body, 'characterId');
+  if (guildId === undefined || nodeId === undefined || characterId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.grantResource(guildId, nodeId, characterId);
 }
 
 async function hackStart(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

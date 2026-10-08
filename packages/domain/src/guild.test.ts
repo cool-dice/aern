@@ -39,6 +39,16 @@ import {
   warPhase,
   warWinner,
   withdraw,
+  NODE_CHEST_CAP,
+  NODE_DROP_MS,
+  NODE_PLANT_MS,
+  NODE_TAX_COOLDOWN_MS,
+  NODE_TAX_MAX,
+  advanceResourceNode,
+  depositNodeChest,
+  freshResourceNode,
+  setNodeAccess,
+  setNodeTax,
   type GuildFounder,
 } from './guild';
 import { mulberry32, type Rng } from './rng';
@@ -900,4 +910,42 @@ test('dissolution needs the leader and two council, or two thirds of the council
     }),
   ).toEqual({ ok: false, code: 'confirm' });
   expect(DOCTRINE_COOLDOWN_MS).toBe(7 * DAY_MS);
+});
+
+test('a resource node plants in 60 seconds and drops after 30 minutes', () => {
+  expect(NODE_PLANT_MS).toBe(60_000);
+  expect(NODE_DROP_MS).toBe(1_800_000);
+  expect(NODE_CHEST_CAP).toBe(10_000);
+  expect(NODE_TAX_MAX).toBe(30);
+  let node = freshResourceNode('plains_mine');
+  node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: 1_000 });
+  expect(node.guildId).toBeNull();
+  expect(node.plantMs).toBe(1_000);
+  node = advanceResourceNode({ node, presentGuildIds: ['wolves', 'ash'], deltaMs: 5_000 });
+  expect(node.plantMs).toBe(0);
+  expect(node.plantingGuildId).toBeNull();
+  node = advanceResourceNode({ node, presentGuildIds: ['wolves'], deltaMs: NODE_PLANT_MS });
+  expect(node).toMatchObject({ guildId: 'wolves', plantMs: NODE_PLANT_MS, chest: 0 });
+  node = { ...node, chest: 40 };
+  node = advanceResourceNode({ node, presentGuildIds: ['ash'], deltaMs: NODE_DROP_MS - 1 });
+  expect(node.guildId).toBe('wolves');
+  expect(node.chest).toBe(40);
+  node = advanceResourceNode({ node, presentGuildIds: [], deltaMs: 1 });
+  expect(node.guildId).toBeNull();
+  expect(node.chest).toBe(40);
+  expect(depositNodeChest(node.chest, NODE_CHEST_CAP)).toBe(NODE_CHEST_CAP);
+  expect(setNodeTax({ next: 15, nowMs: 0, taxSetAtMs: null })).toEqual({
+    ok: true,
+    value: { taxPercent: 15, taxSetAtMs: 0 },
+  });
+  expect(setNodeTax({ next: 10, nowMs: NODE_TAX_COOLDOWN_MS - 1, taxSetAtMs: 0 })).toEqual({
+    ok: false,
+    code: 'cooldown',
+  });
+  expect(setNodeTax({ next: 31, nowMs: NODE_TAX_COOLDOWN_MS, taxSetAtMs: 0 })).toEqual({
+    ok: false,
+    code: 'tax',
+  });
+  expect(setNodeAccess('closed')).toEqual({ ok: true, value: 'closed' });
+  expect(setNodeAccess('guild')).toEqual({ ok: false, code: 'access' });
 });

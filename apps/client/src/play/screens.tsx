@@ -118,6 +118,11 @@ export function PlayPanels({
             {hold.guildId ?? ''}:{String(hold.heldMs)}
           </p>
         ) : null}
+        {state.resourceNodes[0] !== undefined ? (
+          <p data-resource-node={state.resourceNodes[0].nodeId}>
+            {state.resourceNodes[0].guildId ?? ''}:{String(state.resourceNodes[0].plantMs)}
+          </p>
+        ) : null}
       </section>
     );
   }

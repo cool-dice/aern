@@ -368,6 +368,16 @@ export {
   postContract,
   canDissolve,
   dissolveShares,
+  NODE_PLANT_MS,
+  NODE_DROP_MS,
+  NODE_CHEST_CAP,
+  NODE_TAX_MAX,
+  NODE_TAX_COOLDOWN_MS,
+  freshResourceNode,
+  advanceResourceNode,
+  depositNodeChest,
+  setNodeTax,
+  setNodeAccess,
 } from './guild';
 export type {
   GuildRank,
@@ -383,6 +393,8 @@ export type {
   WarPhase,
   WarOutcome,
   LeaderElection,
+  NodeAccess,
+  ResourceNode,
 } from './guild';
 
 export { HACK_ALPHABET, LOCKOUT_MS, hackDifficulty, silenceMs, newHack, guess } from './hack';

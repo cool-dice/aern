@@ -51,6 +51,16 @@ export interface CaptureView {
   won: boolean;
 }
 
+export interface ResourceNodeView {
+  nodeId: string;
+  guildId: string | null;
+  plantMs: number;
+  absentMs: number;
+  chest: number;
+  taxPercent: number;
+  access: string;
+}
+
 export interface SessionNode {
   id: string;
   kind: string;
@@ -79,6 +89,8 @@ export interface ClientState {
   dungeonResult: Record<string, unknown> | null;
   /** City flags from the world snapshot. */
   captures: CaptureView[];
+  /** Resource-node flags from the world snapshot. */
+  resourceNodes: ResourceNodeView[];
   /** NPC reputation for the focused character, keyed by NPC id. */
   reputation: Record<string, number>;
   /** Local movement only. `applySnapshot` does not replace this. */
@@ -239,6 +251,7 @@ function readSessionExtras(snapshot: unknown): {
   mapNodes?: SessionNode[];
   recipes?: { id: string }[];
   captures?: CaptureView[];
+  resourceNodes?: ResourceNodeView[];
   reputation?: Record<string, number>;
 } {
   if (!isPlainObject(snapshot)) {
@@ -250,6 +263,7 @@ function readSessionExtras(snapshot: unknown): {
     mapNodes?: SessionNode[];
     recipes?: { id: string }[];
     captures?: CaptureView[];
+    resourceNodes?: ResourceNodeView[];
     reputation?: Record<string, number>;
   } = {};
   if ('hackPassword' in snapshot) {
@@ -316,6 +330,24 @@ function readSessionExtras(snapshot: unknown): {
       return [{ cityId: row.cityId, guildId, heldMs, won: row.won === true }];
     });
   }
+  if (Array.isArray(snapshot.resourceNodes)) {
+    extra.resourceNodes = snapshot.resourceNodes.flatMap((row) => {
+      if (!isPlainObject(row) || typeof row.nodeId !== 'string') {
+        return [];
+      }
+      return [
+        {
+          nodeId: row.nodeId,
+          guildId: typeof row.guildId === 'string' ? row.guildId : null,
+          plantMs: readNumber(row.plantMs) ?? 0,
+          absentMs: readNumber(row.absentMs) ?? 0,
+          chest: readNumber(row.chest) ?? 0,
+          taxPercent: readNumber(row.taxPercent) ?? 0,
+          access: typeof row.access === 'string' ? row.access : 'open',
+        },
+      ];
+    });
+  }
   if (isPlainObject(snapshot.reputation)) {
     const reputation: Record<string, number> = {};
     for (const [npcId, value] of Object.entries(snapshot.reputation)) {
@@ -370,6 +402,7 @@ export function createClientStore(): ClientStore {
     portalResult: null,
     dungeonResult: null,
     captures: [],
+    resourceNodes: [],
     reputation: {},
     predictedCell: null,
     predictedSteps: [],
@@ -385,6 +418,7 @@ export function createClientStore(): ClientStore {
         mapNodes: extra.mapNodes === undefined ? state.mapNodes : extra.mapNodes,
         recipes: extra.recipes === undefined ? state.recipes : extra.recipes,
         captures: extra.captures === undefined ? state.captures : extra.captures,
+        resourceNodes: extra.resourceNodes === undefined ? state.resourceNodes : extra.resourceNodes,
         reputation: extra.reputation === undefined ? state.reputation : extra.reputation,
       }));
     },

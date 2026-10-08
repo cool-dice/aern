@@ -46,7 +46,16 @@ import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, t
 import { nnUsed, type BuildState } from '@rift/domain/build';
 import { RACES } from '@rift/domain/character';
 import { askHostilePortal, ownedCrossingFee, serviceCut, setCityFee, type PortalStance } from '@rift/domain/economy';
-import { depositBank, GUILD_CREATE_GOLD, warPhase } from '@rift/domain/guild';
+import {
+  depositBank,
+  depositNodeChest,
+  freshResourceNode,
+  GUILD_CREATE_GOLD,
+  setNodeAccess,
+  setNodeTax,
+  warPhase,
+  type ResourceNode,
+} from '@rift/domain/guild';
 import { DIRS, type Dir } from '@rift/domain/movement';
 import { SIM_TICK_MS } from '@rift/domain/time';
 import { canPortal } from '@rift/domain/world';
@@ -60,6 +69,7 @@ import { isLiveAction, runLive, type LivePorts } from './runtime/dispatch';
 import { toSimCommand } from './sim/commands';
 import { askedObjective, onObjective } from './sim/progress';
 import { readCaptures, tickCaptures, type CaptureHold } from './sim/capture';
+import { tickResourceNodes } from './sim/nodes';
 import { nextReputation, reputationScene } from './sim/reputation';
 import { prototypeEncounter, spawnNamed } from './sim/population';
 import { PROTOTYPE_MONSTERS } from './sim/bestiary';
@@ -167,7 +177,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const openWars: StoredWar[] = [];
   const guildOf = new Map<string, string>();
   const portalGrants = new Map<string, Set<string>>();
+  const nodeGrants = new Map<string, Set<string>>();
   let captures: CaptureHold[] = [];
+  let resourceNodes: ResourceNode[] = [];
   const saveWar = repos.guilds.saveWar.bind(repos.guilds);
   repos.guilds.saveWar = async (war) => {
     const copy = { ...war };
@@ -326,6 +338,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
 
   let simWorld: SimWorld = { ...emptyWorld(clock.now()), geography: geographyFrom(catalog) };
   seedPortals();
+  seedResourceNodes();
 
   function applyLife(characterId: string, kind: QuestObjectiveKind, subject?: string): void {
     let barrierDown = simWorld.barrierDown === true;
@@ -583,6 +596,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     assignGuild,
     creditService,
     setOwnedCityFee,
+    resourceTax,
+    resourceAccess,
+    addNodeChest,
+    setResourceTax,
+    setResourceAccess,
+    grantResource,
     async loadBuild(characterId) {
       return buildOf(characterId);
     },
@@ -690,6 +709,16 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         entity.id === characterId ? { ...entity, guildId } : entity,
       ),
     };
+  }
+
+  function seedResourceNodes(): void {
+    resourceNodes = [];
+    for (const node of simWorld.geography?.nodes ?? []) {
+      if (node.kind !== 'resource') {
+        continue;
+      }
+      resourceNodes.push(freshResourceNode(node.id));
+    }
   }
 
   function seedPortals(): void {
@@ -901,6 +930,100 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     repos.economy.saveNode({ ...node, cityFee: priced.value });
     return { ok: true, value: { cityId, cityFee: priced.value } };
+  }
+
+  function resourceAt(nodeId: string | undefined): ResourceNode | undefined {
+    if (nodeId === undefined) {
+      return undefined;
+    }
+    return resourceNodes.find((node) => node.nodeId === nodeId);
+  }
+
+  function resourceTax(characterId: string): number {
+    const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
+    const node = resourceAt(entity?.nodeId);
+    if (node?.guildId === null || node?.guildId === undefined) {
+      return 0;
+    }
+    return node.taxPercent;
+  }
+
+  function resourceAccess(characterId: string): { ok: true } | { ok: false; code: string } {
+    const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
+    const node = resourceAt(entity?.nodeId);
+    if (node === undefined || node.guildId === null) {
+      return { ok: true };
+    }
+    if (node.access === 'open' || entity?.guildId === node.guildId) {
+      return { ok: true };
+    }
+    if (node.access === 'request' && nodeGrants.get(node.nodeId)?.has(characterId) === true) {
+      return { ok: true };
+    }
+    return { ok: false, code: node.access === 'closed' ? 'closed' : 'refused' };
+  }
+
+  function addNodeChest(characterId: string, amount: number): number {
+    const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
+    const node = resourceAt(entity?.nodeId);
+    if (node === undefined || amount <= 0) {
+      return 0;
+    }
+    const chest = depositNodeChest(node.chest, amount);
+    const added = chest - node.chest;
+    resourceNodes = resourceNodes.map((row) => (row.nodeId === node.nodeId ? { ...row, chest } : row));
+    return added;
+  }
+
+  function setResourceTax(
+    guildId: string,
+    nodeId: string,
+    taxPercent: number,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const node = resourceAt(nodeId);
+    if (node === undefined || node.guildId !== guildId) {
+      return { ok: false, code: 'owner' };
+    }
+    const priced = setNodeTax({ next: taxPercent, nowMs: clock.now(), taxSetAtMs: node.taxSetAtMs });
+    if (!priced.ok) {
+      return { ok: false, code: priced.code };
+    }
+    resourceNodes = resourceNodes.map((row) =>
+      row.nodeId === nodeId ? { ...row, taxPercent: priced.value.taxPercent, taxSetAtMs: priced.value.taxSetAtMs } : row,
+    );
+    return { ok: true, value: { nodeId, taxPercent: priced.value.taxPercent } };
+  }
+
+  function setResourceAccess(
+    guildId: string,
+    nodeId: string,
+    access: string,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const node = resourceAt(nodeId);
+    if (node === undefined || node.guildId !== guildId) {
+      return { ok: false, code: 'owner' };
+    }
+    const chosen = setNodeAccess(access);
+    if (!chosen.ok) {
+      return { ok: false, code: chosen.code };
+    }
+    resourceNodes = resourceNodes.map((row) => (row.nodeId === nodeId ? { ...row, access: chosen.value } : row));
+    return { ok: true, value: { nodeId, access: chosen.value } };
+  }
+
+  function grantResource(
+    guildId: string,
+    nodeId: string,
+    characterId: string,
+  ): { ok: boolean; code?: string; value?: unknown } {
+    const node = resourceAt(nodeId);
+    if (node === undefined || node.guildId !== guildId) {
+      return { ok: false, code: 'owner' };
+    }
+    const granted = nodeGrants.get(nodeId) ?? new Set<string>();
+    granted.add(characterId);
+    nodeGrants.set(nodeId, granted);
+    return { ok: true, value: { nodeId, characterId, granted: true } };
   }
 
   function rememberCharacter(_accountId: string, characterId: string): void {
@@ -1115,6 +1238,22 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       }),
     });
     applyOwnedCityFees();
+    resourceNodes = tickResourceNodes({
+      nodes: resourceNodes,
+      present: simWorld.entities.flatMap((entity) => {
+        if (
+          entity.monsterId !== undefined ||
+          entity.phase !== 'online' ||
+          entity.hp <= 0 ||
+          entity.guildId === undefined ||
+          entity.nodeId === undefined
+        ) {
+          return [];
+        }
+        return [{ nodeId: entity.nodeId, guildId: entity.guildId }];
+      }),
+      deltaMs: SIM_TICK_MS,
+    });
     for (const entity of simWorld.entities) {
       if (entity.monsterId !== undefined || entity.nodeId === undefined) {
         continue;
@@ -1444,6 +1583,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       tax: economy.service.taxLedger(),
       keeper: parked === null ? null : { id: parked.monsterId, level: parked.level, phases: parked.phaseCount },
       captures,
+      resourceNodes,
       reputation: focus?.reputation ?? {},
     };
   }
@@ -2034,6 +2174,9 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/portal/grant', action: 'portal_grant' },
   { path: '/repair', action: 'repair' },
   { path: '/city-fee', action: 'city_fee' },
+  { path: '/node/tax', action: 'node_tax' },
+  { path: '/node/access', action: 'node_access' },
+  { path: '/node/grant', action: 'node_grant' },
 ];
 
 function entityView(entity: SimEntity, gold: number): Record<string, unknown> {

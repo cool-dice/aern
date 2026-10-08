@@ -160,10 +160,14 @@ test('a world snapshot keeps captures and reputation the map can read', () => {
   const store = createClientStore();
   store.getState().applySnapshot({
     captures: [{ cityId: 'fort_humans', guildId: 'wolves', heldMs: 100, won: false }],
+    resourceNodes: [{ nodeId: 'plains_mine', guildId: null, plantMs: 100, absentMs: 0, chest: 0, taxPercent: 0, access: 'open' }],
     reputation: { koval: 3 },
     quests: [{ id: 'act1_light', objectives: [{ id: 'koval', target: 1, current: 0, scene: 'questioned the council' }] }],
   });
   expect(store.getState().captures).toEqual([{ cityId: 'fort_humans', guildId: 'wolves', heldMs: 100, won: false }]);
+  expect(store.getState().resourceNodes).toEqual([
+    { nodeId: 'plains_mine', guildId: null, plantMs: 100, absentMs: 0, chest: 0, taxPercent: 0, access: 'open' },
+  ]);
   expect(store.getState().reputation).toEqual({ koval: 3 });
   expect(store.getState().quests[0]?.objectives[0]?.scene).toContain('questioned the council');
 });
