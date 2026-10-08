@@ -1488,9 +1488,10 @@ export function postPatrolQuest(input: {
 export type ContractStatus = 'open' | 'complete' | 'failed';
 
 /**
- * Presence for `durationMs` completes the contract and pays `rewardGold`.
- * The deadline without that presence fails it and pays nothing.
- * A bank that can no longer cover the reward fails the contract.
+ * Patrol completes by staying on the node for `durationMs`.
+ * Defend and attack complete only after combat duty (`duty`).
+ * Escort completes only after the mercenary has traveled (`duty`), not by standing still.
+ * The deadline without that duty fails the contract and pays nothing.
  */
 export function tickContract(input: {
   status: ContractStatus;
@@ -1502,6 +1503,8 @@ export function tickContract(input: {
   nowMs: number;
   bank: number;
   rewardGold: number;
+  kind?: MercenaryKind;
+  duty?: boolean;
 }): { status: ContractStatus; presentMs: number; pay: number } {
   assertNonNegativeInteger(input.presentMs, 'presentMs');
   assertNonNegativeInteger(input.durationMs, 'durationMs');
@@ -1512,8 +1515,21 @@ export function tickContract(input: {
   if (input.status !== 'open') {
     return { status: input.status, presentMs: input.presentMs, pay: 0 };
   }
+  const kind = input.kind ?? 'patrol';
   const presentMs = input.present ? input.presentMs + input.deltaMs : input.presentMs;
-  if (presentMs >= input.durationMs) {
+  if (kind === 'patrol') {
+    if (presentMs >= input.durationMs) {
+      if (input.bank < input.rewardGold) {
+        return { status: 'failed', presentMs, pay: 0 };
+      }
+      return { status: 'complete', presentMs, pay: input.rewardGold };
+    }
+    if (input.nowMs >= input.untilMs) {
+      return { status: 'failed', presentMs, pay: 0 };
+    }
+    return { status: 'open', presentMs, pay: 0 };
+  }
+  if (input.duty === true) {
     if (input.bank < input.rewardGold) {
       return { status: 'failed', presentMs, pay: 0 };
     }

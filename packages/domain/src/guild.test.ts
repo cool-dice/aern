@@ -1220,6 +1220,50 @@ test('mercenary and patrol contracts pay on completion and fail when the clock r
       rewardGold: 100,
     }),
   ).toEqual({ status: 'failed', presentMs: 0, pay: 0 });
+  expect(
+    tickContract({
+      status: 'open',
+      presentMs: 1_000,
+      durationMs: 1_000,
+      untilMs: 1_000,
+      deltaMs: 1_000,
+      present: true,
+      nowMs: 1_000,
+      bank: 500,
+      rewardGold: 100,
+      kind: 'escort',
+      duty: false,
+    }),
+  ).toEqual({ status: 'failed', presentMs: 2_000, pay: 0 });
+  expect(
+    tickContract({
+      status: 'open',
+      presentMs: 0,
+      durationMs: 1_000,
+      untilMs: 1_000,
+      deltaMs: 1_000,
+      present: true,
+      nowMs: 500,
+      bank: 500,
+      rewardGold: 100,
+      kind: 'attack',
+      duty: true,
+    }),
+  ).toEqual({ status: 'complete', presentMs: 1_000, pay: 100 });
+  expect(
+    tickContract({
+      status: 'open',
+      presentMs: 0,
+      durationMs: 1_000,
+      untilMs: 1_000,
+      deltaMs: 0,
+      present: false,
+      nowMs: 1_000,
+      bank: 500,
+      rewardGold: 100,
+      kind: 'defend',
+    }),
+  ).toEqual({ status: 'failed', presentMs: 0, pay: 0 });
   const patrol = postPatrolQuest({
     rank: 'leader',
     rewardGold: PATROL_QUEST_GOLD,

@@ -1624,6 +1624,25 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return { ok: true, value: stored };
   }
 
+  function contractDuty(contract: StoredMercenary): boolean {
+    const actor = simWorld.entities.find(
+      (entity) => entity.id === contract.mercenaryId && entity.monsterId === undefined,
+    );
+    if (contract.kind === 'escort') {
+      return actor !== undefined && actor.nodeId !== undefined && actor.nodeId !== contract.nodeId;
+    }
+    if (contract.kind === 'defend') {
+      return actor !== undefined && (actor.lastAttackerId !== undefined || actor.hp < actor.maxHp);
+    }
+    if (contract.kind === 'attack') {
+      return (
+        simWorld.entities.some((entity) => entity.lastAttackerId === contract.mercenaryId) ||
+        simWorld.corpses.some((corpse) => corpse.killerId === contract.mercenaryId)
+      );
+    }
+    return false;
+  }
+
   function standingAt(characterId: string, nodeId: string): boolean {
     const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
     return entity !== undefined && entity.phase === 'online' && entity.hp > 0 && entity.nodeId === nodeId;
@@ -1643,6 +1662,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         nowMs: now,
         bank: (await repos.guilds.findGuild(contract.guildId))?.bank ?? 0,
         rewardGold: contract.rewardGold,
+        kind: contract.kind,
+        duty: contractDuty(contract),
       });
       if (ticked.pay > 0) {
         const guild = await repos.guilds.findGuild(contract.guildId);

@@ -51,11 +51,15 @@ test('auction tax, storage, diplomacy, and war routes call the domain functions'
   const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
   const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
   const bid = dispatch.slice(dispatch.indexOf('async function auctionBid'), dispatch.indexOf('async function mail'));
-  expect(bid.includes('creditGuildBank(')).toBe(true);
+  expect(bid.includes('creditGuildBank(')).toBe(false);
   expect(bid.includes('sellerProceeds(')).toBe(true);
   expect(bid.includes('cityOwner(')).toBe(true);
   expect(bid.includes('guildCity')).toBe(false);
-  expect(bid.includes('creditTax(')).toBe(false);
+  expect(bid.includes('creditTax(')).toBe(true);
+  const economyBid = readFileSync(new URL('./modules/economy/service.ts', import.meta.url), 'utf8');
+  const priced = economyBid.slice(economyBid.indexOf('bidAuction(input)'), economyBid.indexOf('auctionLot(lotId)'));
+  expect(priced.includes('auctionTaxSink(')).toBe(false);
+  expect(priced.includes('guildCity')).toBe(false);
   expect(composeSource.includes('rentStorage(')).toBe(true);
   expect(composeSource.includes('askHostilePortal(')).toBe(true);
   expect(composeSource.includes('pactAlly(')).toBe(true);
@@ -414,7 +418,7 @@ test('mercenary and patrol contracts pay from the guild bank or fail', async () 
     characterId: 'lia',
     mercenaryId: 'blade',
     nodeId: 'plains_mine',
-    kind: 'escort',
+    kind: 'patrol',
     rewardGold: 100,
     durationMs: 1_000,
   });
@@ -422,7 +426,7 @@ test('mercenary and patrol contracts pay from the guild bank or fail', async () 
   const before = graph.economy.service.balance('blade');
   await graph.skipMs(1_000);
   const paid = graph.state() as { mercenaries: { status: string; kind: string }[] };
-  expect(paid.mercenaries.find((row) => row.kind === 'escort')?.status).toBe('complete');
+  expect(paid.mercenaries.map((row) => row.status)).toEqual(['failed', 'complete']);
   expect(graph.economy.service.balance('blade')).toBe((before ?? 0) + 100);
   expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(19_900);
 
@@ -437,6 +441,66 @@ test('mercenary and patrol contracts pay from the guild bank or fail', async () 
   const quests = graph.state() as { patrols: { status: string }[] };
   expect(quests.patrols[0]?.status).toBe('complete');
   expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(19_900 - PATROL_QUEST_GOLD);
+});
+
+test('mercenary kind changes patrol, combat, and escort outcomes', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const tick = composeSource.slice(
+    composeSource.indexOf('async function tickContracts'),
+    composeSource.indexOf('function tickAllianceBreaks'),
+  );
+  expect(tick.includes('kind: contract.kind')).toBe(true);
+  expect(tick.includes('duty: contractDuty(contract)')).toBe(true);
+  const once = composeSource.slice(composeSource.indexOf('function tickOnce'), composeSource.indexOf('function simSnapshot'));
+  expect(once.includes('tickContracts(')).toBe(true);
+
+  const graph = compose({ nowMs: 0 });
+  graph.enterWorld('lia', 'plains_mine');
+  graph.enterCharacter('account-lia', 'lia');
+  graph.enterWorld('blade', 'plains_mine');
+  graph.enterCharacter('account-blade', 'blade');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'blade', action: 'wait' });
+  const guildId = await foundGuild(graph);
+  const guild = await graph.guild.repository.findGuild(guildId);
+  if (guild === null) {
+    throw new Error('missing guild');
+  }
+  await graph.guild.repository.saveGuild({ ...guild, bank: 20_000 });
+  const hire = (kind: string) =>
+    graph.act('mercenary', {
+      guildId,
+      characterId: 'lia',
+      mercenaryId: 'blade',
+      nodeId: 'plains_mine',
+      kind,
+      rewardGold: 100,
+      durationMs: 1_000,
+    });
+  expect(await hire('escort')).toMatchObject({ ok: true });
+  await graph.skipMs(1_000);
+  expect((graph.state() as { mercenaries: { kind: string; status: string }[] }).mercenaries[0]?.status).toBe('failed');
+  expect(await hire('defend')).toMatchObject({ ok: true });
+  await graph.skipMs(1_000);
+  expect(
+    (graph.state() as { mercenaries: { kind: string; status: string }[] }).mercenaries.find((row) => row.kind === 'defend')
+      ?.status,
+  ).toBe('failed');
+  expect(await hire('attack')).toMatchObject({ ok: true });
+  graph.submit({
+    commandId: 'blade-hits',
+    seq: 1,
+    issuedAtMs: (graph.state() as { nowMs: number }).nowMs,
+    action: 'attack_ranged',
+    targetId: 'blade:bandit',
+    params: { entityId: 'blade', weaponDamage: 80, range: 8, odCost: 0, pvpOpen: true, safeZone: false },
+  });
+  graph.tickOnce();
+  await graph.skipMs(1_000);
+  expect(
+    (graph.state() as { mercenaries: { kind: string; status: string }[] }).mercenaries.find((row) => row.kind === 'attack')
+      ?.status,
+  ).toBe('complete');
 });
 
 test('declareWar and withdraw are live routes', async () => {
