@@ -39,6 +39,7 @@ export interface WikiService {
     value: WikiVoteValue;
   }): Result<{ rating: number; vote: WikiVoteValue }, string>;
   read(articleId: string): { prose: string; rating: number } | null;
+  side(articleId: string): WikiArticleSide | null;
 }
 
 export function createWikiService(bus: Bus): WikiService {
@@ -96,6 +97,9 @@ export function createWikiService(bus: Bus): WikiService {
         rating += value;
       }
       return { prose: row.prose, rating };
+    },
+    side(articleId) {
+      return articles.get(articleId)?.side ?? null;
     },
   };
 }

@@ -89,6 +89,7 @@ export function PlayPanels({
   onOpenChest,
   onBuyNpc,
   onExpandStash,
+  onReadWiki,
   onVote,
   onChoice,
   onEmblem,
@@ -135,6 +136,7 @@ export function PlayPanels({
   onOpenChest?: () => void;
   onBuyNpc?: () => void;
   onExpandStash?: () => void;
+  onReadWiki?: () => void;
   onVote?: () => void;
   onChoice?: () => void;
   onEmblem?: () => void;
@@ -264,6 +266,9 @@ export function PlayPanels({
         </button>
         <button type="button" data-coalition="read" onClick={() => onCoalitionRead?.()}>
           read
+        </button>
+        <button type="button" data-wiki="read" onClick={() => onReadWiki?.()}>
+          wiki
         </button>
         <button type="button" data-stash="expand" onClick={() => onExpandStash?.()}>
           stash

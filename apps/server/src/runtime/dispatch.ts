@@ -184,6 +184,7 @@ export interface LivePorts {
   openLiveChest(body: Record<string, unknown>): LiveResult;
   buyNpc(body: Record<string, unknown>): LiveResult;
   growStash(body: Record<string, unknown>): LiveResult;
+  readArticle(body: Record<string, unknown>): Promise<LiveResult>;
   setNeural(characterId: string, nn: number, nnLimit: number): void;
   walletGold(characterId: string): number;
   setGold(characterId: string, gold: number): void;
@@ -273,6 +274,7 @@ const LIVE_ACTIONS = new Set([
   'chest_open',
   'npc_buy',
   'stash_expand',
+  'wiki_read',
   'node_strike',
   'coalition_say',
 ]);
@@ -435,6 +437,8 @@ export async function runLive(
       return ports.buyNpc(body);
     case 'stash_expand':
       return ports.growStash(body);
+    case 'wiki_read':
+      return ports.readArticle(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':

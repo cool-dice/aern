@@ -43,6 +43,7 @@ import {
   postOpenChest,
   postBuyNpc,
   postExpandStash,
+  postReadWiki,
   readBankLog,
   registerContender,
   renewPact,
@@ -776,6 +777,18 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onReadWiki={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postReadWiki({
+                server: SERVER,
+                characterId,
+                articleId: 'barrier',
                 store: plan.store,
               });
             }}

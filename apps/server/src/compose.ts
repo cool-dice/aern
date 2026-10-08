@@ -70,6 +70,7 @@ import {
 } from '@rift/domain/build';
 import { removeRelic, type RelicState } from '@rift/domain/relics';
 import { RACES } from '@rift/domain/character';
+import { readWiki, type WikiArticleSide } from '@rift/domain/wiki';
 import { PARTY_MAX, matchmake, type PartyRole } from '@rift/domain/social';
 import { gainUpy, type LanguageId } from '@rift/domain/language';
 import {
@@ -966,6 +967,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     openLiveChest,
     buyNpc,
     growStash,
+    readArticle,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -3960,6 +3962,46 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return { ok: true, value: { gold, price: quoted.value, itemId } };
   }
 
+  /**
+   * Artifact 15. A reader sees their own side and primordial pages.
+   * The opposite side is refused. The article side is the stored row, or primordial
+   * when the id names that archive. The client does not choose the side.
+   */
+  async function readArticle(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const articleId = typeof body.articleId === 'string' ? body.articleId : '';
+    if (characterId.length === 0 || articleId.length === 0) {
+      return { ok: false, code: 'article' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const race = RACES.find((row) => row.id === record.raceId);
+    if (race === undefined) {
+      return { ok: false, code: 'side' };
+    }
+    const articleSide = storedArticleSide(articleId);
+    if (articleSide === null) {
+      return { ok: false, code: 'article' };
+    }
+    const access = readWiki(articleSide, race.side);
+    if (!access.ok) {
+      return { ok: false, code: access.code };
+    }
+    const row = wiki.service.read(articleId);
+    return { ok: true, value: { prose: row?.prose ?? '', side: articleSide } };
+  }
+
+  function storedArticleSide(articleId: string): WikiArticleSide | null {
+    if (articleId === 'primordial' || articleId.startsWith('primordial_')) {
+      return 'primordial';
+    }
+    return wiki.service.side(articleId);
+  }
+
   /** Artifact 13. 1 000 gold buys 50 slots, up to 1 000 slots. The returned gold is the cost. */
   function growStash(body: Record<string, unknown>): { ok: boolean; code?: string; value?: unknown } {
     const characterId = typeof body.characterId === 'string' ? body.characterId : '';
@@ -6786,6 +6828,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/chest', action: 'chest_open' },
   { path: '/npc/buy', action: 'npc_buy' },
   { path: '/stash/expand', action: 'stash_expand' },
+  { path: '/wiki/read', action: 'wiki_read' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

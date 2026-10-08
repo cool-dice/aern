@@ -768,3 +768,64 @@ test('a player kill grants 20 xp, the same victim waits 10 minutes, and a bot ki
   expect(xpOf(carrierId)).toBe(20);
   expect(xpOf(bladeId)).toBe(0);
 });
+
+test('readWiki runs from the live read route', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const reader = composeSource.slice(
+    composeSource.indexOf('async function readArticle'),
+    composeSource.indexOf('function storedArticleSide'),
+  );
+  const writer = dispatch.slice(dispatch.indexOf('async function wiki('), dispatch.indexOf('async function relic('));
+  expect(reader.includes('readWiki(')).toBe(true);
+  expect(dispatch.includes('readArticle(')).toBe(true);
+  expect(app.includes('postReadWiki(')).toBe(true);
+  expect(writer.includes('writeProse(')).toBe(true);
+});
+
+test('a reader sees their side and a primordial page, and the other side is refused', async () => {
+  const graph = compose({ nowMs: 0 });
+  const points = { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 };
+  const human = await graph.character.service.create({
+    accountId: 'account-reader',
+    controller: 'player',
+    name: 'Reader',
+    clean: false,
+    points,
+    appearance,
+  });
+  const demon = await graph.character.service.create({
+    accountId: 'account-dark-reader',
+    controller: 'bot',
+    name: 'Dark',
+    clean: false,
+    points,
+    appearance,
+  });
+  expect(human.ok && demon.ok).toBe(true);
+  if (!human.ok || !demon.ok) {
+    return;
+  }
+  const humanId = human.value.characterId;
+  const demonId = demon.value.characterId;
+  expect(await graph.act('wiki', { characterId: humanId, articleId: 'barrier', text: 'The Barrier stands.' })).toMatchObject({
+    ok: true,
+  });
+  expect(await graph.act('wiki_read', { characterId: humanId, articleId: 'barrier' })).toMatchObject({
+    ok: true,
+    value: { prose: 'The Barrier stands.', side: 'light' },
+  });
+  expect(await graph.act('wiki_read', { characterId: demonId, articleId: 'barrier' })).toMatchObject({
+    ok: false,
+    code: 'side',
+  });
+  expect(await graph.act('wiki_read', { characterId: humanId, articleId: 'primordial' })).toMatchObject({
+    ok: true,
+    value: { side: 'primordial' },
+  });
+  expect(await graph.act('wiki_read', { characterId: demonId, articleId: 'primordial' })).toMatchObject({
+    ok: true,
+    value: { side: 'primordial' },
+  });
+});

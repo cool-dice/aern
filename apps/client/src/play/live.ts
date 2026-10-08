@@ -576,6 +576,24 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/wiki/read`. The server checks the article side against the reader's race. */
+export async function postReadWiki(input: {
+  server: string;
+  characterId: string;
+  articleId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/wiki/read',
+    body: { characterId: input.characterId, articleId: input.articleId },
+    store: input.store,
+    log: 'wiki-read',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/stash/expand`. One purchase is 50 slots for 1 000 gold. */
 export async function postExpandStash(input: {
   server: string;
