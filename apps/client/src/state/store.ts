@@ -62,12 +62,18 @@ export interface ClientState {
   quests: SessionQuest[];
   mapNodes: SessionNode[];
   recipes: { id: string }[];
+  /** Last `/craft/start` body. Null until the play session posts one. */
+  craftJob: Record<string, unknown> | null;
+  /** Last trade offer and accept bodies. Null until the play session posts them. */
+  tradeResult: Record<string, unknown> | null;
   /** Local movement only. `applySnapshot` does not replace this. */
   predictedCell: CellPoint | null;
   predictedSteps: PredictedStep[];
   applySnapshot(snapshot: unknown): void;
   setConnected(v: boolean): void;
   pushLog(line: string): void;
+  setCraftJob(job: Record<string, unknown> | null): void;
+  setTradeResult(result: Record<string, unknown> | null): void;
   setPredicted(input: { cell: CellPoint | null; steps: PredictedStep[] }): void;
 }
 
@@ -310,6 +316,8 @@ export function createClientStore(): ClientStore {
     quests: [],
     mapNodes: [],
     recipes: [],
+    craftJob: null,
+    tradeResult: null,
     predictedCell: null,
     predictedSteps: [],
     applySnapshot: (snapshot) => {
@@ -330,6 +338,12 @@ export function createClientStore(): ClientStore {
     },
     pushLog: (line) => {
       set((state) => ({ log: [...state.log, line].slice(-LOG_LIMIT) }));
+    },
+    setCraftJob: (job) => {
+      set({ craftJob: job });
+    },
+    setTradeResult: (result) => {
+      set({ tradeResult: result });
     },
     setPredicted: (input) => {
       const predicted = readPredicted(input);

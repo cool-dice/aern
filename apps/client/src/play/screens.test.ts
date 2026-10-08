@@ -39,4 +39,9 @@ test('hack and trade open from the number keys', () => {
   pressKey(session, 'Digit2');
   const trade = renderToStaticMarkup(createElement(PlayPanels, { session }));
   expect(trade).toContain('data-auction="live"');
+  expect(trade).toContain('data-trade="accept"');
+
+  pressKey(session, 'KeyC');
+  const craft = renderToStaticMarkup(createElement(PlayPanels, { session }));
+  expect(craft).toContain('data-craft="start"');
 });

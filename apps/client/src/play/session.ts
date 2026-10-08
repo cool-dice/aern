@@ -60,10 +60,20 @@ export interface PlaySession {
   locale: 'ru' | 'en';
   chatDraft: string;
   aim: 'head' | 'torso' | 'arm_left' | 'arm_right' | 'leg_left' | 'leg_right';
+  /** Counterparty posted with `/trade` from the trade panel. */
+  tradePartner: string;
 }
 
 export function createPlaySession(store: ClientStore = createClientStore()): PlaySession {
-  return { store, screen: 'menu', targetId: null, locale: 'ru', chatDraft: '', aim: 'torso' };
+  return {
+    store,
+    screen: 'menu',
+    targetId: null,
+    locale: 'ru',
+    chatDraft: '',
+    aim: 'torso',
+    tradePartner: 'trader',
+  };
 }
 
 export function registerBody(email: string, password: string): AuthRequest {

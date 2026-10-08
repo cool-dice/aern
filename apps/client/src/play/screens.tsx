@@ -47,14 +47,31 @@ function inventoryItems(session: PlaySession): InventoryItem[] {
   });
 }
 
-/** Panels that read the live store. The world frame stays in `App`. */
-export function PlayPanels({ session }: { session: PlaySession }): ReactElement | null {
+/** Panels that read the live store. Craft and trade buttons post the live HTTP routes. */
+export function PlayPanels({
+  session,
+  onCraft,
+  onTrade,
+}: {
+  session: PlaySession;
+  onCraft?: () => void;
+  onTrade?: () => void;
+}): ReactElement | null {
   if (session.screen === 'inventory') {
     return <InventoryScreen model={inventoryModel(inventoryItems(session), true)} />;
   }
   if (session.screen === 'craft') {
     const recipes = session.store.getState().recipes;
-    return <CraftScreen recipes={recipes.length > 0 ? recipes : [{ id: 'rusty_sword' }]} />;
+    const jobId = session.store.getState().craftJob?.jobId;
+    return (
+      <section>
+        <CraftScreen recipes={recipes.length > 0 ? recipes : [{ id: 'rusty_sword' }]} />
+        <button type="button" data-craft="start" onClick={() => onCraft?.()}>
+          start
+        </button>
+        {typeof jobId === 'string' ? <p data-craft-job={jobId}>{jobId}</p> : null}
+      </section>
+    );
   }
   if (session.screen === 'quests') {
     const quests = session.store.getState().quests;
@@ -82,13 +99,24 @@ export function PlayPanels({ session }: { session: PlaySession }): ReactElement 
     );
   }
   if (session.screen === 'trade') {
+    const status = session.store.getState().tradeResult?.accept;
+    const tradeStatus =
+      typeof status === 'object' && status !== null && 'status' in status
+        ? String((status as { status?: unknown }).status ?? '')
+        : '';
     return (
-      <TradeScreen
-        model={tradeModel(
-          { gold: session.store.getState().self?.gold ?? 0, items: [] },
-          { gold: 0, items: [] },
-        )}
-      />
+      <section>
+        <TradeScreen
+          model={tradeModel(
+            { gold: session.store.getState().self?.gold ?? 0, items: [] },
+            { gold: 0, items: [] },
+          )}
+        />
+        <button type="button" data-trade="accept" onClick={() => onTrade?.()}>
+          trade
+        </button>
+        {tradeStatus.length > 0 ? <p data-trade-status={tradeStatus}>{tradeStatus}</p> : null}
+      </section>
     );
   }
   if (session.screen === 'hack') {

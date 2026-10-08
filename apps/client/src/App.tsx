@@ -11,6 +11,7 @@ import { t } from './i18n/translate';
 import { hudModel } from './ui/models';
 import { CreationScreen, HudScreen } from './ui/screens';
 import { PlayPanels } from './play/screens';
+import { completeTrade, startCraft } from './play/live';
 import { spawnMockSidecar, type SidecarHandle } from './play/sidecar';
 import {
   bindKeyboard,
@@ -394,7 +395,35 @@ export function App() {
               </button>
             ))}
           </nav>
-          <PlayPanels session={session} />
+          <PlayPanels
+            session={session}
+            onCraft={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              const recipeId = session.store.getState().recipes[0]?.id ?? 'rusty_sword';
+              if (characterId === '') {
+                return;
+              }
+              void startCraft({
+                server: SERVER,
+                characterId,
+                recipeId,
+                store: plan.store,
+              });
+            }}
+            onTrade={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void completeTrade({
+                server: SERVER,
+                characterId,
+                counterpartyId: session.tradePartner,
+                gold: 1,
+                store: plan.store,
+              });
+            }}
+          />
           <HudScreen
             model={hudModel({
               hp: self.hp,
