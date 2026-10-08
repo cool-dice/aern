@@ -55,16 +55,30 @@ test('compose wires modules in registration order without listening', () => {
   }
 });
 
-test('prototype stubs stay feature_stub', async () => {
+test('guild creation is live and auction mail titles stay until their modules', async () => {
   const graph = compose({ catalog: minimalCatalog(), nowMs: 1_000, jwtSecret: 'test-secret' });
   expect(graph.economy.service.listAuction()).toEqual({ ok: false, code: 'feature_stub' });
-  expect(await graph.guild.service.create({})).toEqual({ ok: false, code: 'feature_stub' });
+  expect(await graph.guild.service.create({})).toEqual({ ok: false, code: 'member' });
   expect(
     await graph.guild.service.declareWar({ attackerGuildId: 'guild-1', cityId: 'fort_humans' }),
-  ).toEqual({ ok: false, code: 'feature_stub' });
+  ).not.toEqual({ ok: false, code: 'feature_stub' });
   expect(
     await graph.guild.service.withdraw({ guildId: 'guild-1', rank: 'leader', amount: 1 }),
-  ).toEqual({ ok: false, code: 'feature_stub' });
+  ).toEqual({ ok: false, code: 'member' });
+  graph.creditGuildGold('m0', 10_000);
+  const created = await graph.guild.service.create({
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'm0',
+    members: [
+      { id: 'm0', level: 5 },
+      { id: 'm1', level: 5 },
+      { id: 'm2', level: 5 },
+      { id: 'm3', level: 5 },
+    ],
+    gold: 10_000,
+  });
+  expect(created.ok).toBe(true);
   expect(graph.social.service.grantTitle()).toEqual({ ok: false, code: 'feature_stub' });
   expect(
     await graph.social.service.say({

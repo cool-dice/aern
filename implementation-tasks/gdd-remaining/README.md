@@ -17,7 +17,7 @@
 | 109 | [109-hack-module.md](109-hack-module.md) | done |
 | 110 | [110-wiki-module.md](110-wiki-module.md) | done |
 | 111 | [111-relic-build-module.md](111-relic-build-module.md) | done |
-| 112 | [112-guild-live.md](112-guild-live.md) | pending |
+| 112 | [112-guild-live.md](112-guild-live.md) | done |
 | 113 | [113-auction-live.md](113-auction-live.md) | pending |
 | 114 | [114-mail-titles.md](114-mail-titles.md) | pending |
 | 115 | [115-prisma-repositories.md](115-prisma-repositories.md) | pending |

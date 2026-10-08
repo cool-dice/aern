@@ -1,6 +1,6 @@
 # 112. Гильдия в живом режиме
 
-status: pending
+status: done
 
 ## Правило GDD
 

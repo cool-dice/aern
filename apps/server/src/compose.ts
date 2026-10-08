@@ -69,6 +69,7 @@ export interface ServerComposition {
   tickOnce: () => void;
   submit: (command: ClientCommand) => void;
   enterWorld: (playerId: string, bindNodeId?: string) => void;
+  creditGuildGold: (characterId: string, amount: number) => void;
   snapshot: () => MetricsSnapshot;
   auth: AuthModule;
   character: CharacterModule;
@@ -136,7 +137,22 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   });
   const economy = createEconomyModule(repos.economy);
   const social = createSocialModule(repos.social);
-  const guild = createGuildModule({ mode: 'stub', repository: repos.guilds });
+  const guildWallets = new Map<string, number>();
+  const guild = createGuildModule({
+    mode: 'live',
+    repository: repos.guilds,
+    gold: {
+      async deduct(characterId, amount) {
+        const current = guildWallets.get(characterId) ?? 0;
+        if (current < amount) {
+          return { ok: false, code: 'gold' };
+        }
+        const next = current - amount;
+        guildWallets.set(characterId, next);
+        return { ok: true, value: { gold: next } };
+      },
+    },
+  });
   const quest = createQuestModule({
     quests: catalog.quests,
     repository: repos.quests,
@@ -275,6 +291,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     tickOnce,
     submit,
     enterWorld,
+    creditGuildGold(characterId, amount) {
+      guildWallets.set(characterId, (guildWallets.get(characterId) ?? 0) + amount);
+    },
     snapshot,
     auth,
     character,
