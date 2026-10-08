@@ -248,3 +248,41 @@ test('relic implant categories are four body slots and echo sockets stay 1/2/3/3
     code: 'slot',
   });
 });
+
+test('relicBonuses applies worn relic armor on the combat tick', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const tick = readFileSync(new URL('./sim/tick.ts', import.meta.url), 'utf8');
+  const once = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('async function hydrate'),
+  );
+  const stamp = composeSource.slice(
+    composeSource.indexOf('async function stampWornRelics'),
+    composeSource.indexOf('function relicReady'),
+  );
+  const combatant = tick.slice(tick.indexOf('function toCombatant'), tick.indexOf('function commitCombatant'));
+  expect(once.includes('stampWornRelics(')).toBe(true);
+  expect(stamp.includes('relicBonuses(')).toBe(true);
+  expect(combatant.includes('relicArmor')).toBe(true);
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-relic',
+    controller: 'player',
+    name: 'Rel',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  graph.enterCharacter('account-relic', characterId);
+  expect(await graph.act('relic_install', { characterId, subtype: 'plate', grade: 'common' })).toMatchObject({
+    ok: true,
+  });
+  await graph.tickOnce();
+  const self = (graph.state() as { self: { relicArmor?: number } | null }).self;
+  expect(self?.relicArmor).toBe(1);
+});

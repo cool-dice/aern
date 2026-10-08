@@ -69,7 +69,7 @@ import {
   tickForgetting,
   type BuildState,
 } from '@rift/domain/build';
-import { removeRelic, type RelicState } from '@rift/domain/relics';
+import { relicBonuses, removeRelic, type RelicState } from '@rift/domain/relics';
 import { RACES } from '@rift/domain/character';
 import { readWiki, type WikiArticleSide } from '@rift/domain/wiki';
 import { PARTY_MAX, matchmake, type PartyRole } from '@rift/domain/social';
@@ -2929,6 +2929,70 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ...simWorld,
       entities: simWorld.entities.map((entity) => stampDoctrine(entity)),
     };
+  }
+
+  /**
+   * Artifact 4 §6.6. Worn relics add their bonuses in combat. A broken or silenced relic adds nothing.
+   * Missing instance stats use the subtype's allowed stat so `relicBonuses` can run.
+   */
+  async function stampWornRelics(): Promise<void> {
+    const now = clock.now();
+    const entities: SimEntity[] = [];
+    for (const entity of simWorld.entities) {
+      if (entity.monsterId !== undefined) {
+        entities.push({
+          ...entity,
+          relicArmor: 0,
+          relicAccuracy: 0,
+          relicReaction: 0,
+          relicPerception: 0,
+        });
+        continue;
+      }
+      const record = await repos.characters.findById(entity.id);
+      const level = record?.level ?? entity.progress?.level ?? 1;
+      let relicArmor = 0;
+      let relicAccuracy = 0;
+      let relicReaction = 0;
+      let relicPerception = 0;
+      if (record !== null && level >= 1 && level <= MAX_LEVEL) {
+        for (const relic of record.build?.relics ?? []) {
+          const bonus = relicBonuses(relicReady(relic), level, now);
+          if (!bonus.active) {
+            continue;
+          }
+          relicArmor += bonus.armor;
+          relicAccuracy += bonus.stats.accuracy ?? 0;
+          relicReaction += bonus.stats.reaction ?? 0;
+          relicPerception += bonus.stats.perception ?? 0;
+        }
+      }
+      entities.push({ ...entity, relicArmor, relicAccuracy, relicReaction, relicPerception });
+    }
+    simWorld = { ...simWorld, entities };
+  }
+
+  function relicReady(relic: RelicState): RelicState {
+    if (relic.subtype === 'plate') {
+      return relic;
+    }
+    if (relic.subtype === 'spore') {
+      const bonus = relic.bonusStat ?? 'accuracy';
+      const penalty =
+        relic.penaltyStat !== undefined && relic.penaltyStat !== bonus
+          ? relic.penaltyStat
+          : bonus === 'will'
+            ? 'accuracy'
+            : 'will';
+      return { ...relic, bonusStat: bonus, penaltyStat: penalty };
+    }
+    if (relic.subtype === 'mechanism') {
+      return { ...relic, bonusStat: relic.bonusStat ?? 'technique' };
+    }
+    if (relic.subtype === 'crystal') {
+      return { ...relic, bonusStat: relic.bonusStat ?? 'will' };
+    }
+    return { ...relic, bonusStat: relic.bonusStat ?? 'body' };
   }
 
   function stampDoctrine(entity: SimEntity): SimEntity {
@@ -5827,6 +5891,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ...(simWorld.primordialOpened === true ? { primordialOpened: true } : {}),
     };
     stampGuildDoctrines();
+    await stampWornRelics();
     simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
     spawnNeutralGuards();
     captures = tickCaptures({
@@ -7108,6 +7173,7 @@ function entityView(entity: SimEntity, gold: number): Record<string, unknown> {
     nodeId: entity.nodeId ?? null,
     nn: entity.nn ?? 0,
     nnLimit: entity.nnLimit ?? 0,
+    relicArmor: entity.relicArmor ?? 0,
     guildId: entity.guildId ?? null,
     reputation: entity.reputation ?? {},
     dungeonId: entity.dungeonId ?? null,

@@ -117,6 +117,12 @@ export interface SimEntity {
   guildId?: string;
   /** Active guild doctrine, stamped from the guild before the tick. */
   doctrineId?: DoctrineId;
+  /** Worn-relic armor from `relicBonuses`, replaced each tick. */
+  relicArmor?: number;
+  /** Worn-relic stat deltas from `relicBonuses`, replaced each tick. */
+  relicAccuracy?: number;
+  relicReaction?: number;
+  relicPerception?: number;
   /** Unscaled max hp, so fortitude does not compound each tick. */
   doctrineBaseMaxHp?: number;
   /** Sim time of the war death. `applyRespawn` waits `WAR_RESPAWN_DELAY_MS`. */
@@ -1240,13 +1246,17 @@ function enterCombat(entity: SimEntity): void {
 }
 
 function toCombatant(entity: SimEntity, accuracyPenalty: number): Combatant {
+  const relicAccuracy = entity.relicAccuracy ?? 0;
+  const relicReaction = entity.relicReaction ?? 0;
+  const relicPerception = entity.relicPerception ?? 0;
+  const armor = entity.doctrineId === 'guard' ? applyDoctrine('guard', entity.armor) : entity.armor;
   return {
     id: entity.id,
-    reaction: entity.reaction,
-    accuracyStat: entity.accuracyStat,
-    accuracyScore: entity.accuracyScore - accuracyPenalty,
-    evasion: entity.evasion,
-    armor: entity.doctrineId === 'guard' ? applyDoctrine('guard', entity.armor) : entity.armor,
+    reaction: entity.reaction + relicReaction,
+    accuracyStat: entity.accuracyStat + relicAccuracy,
+    accuracyScore: entity.accuracyScore - accuracyPenalty + relicAccuracy + Math.floor(relicPerception / 2),
+    evasion: entity.evasion + relicReaction + relicPerception,
+    armor: armor + (entity.relicArmor ?? 0),
     od: entity.od,
     hp: entity.hp,
     maxHp: entity.maxHp,

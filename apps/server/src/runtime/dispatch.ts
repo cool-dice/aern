@@ -1344,7 +1344,7 @@ async function encounter(body: Record<string, unknown>, ports: LivePorts): Promi
 const GRADES = ['common', 'rare', 'epic', 'unique'] as const;
 
 function relicOf(subtype: RelicSubtype, grade: GradeId): RelicState {
-  return {
+  const relic: RelicState = {
     subtype,
     grade,
     durability: 100,
@@ -1353,6 +1353,19 @@ function relicOf(subtype: RelicSubtype, grade: GradeId): RelicState {
     silencedUntilMs: 0,
     echoIds: [],
   };
+  if (subtype === 'spore') {
+    return { ...relic, bonusStat: 'accuracy', penaltyStat: 'will' };
+  }
+  if (subtype === 'mechanism') {
+    return { ...relic, bonusStat: 'technique' };
+  }
+  if (subtype === 'crystal') {
+    return { ...relic, bonusStat: 'will' };
+  }
+  if (subtype === 'plate') {
+    return relic;
+  }
+  return { ...relic, bonusStat: 'body' };
 }
 
 function programOf(kind: 'echo' | 'path', templateId: string, grade: 1 | 2 | 3): Program {
