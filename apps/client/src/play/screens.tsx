@@ -79,6 +79,8 @@ export function PlayPanels({
   onCoalitionDeposit,
   onCoalitionRead,
   onPurify,
+  onRemoveRelic,
+  onMatchmake,
   onVote,
   onChoice,
   onEmblem,
@@ -115,6 +117,8 @@ export function PlayPanels({
   onCoalitionDeposit?: () => void;
   onCoalitionRead?: () => void;
   onPurify?: () => void;
+  onRemoveRelic?: () => void;
+  onMatchmake?: () => void;
   onVote?: () => void;
   onChoice?: () => void;
   onEmblem?: () => void;
@@ -244,6 +248,12 @@ export function PlayPanels({
         </button>
         <button type="button" data-coalition="read" onClick={() => onCoalitionRead?.()}>
           read
+        </button>
+        <button type="button" data-party="match" onClick={() => onMatchmake?.()}>
+          group
+        </button>
+        <button type="button" data-relic="remove" onClick={() => onRemoveRelic?.()}>
+          unslot
         </button>
         <button type="button" data-purify="begin" onClick={() => onPurify?.()}>
           purify

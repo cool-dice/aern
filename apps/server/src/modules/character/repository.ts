@@ -1,6 +1,11 @@
 import type { Appearance } from '@rift/domain/character';
+import type { RelicState } from '@rift/domain/relics';
 import type { StatBlock } from '@rift/domain/stats';
 import type { CharacterRecord } from './types';
+
+function copyRelic(relic: RelicState): RelicState {
+  return { ...relic, echoIds: [...relic.echoIds] };
+}
 
 export interface CharacterRepository {
   findById(id: string): Promise<CharacterRecord | null>;
@@ -50,6 +55,7 @@ function copyRecord(record: CharacterRecord): CharacterRecord {
                   relicGrade: record.build.relicGrade,
                   purifyingUntilMs: record.build.purifyingUntilMs,
                   echoIds: [...record.build.echoIds],
+                  relics: (record.build.relics ?? []).map(copyRelic),
                 },
         }
       : {}),

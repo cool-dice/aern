@@ -58,7 +58,9 @@ import { OBSERVATION_LENGTH, utilityAction } from '@rift/domain/ai';
 import { NODES } from '@rift/domain/gathering';
 import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import { beginPurify, completePurify, nnUsed, type BuildState } from '@rift/domain/build';
+import { removeRelic, type RelicState } from '@rift/domain/relics';
 import { RACES } from '@rift/domain/character';
+import { PARTY_MAX, matchmake, type PartyRole } from '@rift/domain/social';
 import {
   askHostilePortal,
   isCityService,
@@ -422,6 +424,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const cheatStrikes = new Map<string, number[]>();
   const cheatRepeat = new Set<string>();
   const purifyingIds = new Set<string>();
+  const lfgRoles = new Map<string, PartyRole>();
   /** Deposits and reads posted to a coalition. There is still no shared balance. */
   const coalitionLedger = new Map<
     string,
@@ -935,6 +938,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     decipherAncient,
     useCoalitionBank,
     startPurify,
+    removeWornRelic,
+    matchParty,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -993,11 +998,16 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       const record = await repos.characters.findById(characterId);
       return record?.build?.relicGrade ?? 'common';
     },
-    async saveBuild(characterId, state, relicGrade, echoIds) {
+    async relicStack(characterId) {
+      const record = await repos.characters.findById(characterId);
+      return (record?.build?.relics ?? []).map((relic) => ({ ...relic, echoIds: [...relic.echoIds] }));
+    },
+    async saveBuild(characterId, state, relicGrade, echoIds, relics) {
       const record = await repos.characters.findById(characterId);
       if (record === null) {
         return;
       }
+      const worn = relics ?? record.build?.relics ?? [];
       await repos.characters.update({
         ...record,
         build: {
@@ -1007,6 +1017,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
           relicGrade,
           purifyingUntilMs: state.purifyingUntilMs,
           echoIds: [...echoIds],
+          relics: worn.map((relic) => ({ ...relic, echoIds: [...relic.echoIds] })),
         },
       });
     },
@@ -3371,22 +3382,9 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
   }
 
-  /**
-   * The character row keeps one relic install: free sockets left after that install,
-   * echo programs in those sockets, and the relic's echo ids. It does not keep a stack.
-   */
-  function storedRelicsLeft(record: {
-    build?: { programs: { kind: string }[]; relicSocketFree: number; echoIds: string[] } | null;
-  }): number {
-    const build = record.build;
-    if (build === null || build === undefined) {
-      return 0;
-    }
-    const echoes = build.programs.filter((program) => program.kind === 'echo').length;
-    if (build.relicSocketFree > 0 || echoes > 0 || build.echoIds.length > 0) {
-      return 1;
-    }
-    return 0;
+  /** Worn relics stored on the character row. A missing stack is empty. */
+  function storedRelicsLeft(record: { build?: { relics?: RelicState[] } | null }): number {
+    return record.build?.relics?.length ?? 0;
   }
 
   function implantCoresLeft(state: BuildState): number {
@@ -3396,8 +3394,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   /**
    * Artifact 6 §6.4–6.5. A clean return starts only after every relic and implant
    * core is gone, then waits `PURIFY_MS` (24 hours). Implant cores are the stored
-   * `cores` with `implant`. A worn relic is the socket remainder or echo ids the
-   * relic route writes on the character row. The request does not supply those counts.
+   * `cores` with `implant`. Worn relics are the stack on the character row.
+   * The request does not supply those counts.
    */
   async function startPurify(
     body: Record<string, unknown>,
@@ -3456,8 +3454,117 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         relicGrade: record.build?.relicGrade ?? 'common',
         purifyingUntilMs: state.purifyingUntilMs,
         echoIds: [...(record.build?.echoIds ?? [])],
+        relics: (record.build?.relics ?? []).map((relic) => ({ ...relic, echoIds: [...relic.echoIds] })),
       },
     });
+  }
+
+  /**
+   * Artifact 4 §6.8. A worn relic comes off in a city or hub, outside combat.
+   * Echoes in its sockets are lost. Purification can start once the stack is empty.
+   */
+  async function removeWornRelic(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    if (characterId.length === 0) {
+      return { ok: false, code: 'character' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const relics = record.build?.relics ?? [];
+    const requested = body.index;
+    const index =
+      typeof requested === 'number' && Number.isInteger(requested) ? requested : relics.length - 1;
+    const relic = relics[index];
+    if (relic === undefined) {
+      return { ok: false, code: 'relic' };
+    }
+    const state = await buildOf(characterId);
+    const removed = removeRelic(relic, state.inCityOrHub, state.inCombat);
+    if (!removed.ok) {
+      return { ok: false, code: removed.code };
+    }
+    const lost = new Set(removed.value.lostEchoIds);
+    const nextRelics = relics.filter((_, relicIndex) => relicIndex !== index);
+    await repos.characters.update({
+      ...record,
+      build: {
+        programs: state.programs
+          .filter((program) => !(program.kind === 'echo' && lost.has(program.templateId)))
+          .map((program) => ({ ...program })),
+        cores: state.cores.map((core) => ({ ...core })),
+        relicSocketFree: state.relicSocketFree,
+        relicGrade: record.build?.relicGrade ?? relic.grade,
+        purifyingUntilMs: state.purifyingUntilMs,
+        echoIds: (record.build?.echoIds ?? []).filter((id) => !lost.has(id)),
+        relics: nextRelics.map((row) => ({ ...row, echoIds: [...row.echoIds] })),
+      },
+    });
+    return {
+      ok: true,
+      value: { relics: nextRelics.length, lostEchoIds: removed.value.lostEchoIds },
+    };
+  }
+
+  function isPartyRole(role: string): role is PartyRole {
+    return role === 'tank' || role === 'damage' || role === 'support' || role === 'flex';
+  }
+
+  /**
+   * Artifact 16 §4. Automatic group search: level within 5, an optional role,
+   * and the open seats under the party cap of 4.
+   */
+  async function matchParty(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    if (characterId.length === 0) {
+      return { ok: false, code: 'character' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const postedRole = typeof body.role === 'string' ? body.role : '';
+    const wantRole = isPartyRole(postedRole) ? postedRole : null;
+    lfgRoles.set(characterId, wantRole ?? 'flex');
+    const nodeId =
+      simWorld.entities.find((entity) => entity.id === characterId)?.nodeId ??
+      (record.bindNodeId === '' ? 'fort_humans' : record.bindNodeId);
+    social.service.register({ id: characterId, nodeId, language: 'common_light' });
+    const party = social.service.partyOf(characterId);
+    const seated = party?.members.length ?? 1;
+    const seats = Math.max(0, PARTY_MAX - seated);
+    const candidates: { id: string; level: number; role: PartyRole }[] = [];
+    for (const [id, role] of lfgRoles) {
+      if (id === characterId) {
+        continue;
+      }
+      const other = await repos.characters.findById(id);
+      if (other === null) {
+        continue;
+      }
+      const otherParty = social.service.partyOf(id);
+      if (otherParty !== null && otherParty.leaderId !== characterId) {
+        continue;
+      }
+      candidates.push({ id, level: other.level, role });
+    }
+    const picked = matchmake(candidates, record.level, wantRole, seats);
+    const joined: string[] = [];
+    for (const id of picked) {
+      const otherNode =
+        simWorld.entities.find((entity) => entity.id === id)?.nodeId ?? nodeId;
+      social.service.register({ id, nodeId: otherNode, language: 'common_light' });
+      const invited = await social.service.invite(characterId, id, lfgRoles.get(id) ?? 'flex');
+      if (invited.ok) {
+        joined.push(id);
+      }
+    }
+    return { ok: true, value: { picked, joined, seats } };
   }
 
   function noteWarBlow(attackerId: string, targetId: string): void {
@@ -6160,6 +6267,8 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/ancient/decipher', action: 'ancient_decipher' },
   { path: '/coalition/bank', action: 'coalition_bank' },
   { path: '/purify', action: 'purify' },
+  { path: '/relic/remove', action: 'relic_remove' },
+  { path: '/party/match', action: 'party_match' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

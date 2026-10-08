@@ -167,7 +167,16 @@ export interface LivePorts {
   placeQuest(characterId: string, questId: string): Promise<void>;
   loadBuild(characterId: string): Promise<BuildState>;
   relicGrade(characterId: string): Promise<GradeId>;
-  saveBuild(characterId: string, state: BuildState, relicGrade: GradeId, echoIds: string[]): Promise<void>;
+  relicStack(characterId: string): Promise<RelicState[]>;
+  saveBuild(
+    characterId: string,
+    state: BuildState,
+    relicGrade: GradeId,
+    echoIds: string[],
+    relics?: RelicState[],
+  ): Promise<void>;
+  removeWornRelic(body: Record<string, unknown>): Promise<LiveResult>;
+  matchParty(body: Record<string, unknown>): Promise<LiveResult>;
   setNeural(characterId: string, nn: number, nnLimit: number): void;
   walletGold(characterId: string): number;
   setGold(characterId: string, gold: number): void;
@@ -247,6 +256,8 @@ const LIVE_ACTIONS = new Set([
   'ancient_decipher',
   'coalition_bank',
   'purify',
+  'relic_remove',
+  'party_match',
   'node_strike',
   'coalition_say',
 ]);
@@ -389,6 +400,10 @@ export async function runLive(
       return ports.useCoalitionBank(body);
     case 'purify':
       return ports.startPurify(body);
+    case 'relic_remove':
+      return ports.removeWornRelic(body);
+    case 'party_match':
+      return ports.matchParty(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':
@@ -540,8 +555,12 @@ async function relic(body: Record<string, unknown>, ports: LivePorts): Promise<L
   }
   const echoes = state.programs.filter((program) => program.kind === 'echo').length;
   const next = { ...state, relicSocketFree: Math.max(0, socketCount(grade) - echoes) };
+  const worn = await ports.relicStack(characterId);
   ports.setGold(characterId, installed.value.gold);
-  await ports.saveBuild(characterId, next, grade, installed.value.relic.echoIds);
+  await ports.saveBuild(characterId, next, grade, installed.value.relic.echoIds, [
+    ...worn,
+    installed.value.relic,
+  ]);
   return {
     ok: true,
     value: { gold: installed.value.gold, readyAtMs: installed.value.readyAtMs, sockets: next.relicSocketFree },
@@ -563,11 +582,20 @@ async function echo(body: Record<string, unknown>, ports: LivePorts): Promise<Li
     return { ok: false, code: installed.code };
   }
   rememberNeural(characterId, installed.value.state, ports);
+  const worn = await ports.relicStack(characterId);
+  const templateId = text(body, 'templateId') ?? 'memory';
+  const relics =
+    worn.length === 0
+      ? worn
+      : worn.map((relic, index) =>
+          index === worn.length - 1 ? { ...relic, echoIds: [...relic.echoIds, templateId] } : relic,
+        );
   await ports.saveBuild(
     characterId,
     installed.value.state,
     await ports.relicGrade(characterId),
     echoIdsOf(installed.value.state),
+    relics,
   );
   return {
     ok: true,

@@ -1,6 +1,7 @@
 import type { CoreRef, Program } from '@rift/domain/build';
 import type { Appearance, Controller, RaceId } from '@rift/domain/character';
 import type { GradeId } from '@rift/domain/items';
+import type { RelicState } from '@rift/domain/relics';
 import type { Result } from '@rift/domain/result';
 import type { StatBlock, StatId } from '@rift/domain/stats';
 
@@ -17,6 +18,8 @@ export interface CharacterBuild {
   relicGrade: GradeId;
   purifyingUntilMs: number | null;
   echoIds: string[];
+  /** Worn relics. Purification counts this stack, and `removeRelic` takes one off. */
+  relics?: RelicState[];
 }
 
 export interface PrototypeFeatures {

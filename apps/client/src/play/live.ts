@@ -576,6 +576,44 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/party/match`. Artifact 16 §4: level within 5, optional role, open seats. */
+export async function postMatchmake(input: {
+  server: string;
+  characterId: string;
+  store: ClientStore;
+  role?: string;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/party/match',
+    body: {
+      characterId: input.characterId,
+      ...(input.role !== undefined ? { role: input.role } : {}),
+    },
+    store: input.store,
+    log: 'party-match',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
+/** Posts `/relic/remove`. Artifact 4 §6.8: a worn relic comes off before purification. */
+export async function postRemoveRelic(input: {
+  server: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/relic/remove',
+    body: { characterId: input.characterId },
+    store: input.store,
+    log: 'relic-remove',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/purify`. Artifact 6: relics and implant cores must already be gone; the wait is 24 hours. */
 export async function postPurify(input: {
   server: string;

@@ -33,6 +33,8 @@ import {
   postMercenary,
   postPatrol,
   postPurify,
+  postRemoveRelic,
+  postMatchmake,
   readBankLog,
   registerContender,
   renewPact,
@@ -762,6 +764,29 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onMatchmake={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postMatchmake({
+                server: SERVER,
+                characterId,
+                role: 'tank',
+                store: plan.store,
+              });
+            }}
+            onRemoveRelic={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postRemoveRelic({
+                server: SERVER,
+                characterId,
                 store: plan.store,
               });
             }}

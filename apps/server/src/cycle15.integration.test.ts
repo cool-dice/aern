@@ -163,3 +163,96 @@ test('a player decipher round-trips fragment_rift_01 and a bot receives the reco
   });
   expect(JSON.stringify(record)).not.toContain(encodeAncient('предтечи', permutation));
 });
+
+test('removeRelic is a live route and the character row stores the relic stack', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const route = composeSource.slice(
+    composeSource.indexOf('async function removeWornRelic'),
+    composeSource.indexOf('function noteWarBlow'),
+  );
+  const install = dispatch.slice(dispatch.indexOf('async function relic'), dispatch.indexOf('async function echo'));
+  expect(route.includes('removeRelic(')).toBe(true);
+  expect(install.includes('relicStack(')).toBe(true);
+  expect(dispatch.includes("case 'relic_remove'")).toBe(true);
+  expect(dispatch.includes('removeWornRelic(')).toBe(true);
+  expect(composeSource.includes("path: '/relic/remove'")).toBe(true);
+  expect(app.includes('postRemoveRelic(')).toBe(true);
+});
+
+test('a worn relic is stored on the character and can be taken off before purification', async () => {
+  const graph = compose({ nowMs: 0 });
+  const points = { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 };
+  const created = await graph.character.service.create({
+    accountId: 'account-relic',
+    controller: 'player',
+    name: 'Rel',
+    clean: false,
+    points,
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  expect(await graph.act('relic_install', { characterId, subtype: 'spore' })).toMatchObject({ ok: true });
+  expect(await graph.act('purify', { characterId })).toMatchObject({ ok: false, code: 'still_impure' });
+  const removed = await graph.act('relic_remove', { characterId });
+  expect(removed).toMatchObject({ ok: true, value: { relics: 0, lostEchoIds: [] } });
+  expect(await graph.act('purify', { characterId })).toMatchObject({
+    ok: true,
+    value: { clean: false },
+  });
+});
+
+test('matchmake runs from the live party route', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const route = composeSource.slice(
+    composeSource.indexOf('async function matchParty'),
+    composeSource.indexOf('function noteWarBlow'),
+  );
+  expect(route.includes('matchmake(')).toBe(true);
+  expect(dispatch.includes("case 'party_match'")).toBe(true);
+  expect(dispatch.includes('matchParty(')).toBe(true);
+  expect(composeSource.includes("path: '/party/match'")).toBe(true);
+  expect(app.includes('postMatchmake(')).toBe(true);
+});
+
+test('party search keeps a candidate within 5 levels of the asked role and skips a far level', async () => {
+  const graph = compose({ nowMs: 0 });
+  const points = { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 };
+  const make = async (accountId: string, name: string) => {
+    const created = await graph.character.service.create({
+      accountId,
+      controller: 'player',
+      name,
+      clean: true,
+      points,
+      appearance,
+    });
+    if (!created.ok) {
+      throw new Error(created.code);
+    }
+    return created.value.characterId;
+  };
+  const far = await make('account-far', 'Far');
+  const near = await make('account-near', 'Near');
+  const seeker = await make('account-seek', 'Seek');
+  await graph.character.service.grantXp(far, 20_000);
+  expect(await graph.act('party_match', { characterId: far, role: 'tank' })).toMatchObject({
+    ok: true,
+    value: { picked: [], joined: [] },
+  });
+  expect(await graph.act('party_match', { characterId: near, role: 'tank' })).toMatchObject({
+    ok: true,
+    value: { picked: [], joined: [] },
+  });
+  const matched = await graph.act('party_match', { characterId: seeker, role: 'tank' });
+  expect(matched).toMatchObject({ ok: true, value: { picked: [near], joined: [near] } });
+  const damage = await graph.act('party_match', { characterId: seeker, role: 'damage' });
+  expect(damage).toMatchObject({ ok: true, value: { picked: [] } });
+});
