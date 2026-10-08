@@ -373,3 +373,39 @@ test('a named subject advances that objective and a different unnamed one stays 
   expect(current('named_pvp')).toBe(1);
   expect(current('other_pvp')).toBe(0);
 });
+
+test('a later scene refuses when stored reputation is too low', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const quests = readFileSync(new URL('../../../packages/domain/src/quests.ts', import.meta.url), 'utf8');
+  expect(composeSource.includes('branchScene(quest, objective, standing)')).toBe(true);
+  expect(quests.includes('reputationTier(')).toBe(true);
+  const graph = compose({ nowMs: 1_000 });
+  graph.enterCharacter('account-lia', 'lia');
+  expect((await graph.act('quest_accept', { characterId: 'lia', questId: 'act1_light' })).ok).toBe(true);
+  const sceneOf = (): string => {
+    const state = graph.state() as {
+      quests: { id: string; objectives: { id: string; scene?: string }[] }[];
+    };
+    return state.quests.find((quest) => quest.id === 'act1_light')?.objectives.find((row) => row.id === 'koval')?.scene ?? '';
+  };
+  expect(
+    await graph.act('dialogue', {
+      characterId: 'lia',
+      questId: 'act1_light',
+      choiceId: 'question',
+      npcId: 'koval',
+    }),
+  ).toMatchObject({ ok: true, value: { reputation: 3 } });
+  expect(sceneOf()).toContain('Refused: reputation is too low');
+  expect(sceneOf()).not.toContain('questioned the council');
+  for (let i = 0; i < 6; i += 1) {
+    await graph.act('dialogue', {
+      characterId: 'lia',
+      questId: 'act1_light',
+      choiceId: 'question',
+      npcId: 'koval',
+    });
+  }
+  expect(sceneOf()).toContain('questioned the council');
+  expect(sceneOf()).not.toContain('Refused:');
+});

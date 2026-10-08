@@ -23,6 +23,9 @@ export function reputationScene(scene: string | undefined, value: number | undef
   }
   const tier = reputationTier(value);
   if (tier.quests === 'none') {
+    if (scene.includes('Refused:')) {
+      return scene;
+    }
     return `${scene} The NPC refuses further quests.`;
   }
   if (tier.quests === 'basic') {

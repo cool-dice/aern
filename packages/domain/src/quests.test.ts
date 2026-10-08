@@ -660,6 +660,9 @@ test('choice is personal and world flags are set once', () => {
   };
   expect(branchScene(chosen, koval)).toBe(koval.scene);
   expect(branchScene(recordChoice(quest, 'question'), koval)).toContain('questioned the council');
+  expect(branchScene(recordChoice(quest, 'question'), koval, 3)).toContain('Refused: reputation is too low');
+  expect(branchScene(recordChoice(quest, 'question'), koval, 3)).not.toContain('questioned the council');
+  expect(branchScene(recordChoice(quest, 'question'), koval, 21)).toContain('questioned the council');
   expect(flags).toEqual({ barrierDown: false, primordialOpened: false });
 
   const barrier = setWorldFlagOnce(flags, 'barrierDown');

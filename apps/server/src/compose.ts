@@ -1698,7 +1698,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       story: quest.story,
       choiceId: quest.choiceId ?? null,
       objectives: quest.objectives.map((objective) => {
-        const scene = reputationScene(branchScene(quest, objective), entity.reputation?.[objective.id]);
+        const standing = entity.reputation?.[objective.id];
+        const scene = reputationScene(branchScene(quest, objective, standing), standing);
         return {
           id: objective.id,
           kind: objective.kind,

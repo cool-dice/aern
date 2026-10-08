@@ -1,5 +1,6 @@
 import { questLanguageAccess } from './language';
 import { err, ok, type Result } from './result';
+import { reputationTier } from './social';
 
 /**
  * Quest rules. One `QuestProgress` value is the progress record.
@@ -262,13 +263,36 @@ export function recordChoice(progress: QuestProgress, choiceId: string): QuestPr
   return next;
 }
 
+const REPUTATION_GATED = new Set([
+  'koval',
+  'mechanic',
+  'orden',
+  'archivist',
+  'watcher',
+  'archivists',
+  'ash_keepers',
+  'archive',
+]);
+
 /**
- * Later scenes read the stored personal choice.
- * A quest with no choice keeps the catalog line. World flags are not an input.
+ * Later scenes read the stored personal choice and, for a gated NPC, reputation.
+ * At 20 or below the NPC refuses. A missing reputation value keeps the choice line.
+ * World flags are not an input.
  */
-export function branchScene(progress: QuestProgress, objective: QuestObjective): string | undefined {
+export function branchScene(
+  progress: QuestProgress,
+  objective: QuestObjective,
+  reputation?: number,
+): string | undefined {
   if (objective.scene === undefined) {
     return undefined;
+  }
+  if (
+    reputation !== undefined &&
+    REPUTATION_GATED.has(objective.id) &&
+    reputationTier(reputation).quests === 'none'
+  ) {
+    return `${objective.scene} Refused: reputation is too low for this quest.`;
   }
   if (progress.choiceId === 'question' && objective.id === 'koval') {
     return 'Master Koval. You questioned the council, so the forge lesson is private.';
