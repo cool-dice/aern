@@ -17,6 +17,7 @@ import {
   falseReportSanction,
   GUILD_NAME_BLACKLIST,
   sanctionForCheatStrikes,
+  textHitsBlacklist,
 } from '@rift/domain/moderation';
 import { hashSeed, mulberry32 } from '@rift/domain/rng';
 import { EQUIP_SLOTS, STARTING_DURABILITY, type EquipSlot, type GradeId } from '@rift/domain/items';
@@ -3208,6 +3209,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       });
     }
     const nowMs = clock.now();
+    const blacklist = [...GUILD_NAME_BLACKLIST];
+    const listed = textHitsBlacklist(text, blacklist);
     const presented = chatPresentation(
       text,
       selfUpy,
@@ -3219,15 +3222,19 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       channel: 'local',
       text,
       nowMs,
-      blacklist: [...GUILD_NAME_BLACKLIST],
+      blacklist,
     });
     const muteRemaining = muteRemainingMs(characterId);
     if (!sent.ok) {
-      return { ok: false, code: sent.code, value: { muteRemainingMs: muteRemaining, ...presented } };
+      return {
+        ok: false,
+        code: sent.code,
+        value: { muteRemainingMs: muteRemaining, listed, ...presented },
+      };
     }
     return {
       ok: true,
-      value: { ...sent.value, ...presented, muteRemainingMs: muteRemaining },
+      value: { ...sent.value, ...presented, muteRemainingMs: muteRemaining, listed },
     };
   }
 

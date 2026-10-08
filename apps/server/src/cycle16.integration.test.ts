@@ -98,3 +98,19 @@ test('chatPresentation runs from the live chat route', () => {
   expect(service.includes('chatPresentation(')).toBe(true);
   expect(say.includes('muteRemainingMs')).toBe(true);
 });
+
+test('textHitsBlacklist runs on chat send and a listed token is not delivered', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const say = composeSource.slice(
+    composeSource.indexOf('async function sayChat'),
+    composeSource.indexOf('function recordCheatStrike'),
+  );
+  expect(say.includes('textHitsBlacklist(')).toBe(true);
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  const sent = await graph.act('chat_say', { characterId: 'lia', text: 'slug' });
+  expect(sent).toMatchObject({ ok: true, value: { delivered: 0, listed: true } });
+  expect(graph.social.service.sanctionOf('lia')).toBe('mute_1h');
+  const clean = await graph.act('chat_say', { characterId: 'lia', text: 'hello' });
+  expect(clean.ok).toBe(false);
+});
