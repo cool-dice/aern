@@ -14,6 +14,7 @@ interface Session {
   attemptsLeft: number;
   lockoutUntilMs: number;
   kind: KeeperKind;
+  subject?: string;
 }
 
 export interface HackView {
@@ -31,6 +32,8 @@ export interface HackService {
     technique: number;
     hasDeck: boolean;
     nowMs: number;
+    /** Objective id, quest id, or place this hack is for. */
+    subject?: string;
   }): Result<{ attemptsLeft: number; difficulty: number }, 'deck' | 'lockout'>;
   guess(input: {
     characterId: string;
@@ -68,6 +71,7 @@ export function createHackService(rng: Rng, bus: Bus): HackService {
         attemptsLeft: opened.attemptsLeft,
         lockoutUntilMs: 0,
         kind: input.kind,
+        ...(input.subject !== undefined ? { subject: input.subject } : {}),
       });
       return ok({
         attemptsLeft: opened.attemptsLeft,
@@ -88,7 +92,11 @@ export function createHackService(rng: Rng, bus: Bus): HackService {
       }
       session.attemptsLeft = result.value.attemptsLeft;
       if (result.value.correct) {
-        bus.emit('hack.opened', { characterId: input.characterId, kind: session.kind });
+        bus.emit('hack.opened', {
+          characterId: input.characterId,
+          kind: session.kind,
+          ...(session.subject !== undefined ? { subject: session.subject } : {}),
+        });
         sessions.delete(input.characterId);
         return ok(result.value);
       }

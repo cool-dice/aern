@@ -4,10 +4,11 @@ export interface DomainEventMap {
   'character.downed': { characterId: string };
   'item.crafted': { characterId: string; itemId: string };
   'chat.message': { channel: string; senderId: string };
-  'quest.completed': { characterId: string; questId: string };
+  'quest.completed': { characterId: string; questId: string; npcId?: string };
+  'quest.failed': { characterId: string; questId: string; npcId?: string };
   'ai.rejected': { characterId: string; code: string };
   'gather.completed': { characterId: string; nodeId: string };
-  'hack.opened': { characterId: string; kind: string };
+  'hack.opened': { characterId: string; kind: string; subject?: string };
   'wiki.written': { articleId: string; authorId: string };
   'build.installed': { characterId: string; kind: string };
 }
@@ -34,6 +35,7 @@ function createHandlerLists(): HandlerLists {
     'item.crafted': [],
     'chat.message': [],
     'quest.completed': [],
+    'quest.failed': [],
     'ai.rejected': [],
     'gather.completed': [],
     'hack.opened': [],

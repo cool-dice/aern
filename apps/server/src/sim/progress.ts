@@ -33,9 +33,11 @@ export function onVisit(state: ProgressState, subject?: string): ProgressState {
 }
 
 /**
- * One event updates objectives of `kind` that asked for `subject`.
- * An objective with no subject asked for any event of that kind.
- * A different subject on the same kind stays put.
+ * One event updates the objective that asked for `subject`.
+ * A named subject matches that monster, item, or place.
+ * An objective with no subject matches its own id, or the quest id when it is
+ * the only unnamed objective of this kind on that quest. A bare kind does not
+ * move every unnamed objective together.
  */
 export function onObjective(
   state: ProgressState,
@@ -43,6 +45,31 @@ export function onObjective(
   subject?: string,
 ): ProgressState {
   return { progress: state.progress, quests: advanceMatching(state.quests, kind, subject) };
+}
+
+export function askedObjective(
+  quest: { questId: string; objectives: readonly { id: string; kind: string; subject?: string }[] },
+  objective: { id: string; kind: string; subject?: string },
+  kind: string,
+  subject: string | undefined,
+): boolean {
+  if (objective.kind !== kind) {
+    return false;
+  }
+  if (objective.subject !== undefined) {
+    return subject !== undefined && objective.subject === subject;
+  }
+  if (subject === undefined) {
+    return false;
+  }
+  if (subject === objective.id) {
+    return true;
+  }
+  if (subject !== quest.questId) {
+    return false;
+  }
+  const unnamed = quest.objectives.filter((row) => row.kind === kind && row.subject === undefined);
+  return unnamed.length === 1 && unnamed[0]?.id === objective.id;
 }
 
 function advanceMatching(
@@ -56,10 +83,7 @@ function advanceMatching(
     }
     let next = quest;
     for (const objective of quest.objectives) {
-      if (objective.kind !== kind) {
-        continue;
-      }
-      if (objective.subject !== undefined && objective.subject !== subject) {
+      if (!askedObjective(quest, objective, kind, subject)) {
         continue;
       }
       next = advance(next, objective.id, 1);

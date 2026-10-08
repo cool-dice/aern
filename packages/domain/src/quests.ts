@@ -57,7 +57,7 @@ export interface QuestObjective {
   current: number;
   /** Named story beat from artifact 20.6. Errand objectives omit it. */
   scene?: string;
-  /** Monster, item, or place this objective asked for. Omitted means any of `kind`. */
+  /** Monster, item, or place this objective asked for. Omitted means the objective id. */
   subject?: string;
 }
 
