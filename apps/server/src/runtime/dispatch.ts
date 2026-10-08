@@ -108,6 +108,7 @@ export interface LivePorts {
   fileReport(body: Record<string, unknown>): LiveResult;
   judgeReport(body: Record<string, unknown>): LiveResult;
   sayChat(body: Record<string, unknown>): Promise<LiveResult>;
+  noteCheatStrike(body: Record<string, unknown>): Promise<LiveResult>;
   memberDoctrine(characterId: string): DoctrineId | null;
   holdWithdrawal(input: {
     guildId: string;
@@ -237,6 +238,7 @@ const LIVE_ACTIONS = new Set([
   'report_file',
   'report_judge',
   'chat_say',
+  'cheat_strike',
   'node_strike',
   'coalition_say',
 ]);
@@ -369,6 +371,8 @@ export async function runLive(
       return ports.judgeReport(body);
     case 'chat_say':
       return ports.sayChat(body);
+    case 'cheat_strike':
+      return ports.noteCheatStrike(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':

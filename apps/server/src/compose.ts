@@ -4,7 +4,12 @@ import { loadCatalog, type Catalog } from '@rift/content';
 import type { NodeKind, WorldEdge, WorldNode } from '@rift/domain/world';
 import type { WorldRepository } from './modules/world/repository';
 import { parseClientCommand, type ClientCommand } from '@rift/protocol';
-import { falseReportSanction, GUILD_NAME_BLACKLIST } from '@rift/domain/moderation';
+import {
+  CHAT_BAN_MS,
+  falseReportSanction,
+  GUILD_NAME_BLACKLIST,
+  sanctionForCheatStrikes,
+} from '@rift/domain/moderation';
 import { mulberry32 } from '@rift/domain/rng';
 import { EQUIP_SLOTS, type EquipSlot, type GradeId } from '@rift/domain/items';
 import { STAT_IDS, derive, emptyPoints, type StatBlock } from '@rift/domain/stats';
@@ -402,6 +407,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     string,
     { doctrine: DoctrineId; changedAtMs: number; affects: DoctrineAffect; multiplier: number }
   >();
+  const CHEAT_STRIKE_WINDOW_MS = 24 * 60 * 60 * 1000;
+  const cheatStrikes = new Map<string, number[]>();
+  const cheatRepeat = new Set<string>();
+  const accountByCharacter = new Map<string, string>();
   let playerReports: {
     id: string;
     reporterId: string;
@@ -904,6 +913,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     fileReport,
     judgeReport,
     sayChat,
+    noteCheatStrike,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -2348,6 +2358,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await resolveInternalPolls();
     await relieveAbsentLeaders(ms);
     await inspectRewardFreezes();
+    await reviewCheatStrikes();
     refreshPortalLifts();
     await sampleBalance();
   }
@@ -3110,6 +3121,71 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return { ok: true, value: sent.value };
   }
 
+  function recordCheatStrike(accountId: string, nowMs: number): number {
+    const prior = cheatStrikes.get(accountId) ?? [];
+    const recent = prior.filter((atMs) => nowMs - atMs >= 0 && nowMs - atMs <= CHEAT_STRIKE_WINDOW_MS);
+    recent.push(nowMs);
+    cheatStrikes.set(accountId, recent);
+    return recent.length;
+  }
+
+  /**
+   * Artifact 32 §10 and task 027. Three cheat flags in 24 hours ban the account for 7 days.
+   * A later window, after a ban was already applied, is permanent.
+   */
+  async function reviewCheatStrikes(): Promise<void> {
+    const now = clock.now();
+    for (const [accountId, times] of [...cheatStrikes.entries()]) {
+      const recent = times.filter((atMs) => now - atMs >= 0 && now - atMs <= CHEAT_STRIKE_WINDOW_MS);
+      cheatStrikes.set(accountId, recent);
+      const sanction = sanctionForCheatStrikes(recent.length, cheatRepeat.has(accountId));
+      if (sanction === 'none') {
+        continue;
+      }
+      const applied = await applyCheatSanction(accountId, sanction, now);
+      if (!applied) {
+        continue;
+      }
+      cheatRepeat.add(accountId);
+      cheatStrikes.set(accountId, []);
+    }
+  }
+
+  async function applyCheatSanction(
+    accountId: string,
+    sanction: 'account_ban_7d' | 'permanent',
+    nowMs: number,
+  ): Promise<boolean> {
+    const account = await repos.auth.findAccountById(accountId);
+    if (account === null) {
+      return false;
+    }
+    await repos.auth.updateAccount({
+      ...account,
+      banned: true,
+      banReason: 'cheat',
+      banUntilMs: sanction === 'permanent' ? null : nowMs + CHAT_BAN_MS,
+    });
+    return true;
+  }
+
+  async function noteCheatStrike(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const posted = typeof body.accountId === 'string' ? body.accountId : '';
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    let accountId = posted;
+    if (accountId.length === 0 && characterId.length > 0) {
+      const record = await repos.characters.findById(characterId);
+      accountId = record?.accountId ?? accountByCharacter.get(characterId) ?? '';
+    }
+    if (accountId.length === 0) {
+      return { ok: false, code: 'account' };
+    }
+    const strikes = recordCheatStrike(accountId, clock.now());
+    return { ok: true, value: { accountId, strikes } };
+  }
+
   function noteWarRoster(): void {
     const now = clock.now();
     for (const war of openWars) {
@@ -3526,7 +3602,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     });
   }
 
-  function rememberCharacter(_accountId: string, characterId: string): void {
+  function rememberCharacter(accountId: string, characterId: string): void {
+    if (accountId.length > 0) {
+      accountByCharacter.set(characterId, accountId);
+    }
     openWallet(characterId);
     void openCrafter(characterId);
     enterWorld(characterId);
@@ -4731,6 +4810,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     await resolveInternalPolls();
     await relieveAbsentLeaders(SIM_TICK_MS);
     await inspectRewardFreezes();
+    await reviewCheatStrikes();
     refreshPortalLifts();
     await sampleBalance();
   }
@@ -5309,6 +5389,24 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
   }
 
+  function accountIdFromCommandFrame(raw: string): string | null {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    if (typeof parsed !== 'object' || parsed === null) {
+      return null;
+    }
+    const token = (parsed as { accessToken?: unknown }).accessToken;
+    if (typeof token !== 'string') {
+      return null;
+    }
+    const access = auth.service.verifyAccess(token);
+    return access.ok ? access.value.accountId : null;
+  }
+
   function creditGold(characterId: string, amount: number): void {
     const current =
       repos.economy.getCharacter(characterId) ??
@@ -5412,7 +5510,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         const seen = new Set<string>();
         const rateTimestamps: number[] = [];
         socket.on('message', (data) => {
-          const result = handleMessage(messageText(data), {
+          const raw = messageText(data);
+          const result = handleMessage(raw, {
             nowMs: clock.now(),
             verifyAccess: (token) => auth.service.verifyAccess(token),
             sessionKey: (accountId) => sessionKeyOf(sessions, clock.now(), accountId),
@@ -5426,6 +5525,12 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
               pending.push(command);
             },
           });
+          if (!result.ok && result.cheatStrike === true) {
+            const accountId = accountIdFromCommandFrame(raw);
+            if (accountId !== null) {
+              recordCheatStrike(accountId, clock.now());
+            }
+          }
           if (!result.ok) {
             rejectedTotal += 1;
             socket.send(JSON.stringify(result.reject));
@@ -5796,6 +5901,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/report', action: 'report_file' },
   { path: '/report/judge', action: 'report_judge' },
   { path: '/chat', action: 'chat_say' },
+  { path: '/cheat/strike', action: 'cheat_strike' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

@@ -112,3 +112,52 @@ test('the mute from a false report blocks chat until 24 hours elapse', async () 
     value: { delivered: 1 },
   });
 });
+
+test('cheat strikes are sanctioned from tickOnce and skipMs', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const tickBody = composeSource.slice(
+    composeSource.indexOf('async function tickOnce'),
+    composeSource.indexOf('function simSnapshot'),
+  );
+  const skipBody = composeSource.slice(
+    composeSource.indexOf('async function skipMs'),
+    composeSource.indexOf('function guardAllies'),
+  );
+  const review = composeSource.slice(
+    composeSource.indexOf('async function reviewCheatStrikes'),
+    composeSource.indexOf('async function applyCheatSanction'),
+  );
+  expect(tickBody.includes('reviewCheatStrikes(')).toBe(true);
+  expect(skipBody.includes('reviewCheatStrikes(')).toBe(true);
+  expect(review.includes('sanctionForCheatStrikes(')).toBe(true);
+  expect(dispatch.includes("case 'cheat_strike'")).toBe(true);
+  expect(dispatch.includes('noteCheatStrike(')).toBe(true);
+  expect(composeSource.includes("path: '/cheat/strike'")).toBe(true);
+});
+
+test('three cheat strikes in 24 hours ban the account for 7 days, and the next window is permanent', async () => {
+  const graph = compose({ nowMs: 0 });
+  const registered = await graph.auth.service.register('lia@rift.test', 'password1');
+  expect(registered.ok).toBe(true);
+  if (!registered.ok) {
+    return;
+  }
+  const accountId = registered.value.accountId;
+  expect(await graph.act('cheat_strike', { accountId })).toMatchObject({ ok: true, value: { strikes: 1 } });
+  expect(await graph.act('cheat_strike', { accountId })).toMatchObject({ ok: true, value: { strikes: 2 } });
+  await graph.tickOnce();
+  expect((await graph.auth.service.login('lia@rift.test', 'password1')).ok).toBe(true);
+  expect(await graph.act('cheat_strike', { accountId })).toMatchObject({ ok: true, value: { strikes: 3 } });
+  await graph.tickOnce();
+  expect(await graph.auth.service.login('lia@rift.test', 'password1')).toEqual({ ok: false, code: 'banned' });
+  await graph.skipMs(7 * 86_400_000);
+  expect((await graph.auth.service.login('lia@rift.test', 'password1')).ok).toBe(true);
+  expect(await graph.act('cheat_strike', { accountId })).toMatchObject({ ok: true, value: { strikes: 1 } });
+  await graph.act('cheat_strike', { accountId });
+  await graph.act('cheat_strike', { accountId });
+  await graph.skipMs(0);
+  expect(await graph.auth.service.login('lia@rift.test', 'password1')).toEqual({ ok: false, code: 'banned' });
+  await graph.skipMs(7 * 86_400_000);
+  expect(await graph.auth.service.login('lia@rift.test', 'password1')).toEqual({ ok: false, code: 'banned' });
+});
