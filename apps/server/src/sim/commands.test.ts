@@ -47,7 +47,16 @@ test('attacks keep melee versus ranged and the catalog target', () => {
         params: { entityId: 'hero', weaponDamage: 6, range: 4 },
       }),
     ),
-  ).toMatchObject({ melee: false, weaponDamage: 6, range: 4 });
+  ).toMatchObject({ melee: false, weaponDamage: 6, range: 4, aim: null });
+  expect(
+    toSimCommand(
+      command({
+        action: 'attack_melee',
+        targetId: 'rat',
+        params: { entityId: 'hero', aim: 'leg_left' },
+      }),
+    ),
+  ).toMatchObject({ aim: 'leg_left' });
 });
 
 test('move is not a catalog id and a broken direction is dropped', () => {

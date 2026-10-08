@@ -8,6 +8,7 @@ import type { QuestObjectiveKind } from '@rift/domain/quests';
 import { derive, emptyPoints } from '@rift/domain/stats';
 import { weatheredGatherSeconds } from '../sim/weather';
 import type { BuildService } from '../modules/build/service';
+import type { CraftService } from '../modules/craft/types';
 import type { DungeonService } from '../modules/dungeon/types';
 import type { EconomyService } from '../modules/economy/types';
 import type { GatheringService } from '../modules/gathering/service';
@@ -33,7 +34,19 @@ export interface LivePorts {
   quest: QuestService;
   guild: GuildServiceApi;
   economy: EconomyService;
+  craft: CraftService;
+  ensureCrafter(characterId: string): Promise<void>;
   social: SocialService;
+  enterDungeon(
+    characterId: string,
+    instanceId: string,
+    layout: {
+      rooms: { id: number; x: number; y: number }[];
+      edges: [number, number][];
+      entranceId: number;
+    },
+  ): void;
+  leaveDungeon(characterId: string): void;
   note(characterId: string, kind: QuestObjectiveKind): Promise<void>;
   placeQuest(characterId: string, questId: string): Promise<void>;
   loadBuild(characterId: string): Promise<BuildState>;
@@ -62,6 +75,11 @@ const LIVE_ACTIONS = new Set([
   'path_learn',
   'core_equip',
   'dungeon_enter',
+  'dungeon_leave',
+  'craft_start',
+  'craft_complete',
+  'trade_offer',
+  'trade_accept',
   'quest_accept',
   'quest_turnin',
   'guild_create',
@@ -99,6 +117,16 @@ export async function runLive(
       return core(body, ports);
     case 'dungeon_enter':
       return dungeon(body, ports);
+    case 'dungeon_leave':
+      return dungeonLeave(body, ports);
+    case 'craft_start':
+      return craftStart(body, ports);
+    case 'craft_complete':
+      return craftComplete(body, ports);
+    case 'trade_offer':
+      return tradeOffer(body, ports);
+    case 'trade_accept':
+      return tradeAccept(body, ports);
     case 'quest_accept':
       return questAccept(body, ports);
     case 'quest_turnin':
@@ -338,7 +366,102 @@ async function dungeon(body: Record<string, unknown>, ports: LivePorts): Promise
   if (partySize > 1) {
     await ports.note(characterId, 'escort');
   }
-  return { ok: true, value: { instanceId: entered.value.instanceId } };
+  ports.enterDungeon(characterId, entered.value.instanceId, entered.value.layout);
+  return {
+    ok: true,
+    value: { instanceId: entered.value.instanceId, roomId: entered.value.layout.entranceId },
+  };
+}
+
+async function dungeonLeave(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  if (characterId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  ports.leaveDungeon(characterId);
+  return { ok: true, value: { left: true } };
+}
+
+async function craftStart(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const recipeId = text(body, 'recipeId');
+  if (characterId === undefined || recipeId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  await ports.ensureCrafter(characterId);
+  const started = await ports.craft.start({
+    characterId,
+    recipeId,
+    itemLevel: numberOf(body.itemLevel, 1),
+    accelerate: body.accelerate === true,
+    nowMs: ports.now(),
+  });
+  if (!started.ok) {
+    return { ok: false, code: started.code };
+  }
+  await ports.note(characterId, 'craft');
+  return { ok: true, value: started.value };
+}
+
+async function craftComplete(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const jobId = text(body, 'jobId');
+  if (characterId === undefined || jobId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  const done = await ports.craft.complete(characterId, jobId, ports.now());
+  if (!done.ok) {
+    return { ok: false, code: done.code };
+  }
+  await ports.note(characterId, 'craft');
+  return { ok: true, value: done.value };
+}
+
+async function tradeOffer(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const counterpartyId = text(body, 'counterpartyId');
+  if (characterId === undefined || counterpartyId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  const offered = await ports.economy.offerTrade({
+    characterId,
+    counterpartyId,
+    gold: numberOf(body.gold, 0),
+    items: itemCounts(body.items),
+  });
+  if (!offered.ok) {
+    return { ok: false, code: offered.code };
+  }
+  return { ok: true, value: offered.value };
+}
+
+async function tradeAccept(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const tradeId = text(body, 'tradeId');
+  if (characterId === undefined || tradeId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  const accepted = await ports.economy.acceptTrade(tradeId, characterId);
+  if (!accepted.ok) {
+    return { ok: false, code: accepted.code };
+  }
+  if (accepted.value === 'done') {
+    await ports.note(characterId, 'trade');
+  }
+  return { ok: true, value: { status: accepted.value } };
+}
+
+function itemCounts(value: unknown): Record<string, number> {
+  if (typeof value !== 'object' || value === null) {
+    return {};
+  }
+  const counts: Record<string, number> = {};
+  for (const [id, qty] of Object.entries(value)) {
+    if (typeof qty === 'number' && Number.isInteger(qty) && qty > 0) {
+      counts[id] = qty;
+    }
+  }
+  return counts;
 }
 
 async function questAccept(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

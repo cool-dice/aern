@@ -64,6 +64,12 @@ function entity(partial: Partial<SimEntity> & Pick<SimEntity, 'id'>): SimEntity 
     bindNodeId: partial.bindNodeId,
     bindCell: partial.bindCell,
     inventory: partial.inventory,
+    roomId: partial.roomId,
+    dungeonId: partial.dungeonId,
+    dungeonRooms: partial.dungeonRooms,
+    dungeonEdges: partial.dungeonEdges,
+    lastAttackerId: partial.lastAttackerId,
+    seasonTag: partial.seasonTag,
   };
 }
 
@@ -330,6 +336,99 @@ test('a keeper drops a phase and a loot stack when its HP crosses the cut', () =
   expect(fallen.entities).toEqual([]);
   expect(fallen.corpses[0]?.victimId).toBe('keeper');
   expect(fallen.corpses[0]?.stacks).toEqual([{ itemId: 'keeper_core', qty: 1 }]);
+});
+
+test('an aimed leg hit sets legsDestroyed and the run pays the penalty', () => {
+  const start = world({
+    entities: [
+      entity({ id: 'a', od: 5, cell: { x: 0, y: 0 }, accuracyScore: 20, reaction: 10 }),
+      entity({ id: 'b', od: 0, cell: { x: 1, y: 0 }, evasion: 0, maxHp: 40, hp: 40 }),
+    ],
+  });
+  const hit = stepTick(
+    start,
+    [
+      {
+        type: 'attack',
+        attackerId: 'a',
+        targetId: 'b',
+        weaponDamage: 8,
+        odCost: 0,
+        range: 1,
+        los: true,
+        aim: 'leg_left',
+        melee: true,
+        friendlyFire: false,
+        sameGroup: false,
+        pvpOpen: true,
+        safeZone: false,
+        issuedAtMs: 0,
+      },
+    ],
+    mulberry32(1),
+  );
+  const target = hit.entities.find((row) => row.id === 'b');
+  expect(target?.legsDestroyed).toBe(1);
+  expect(target?.hp).toBeGreaterThan(0);
+  const ran = stepTick(
+    world({
+      entities: [
+        entity({
+          id: 'b',
+          od: 5,
+          reaction: 10,
+          legsDestroyed: 1,
+          cell: { x: 0, y: 0 },
+        }),
+      ],
+    }),
+    [
+      {
+        type: 'move',
+        entityId: 'b',
+        dir: 'e',
+        running: true,
+        issuedAtMs: 0,
+      },
+    ],
+    mulberry32(2),
+  );
+  expect(ran.entities[0]?.cell.x).toBe(2);
+});
+
+test('dungeon steps stay on connected rooms', () => {
+  const start = world({
+    entities: [
+      entity({
+        id: 'a',
+        od: 3,
+        odFrac: 3,
+        roomId: 0,
+        dungeonId: 'inst',
+        dungeonRooms: [
+          { id: 0, x: 0, y: 0 },
+          { id: 1, x: 4, y: 1 },
+        ],
+        dungeonEdges: [[0, 1]],
+        cell: { x: 0, y: 0 },
+      }),
+    ],
+  });
+  const moved = stepTick(
+    start,
+    [{ type: 'move', entityId: 'a', dir: 'e', running: false, issuedAtMs: 0 }],
+    mulberry32(1),
+  );
+  expect(moved.rejections).toEqual([]);
+  expect(moved.entities[0]).toMatchObject({ roomId: 1, cell: { x: 4, y: 1 } });
+  const free = stepTick(
+    world({
+      entities: [entity({ id: 'a', od: 3, odFrac: 3, cell: { x: 0, y: 0 } })],
+    }),
+    [{ type: 'move', entityId: 'a', dir: 'e', running: false, issuedAtMs: 0 }],
+    mulberry32(1),
+  );
+  expect(free.entities[0]?.cell).toEqual({ x: 1, y: 0 });
 });
 
 test('neuroshock halves speed and weapon damage while overloaded', () => {

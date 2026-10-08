@@ -352,7 +352,48 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     quest: quest.service,
     guild: guild.service,
     economy: economy.service,
+    craft: craft.service(),
+    ensureCrafter: openCrafter,
     social: social.service,
+    enterDungeon(characterId, instanceId, layout) {
+      const entrance = layout.rooms.find((room) => room.id === layout.entranceId) ?? layout.rooms[0];
+      simWorld = {
+        ...simWorld,
+        entities: simWorld.entities.map((entity) => {
+          if (entity.id !== characterId) {
+            return entity;
+          }
+          return {
+            ...entity,
+            dungeonId: instanceId,
+            roomId: layout.entranceId,
+            dungeonRooms: layout.rooms.map((room) => ({ id: room.id, x: room.x, y: room.y })),
+            dungeonEdges: layout.edges.map((edge) => [edge[0], edge[1]] as [number, number]),
+            ...(entrance !== undefined ? { cell: { x: entrance.x, y: entrance.y } } : {}),
+          };
+        }),
+      };
+    },
+    leaveDungeon(characterId) {
+      const entity = simWorld.entities.find((row) => row.id === characterId);
+      if (entity?.dungeonId !== undefined) {
+        dungeon.service.leave(entity.dungeonId, characterId, clock.now());
+      }
+      simWorld = {
+        ...simWorld,
+        entities: simWorld.entities.map((row) => {
+          if (row.id !== characterId) {
+            return row;
+          }
+          const next = { ...row, cell: row.bindCell ?? { x: 0, y: 0 } };
+          delete next.dungeonId;
+          delete next.roomId;
+          delete next.dungeonRooms;
+          delete next.dungeonEdges;
+          return next;
+        }),
+      };
+    },
     note,
     async loadBuild(characterId) {
       return buildOf(characterId);
@@ -442,7 +483,25 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
 
   function rememberCharacter(_accountId: string, characterId: string): void {
     openWallet(characterId);
+    void openCrafter(characterId);
     enterWorld(characterId);
+  }
+
+  async function openCrafter(characterId: string): Promise<void> {
+    const existing = await repos.crafters.get(characterId);
+    if (existing === undefined) {
+      await repos.crafters.save(characterId, {
+        nodeId: 'fort_humans',
+        inCombat: false,
+        languageUpy: 100,
+        gold: GUILD_CREATE_GOLD,
+        skills: { weaponsmith: { level: 1, xp: 0 } },
+      });
+    }
+    const stacks = await repos.materials.read(characterId);
+    if ((stacks.metal ?? 0) < 5) {
+      await repos.materials.commit(characterId, stacks, { ...stacks, metal: 5 });
+    }
   }
 
   function tickOnce(): void {
@@ -451,13 +510,21 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     }
     const snap = event.service.snapshot(clock.now(), 'plains', simWorld.safeZone === true);
     event.service.planWeather('plains', clock.now(), weatherRng);
-    const seasonSpawn = snap.spawnTagMultiplier;
+    if (snap.invasionActive && snap.invasion === null) {
+      event.service.startInvasion('plains', clock.now());
+    }
+    const live = event.service.snapshot(clock.now(), 'plains', simWorld.safeZone === true);
+    const seasonSpawn = live.spawnTagMultiplier;
     simWorld = {
       ...simWorld,
       seasonSpawn,
-      ...(snap.weatherId !== null ? { weatherId: snap.weatherId } : {}),
+      holidayCraft: live.craftBonus,
+      holidayKeeper: live.keeperBonus,
+      invasion: live.invasion,
+      seasonResource: live.resourceBonus,
+      ...(live.weatherId !== null ? { weatherId: live.weatherId } : {}),
     };
-    topUpSeasonSpawns(Math.max(0, Math.round(PROTOTYPE_MONSTERS.length * seasonSpawn)), snap.spawnTag);
+    topUpSeasonSpawns(Math.max(0, Math.round(PROTOTYPE_MONSTERS.length * seasonSpawn)), live.spawnTag);
     const commands: SimCommand[] = [];
     for (const command of pending.splice(0, pending.length)) {
       const simCommand = toSimCommand(command);
@@ -482,7 +549,15 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
     const beforeCorpses = new Set(simWorld.corpses.map((corpse) => corpse.victimId));
     const beforeHp = new Map(simWorld.entities.map((entity) => [entity.id, entity.hp]));
-    simWorld = stepTick(simWorld, commands, rng);
+    const eventFields = {
+      seasonSpawn: simWorld.seasonSpawn,
+      holidayCraft: simWorld.holidayCraft,
+      holidayKeeper: simWorld.holidayKeeper,
+      invasion: simWorld.invasion,
+      seasonResource: simWorld.seasonResource,
+    };
+    simWorld = { ...stepTick(simWorld, commands, rng), ...eventFields };
+    dungeon.service.tickTtl(simWorld.nowMs, true);
     for (const corpse of simWorld.corpses) {
       if (beforeCorpses.has(corpse.victimId)) {
         continue;
@@ -637,6 +712,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       vision: simWorld.vision ?? 1,
       gatherSpeed: simWorld.gatherSpeed ?? 1,
       seasonSpawn: simWorld.seasonSpawn ?? 1,
+      seasonResource: simWorld.seasonResource ?? null,
+      holidayCraft: simWorld.holidayCraft ?? 1,
+      holidayKeeper: simWorld.holidayKeeper ?? 1,
+      invasion: simWorld.invasion ?? null,
       self: focus === undefined ? null : entityView(focus, walletGold(focus.id)),
       entities: simWorld.entities
         .filter((entity) => entity.monsterId !== undefined)
@@ -833,6 +912,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       const saved = await repos.characters.listByAccount(accountId);
       for (const record of saved) {
         openWallet(record.id);
+        void openCrafter(record.id);
         enterWorld(record.id, record.bindNodeId === '' ? 'fort_humans' : record.bindNodeId);
       }
     },
@@ -1151,6 +1231,11 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/path', action: 'path_learn' },
   { path: '/core', action: 'core_equip' },
   { path: '/dungeon', action: 'dungeon_enter' },
+  { path: '/dungeon/leave', action: 'dungeon_leave' },
+  { path: '/craft/start', action: 'craft_start' },
+  { path: '/craft/complete', action: 'craft_complete' },
+  { path: '/trade', action: 'trade_offer' },
+  { path: '/trade/accept', action: 'trade_accept' },
   { path: '/quest/accept', action: 'quest_accept' },
   { path: '/quest/turnin', action: 'quest_turnin' },
   { path: '/guild', action: 'guild_create' },

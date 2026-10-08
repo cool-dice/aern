@@ -186,6 +186,10 @@ export interface SimWorld {
   vision?: number;
   gatherSpeed?: number;
   seasonSpawn?: number;
+  holidayCraft?: number;
+  holidayKeeper?: number;
+  invasion?: string | null;
+  seasonResource?: string;
 }
 
 interface StatusMods {
@@ -490,6 +494,46 @@ function settleMonsters(
   return { entities: alive, corpses: nextCorpses };
 }
 
+const DIR_INDEX: Record<string, number> = {
+  n: 0,
+  ne: 1,
+  e: 2,
+  se: 3,
+  s: 4,
+  sw: 5,
+  w: 6,
+  nw: 7,
+};
+
+function stepDungeon(entity: SimEntity, command: MoveCommand, rejections: SimRejection[]): void {
+  const edges = entity.dungeonEdges ?? [];
+  const neighbors: number[] = [];
+  for (const [a, b] of edges) {
+    if (a === entity.roomId) {
+      neighbors.push(b);
+    } else if (b === entity.roomId) {
+      neighbors.push(a);
+    }
+  }
+  if (neighbors.length === 0 || entity.od < 1) {
+    rejections.push({ entityId: entity.id, code: neighbors.length === 0 ? 'blocked' : 'od' });
+    return;
+  }
+  const index = DIR_INDEX[command.dir] ?? 0;
+  const next = neighbors[index % neighbors.length];
+  if (next === undefined) {
+    rejections.push({ entityId: entity.id, code: 'blocked' });
+    return;
+  }
+  entity.roomId = next;
+  const room = entity.dungeonRooms?.find((candidate) => candidate.id === next);
+  if (room !== undefined) {
+    entity.cell = { x: room.x, y: room.y };
+  }
+  entity.od -= 1;
+  entity.odFrac = Math.max(0, entity.odFrac - 1);
+}
+
 function regenOd(entity: SimEntity): void {
   const derived = derive({
     stats: { ...emptyPoints(), reaction: entity.reaction, will: entity.will },
@@ -723,6 +767,10 @@ function applyMove(
   }
   if (entity.stunned) {
     rejections.push({ entityId: entity.id, code: 'stun_blocked' });
+    return;
+  }
+  if (entity.roomId !== undefined && entity.dungeonEdges !== undefined) {
+    stepDungeon(entity, command, rejections);
     return;
   }
 

@@ -154,7 +154,9 @@ export function App() {
     const issuedAtMs = nowRef.current;
     const params = {
       entityId: self?.id ?? '',
-      ...(action.startsWith('attack') ? { weaponDamage: 8, range: 8, odCost: 1 } : {}),
+      ...(action.startsWith('attack')
+        ? { weaponDamage: 8, range: 8, odCost: 1, aim: session.aim }
+        : {}),
     };
     const targetId = action.startsWith('attack') ? session.targetId ?? undefined : undefined;
     if (openRef.current && netRef.current !== null) {

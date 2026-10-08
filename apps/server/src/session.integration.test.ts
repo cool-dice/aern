@@ -377,6 +377,73 @@ test('season spawns use the live snapshot multiplier and tag', () => {
   expect(living.some((entity) => entity.seasonTag === tag)).toBe(true);
 });
 
+test('dungeon, craft, trade, and barrier-day invasion run from the live routes', async () => {
+  const graph = compose({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  graph.enterWorld('lia');
+  const entered = await graph.act('dungeon_enter', { characterId: 'lia' });
+  expect(entered.ok).toBe(true);
+  const inside = graph.state() as { self: { roomId: number | null; cell: { x: number; y: number } } | null };
+  expect(inside.self?.roomId).toBe(0);
+  expect(inside.self?.cell).toEqual({ x: 0, y: 0 });
+  graph.submit({
+    commandId: 'dungeon-step',
+    seq: 1,
+    issuedAtMs: 1_000,
+    action: 'step_e',
+    params: { entityId: 'lia' },
+  });
+  graph.tickOnce();
+  const held = graph.state() as { self: { roomId: number | null; cell: { x: number; y: number } } | null };
+  expect(held.self?.roomId).toBe(0);
+  expect(held.self?.cell).toEqual({ x: 0, y: 0 });
+  expect(await graph.act('dungeon_leave', { characterId: 'lia' })).toMatchObject({ ok: true });
+  const outside = graph.state() as { self: { roomId: number | null } | null };
+  expect(outside.self?.roomId).toBeNull();
+
+  const started = await graph.act('craft_start', { characterId: 'lia', recipeId: 'rusty_sword', itemLevel: 1 });
+  expect(started.ok).toBe(true);
+  const jobId = (started.value as { jobId: string }).jobId;
+  const early = await graph.act('craft_complete', { characterId: 'lia', jobId });
+  expect(early).toMatchObject({ ok: false, code: 'early' });
+
+  graph.seedTrader({ characterId: 'seller', gold: 100, itemId: 'rusty_sword', qty: 1 });
+  graph.seedTrader({ characterId: 'buyer', gold: 80 });
+  const offerA = await graph.act('trade_offer', {
+    characterId: 'seller',
+    counterpartyId: 'buyer',
+    gold: 0,
+    items: { rusty_sword: 1 },
+  });
+  expect(offerA.ok).toBe(true);
+  const tradeId = (offerA.value as { tradeId: string }).tradeId;
+  expect(
+    await graph.act('trade_offer', {
+      characterId: 'buyer',
+      counterpartyId: 'seller',
+      gold: 20,
+      items: {},
+    }),
+  ).toMatchObject({ ok: true });
+  expect(await graph.act('trade_accept', { characterId: 'seller', tradeId })).toMatchObject({
+    ok: true,
+    value: { status: 'pending' },
+  });
+  expect(await graph.act('trade_accept', { characterId: 'buyer', tradeId })).toMatchObject({
+    ok: true,
+    value: { status: 'done' },
+  });
+  expect(graph.economy.service.balance('seller')).toBe(120);
+  expect(graph.economy.service.balance('buyer')).toBe(60);
+
+  const barrier = EPOCH_MS + 11 * 28 * DAY_MS;
+  const holiday = compose({ nowMs: barrier, jwtSecret: 'test-secret' });
+  holiday.tickOnce();
+  const events = holiday.state() as { invasion: string | null; holidayKeeper: number; seasonResource: string | null };
+  expect(events.invasion).toBe('prepare');
+  expect(events.holidayKeeper).toBe(1.1);
+  expect(events.seasonResource).toBeTypeOf('string');
+});
+
 test('auction buyout records the 5% tax destination', async () => {
   const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
   try {

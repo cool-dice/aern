@@ -1,4 +1,4 @@
-import type { InvasionPhase, SeasonId } from '../../../../../packages/domain/src/events';
+import type { HolidayId, InvasionPhase, SeasonId } from '../../../../../packages/domain/src/events';
 import type { Rng } from '../../../../../packages/domain/src/rng';
 
 /** A character's current node. Safe zones drop weather damage. */
@@ -31,6 +31,12 @@ export interface EventSnapshot {
   invasion: InvasionPhase | null;
   /** True while `now` sits in a plan's five-minute announcement window. */
   announced: boolean;
+  holiday: HolidayId | null;
+  craftBonus: number;
+  loreBonus: number;
+  keeperBonus: number;
+  /** Barrier Day asks the tick to call `startInvasion` once. */
+  invasionActive: boolean;
 }
 
 export interface EventService {

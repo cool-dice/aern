@@ -1,3 +1,4 @@
+import type { LimbId } from '@rift/domain/combat';
 import { DIRS, type Dir } from '@rift/domain/movement';
 import type { ClientCommand } from '@rift/protocol';
 import type {
@@ -88,7 +89,7 @@ function toAttack(command: ClientCommand): AttackCommand | null {
     odCost: typeof odCost === 'number' ? odCost : 1,
     range: typeof range === 'number' ? range : melee ? 1 : 8,
     los: command.params.los !== false,
-    aim: null,
+    aim: limbOf(command.params.aim),
     melee,
     friendlyFire: command.params.friendlyFire === true,
     sameGroup: command.params.sameGroup === true,
@@ -96,6 +97,12 @@ function toAttack(command: ClientCommand): AttackCommand | null {
     safeZone: command.params.safeZone === true,
     issuedAtMs: command.issuedAtMs,
   };
+}
+
+const LIMBS = new Set<string>(['head', 'torso', 'arm_left', 'arm_right', 'leg_left', 'leg_right']);
+
+function limbOf(value: unknown): LimbId | null {
+  return typeof value === 'string' && LIMBS.has(value) ? (value as LimbId) : null;
 }
 
 function isDir(value: string): value is Dir {

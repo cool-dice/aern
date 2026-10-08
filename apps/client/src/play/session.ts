@@ -59,10 +59,11 @@ export interface PlaySession {
   targetId: string | null;
   locale: 'ru' | 'en';
   chatDraft: string;
+  aim: 'head' | 'torso' | 'arm_left' | 'arm_right' | 'leg_left' | 'leg_right';
 }
 
 export function createPlaySession(store: ClientStore = createClientStore()): PlaySession {
-  return { store, screen: 'menu', targetId: null, locale: 'ru', chatDraft: '' };
+  return { store, screen: 'menu', targetId: null, locale: 'ru', chatDraft: '', aim: 'torso' };
 }
 
 export function registerBody(email: string, password: string): AuthRequest {

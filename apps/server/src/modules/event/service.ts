@@ -2,6 +2,8 @@ import {
   ANNOUNCE_LEAD_MS,
   WEATHER_IDS,
   invasionPhase,
+  holidayAt,
+  holidayMultiplier,
   seasonAt,
   seasonResource,
   seasonSpawnTag,
@@ -68,6 +70,7 @@ export function createEventService(
   return {
     snapshot(nowMs, regionId, inSafe): EventSnapshot {
       const season = seasonAt(nowMs);
+      const holiday = holidayAt(nowMs);
       const plans = repository.weatherFor(regionId);
       const startedAt = repository.invasionStartedAt(regionId);
       return {
@@ -79,6 +82,11 @@ export function createEventService(
         weatherId: activeWeather(plans, nowMs)?.weatherId ?? null,
         invasion: startedAt === null ? null : invasionPhase(nowMs - startedAt),
         announced: inAnnounceWindow(plans, nowMs),
+        holiday,
+        craftBonus: holidayMultiplier(holiday, 'craft'),
+        loreBonus: holidayMultiplier(holiday, 'loreXp'),
+        keeperBonus: holidayMultiplier(holiday, 'keeperDamage'),
+        invasionActive: holiday === 'barrier_day',
       };
     },
 
