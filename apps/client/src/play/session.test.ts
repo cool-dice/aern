@@ -2,6 +2,7 @@ import { expect, test } from 'vitest';
 import { createClientStore } from '../state/store';
 import {
   characterBody,
+  commandForDowned,
   commandForKey,
   createPlaySession,
   enterWorld,
@@ -41,6 +42,11 @@ test('enterWorld stores the player and the frame includes self', () => {
   enterWorld(session, 'lia');
   expect(session.store.getState().self).toMatchObject({ id: 'lia', facing: 'e', phase: 'online' });
   expect(worldFrame(session).some((sprite) => sprite.id === 'self')).toBe(true);
+});
+
+test('a downed player sends respawn', () => {
+  expect(commandForDowned('downed')).toBe('respawn');
+  expect(commandForDowned('online')).toBeNull();
 });
 
 test('WASD is relative to facing east and attack uses the current target', () => {

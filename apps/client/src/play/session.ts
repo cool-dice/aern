@@ -171,6 +171,11 @@ const SCREEN_ACTIONS: Record<string, PlayScreen> = {
   menu: 'settings',
 };
 
+/** A downed character asks the server to run respawnAtBind. */
+export function commandForDowned(phase: string | undefined): string | null {
+  return phase === 'downed' ? 'respawn' : null;
+}
+
 export function commandForKey(code: string, facing: Dir, targetId: string | null): string | null {
   const action = actionFor(DEFAULT_BINDINGS, code);
   if (action === null) {

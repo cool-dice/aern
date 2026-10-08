@@ -213,6 +213,76 @@ test('0 HP writes a corpse and respawnAtBind brings the player back', () => {
   expect(back.self).toMatchObject({ phase: 'online', hp: 40 });
 });
 
+test('death drops the inventory kit and the client respawn command restores the player', async () => {
+  const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
+  try {
+    const created = await built.app.inject({
+      method: 'POST',
+      url: '/characters',
+      payload: {
+        accountId: 'account-ned',
+        name: 'Ned',
+        clean: false,
+        points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+        appearance,
+      },
+    });
+    const { characterId } = created.json() as { characterId: string };
+    const before = await built.app.inject({ method: 'GET', url: `/characters/${characterId}/inventory` });
+    const kit = before.json() as { items: { itemId: string }[] };
+    expect(kit.items.map((item) => item.itemId)).toContain('rusty_sword');
+
+    await built.app.inject({
+      method: 'POST',
+      url: '/command',
+      payload: {
+        commandId: 'hit-ned',
+        seq: 1,
+        issuedAtMs: 1_000,
+        action: 'attack_ranged',
+        targetId: `${characterId}:spore_rat`,
+        params: { entityId: characterId, weaponDamage: 500, range: 8, odCost: 0 },
+      },
+    });
+    built.tickOnce();
+    for (let step = 0; step < 12; step += 1) {
+      built.tickOnce();
+    }
+    const fallen = await built.app.inject({ method: 'GET', url: '/state' });
+    const downed = fallen.json() as {
+      nowMs: number;
+      self: { phase: string; hp: number } | null;
+      corpses: { victimId: string; stacks?: { itemId: string; questItem?: boolean }[] }[];
+    };
+    expect(downed.self?.phase).toBe('downed');
+    const corpse = downed.corpses.find((row) => row.victimId === characterId);
+    expect(corpse?.stacks?.map((stack) => stack.itemId)).toContain('rusty_sword');
+    expect(corpse?.stacks?.every((stack) => stack.questItem !== true)).toBe(true);
+    const emptied = await built.app.inject({ method: 'GET', url: `/characters/${characterId}/inventory` });
+    expect((emptied.json() as { items: unknown[] }).items).toEqual([]);
+
+    await built.app.inject({
+      method: 'POST',
+      url: '/command',
+      payload: {
+        commandId: 'up-ned',
+        seq: 2,
+        issuedAtMs: downed.nowMs,
+        action: 'respawn',
+        params: { entityId: characterId },
+      },
+    });
+    built.tickOnce();
+    const back = await built.app.inject({ method: 'GET', url: '/state' });
+    expect((back.json() as { self: { phase: string; hp: number } }).self).toMatchObject({
+      phase: 'online',
+      hp: 40,
+    });
+  } finally {
+    await built.close();
+  }
+});
+
 test('auction buyout records the 5% tax destination', async () => {
   const built = await buildApp({ nowMs: 1_000, jwtSecret: 'test-secret' });
   try {

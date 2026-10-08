@@ -437,6 +437,15 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
         });
       }
     }
+    simWorld = {
+      ...simWorld,
+      entities: simWorld.entities.map((entity) => {
+        if (entity.monsterId !== undefined || entity.phase !== 'online') {
+          return entity;
+        }
+        return { ...entity, inventory: kitOf(entity) };
+      }),
+    };
     const beforeCorpses = new Set(simWorld.corpses.map((corpse) => corpse.victimId));
     const beforeHp = new Map(simWorld.entities.map((entity) => [entity.id, entity.hp]));
     simWorld = stepTick(simWorld, commands, rng);
@@ -444,6 +453,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       if (beforeCorpses.has(corpse.victimId)) {
         continue;
       }
+      clearDroppedKit(corpse.victimId);
       const killer = simWorld.entities.find((entity) => entity.id === corpse.killerId);
       if (killer !== undefined && killer.monsterId === undefined) {
         void reportKind(killer.id, 'kill');
@@ -613,6 +623,34 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       tax: economy.service.taxLedger(),
       keeper: parked === null ? null : { id: parked.monsterId, level: parked.level, phases: parked.phaseCount },
     };
+  }
+
+  function kitOf(entity: SimEntity): NonNullable<SimEntity['inventory']> {
+    const state = carried.get(entity.id);
+    if (state === undefined) {
+      return entity.inventory ?? [];
+    }
+    const bound = new Set<string>();
+    for (const quest of entity.quests ?? []) {
+      for (const itemId of quest.itemIds) {
+        bound.add(itemId);
+      }
+    }
+    return state.stacks.map((stack) => ({
+      itemId: stack.itemId,
+      questItem: bound.has(stack.itemId),
+      ...(bound.has(stack.itemId) ? { questOwnerId: entity.id } : {}),
+      durability: stack.durability,
+      equipped: stack.equipped,
+    }));
+  }
+
+  function clearDroppedKit(characterId: string): void {
+    const state = carried.get(characterId);
+    if (state === undefined || state.stacks.length === 0) {
+      return;
+    }
+    void inventoryRepository.save({ ...state, stacks: [] });
   }
 
   function walletGold(characterId: string): number {

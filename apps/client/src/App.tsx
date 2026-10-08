@@ -18,6 +18,7 @@ import {
   createPlaySession,
   enterWorld,
   loginBody,
+  commandForDowned,
   pressKey,
   registerBody,
   worldFrame,
@@ -140,6 +141,10 @@ export function App() {
     const first = Object.values(plan.store.getState().entities)[0];
     if (first !== undefined) {
       session.targetId = first.id;
+    }
+    const respawn = commandForDowned(session.store.getState().self?.phase);
+    if (respawn !== null) {
+      void sendKey(respawn);
     }
     setFrame((value) => value + 1);
   }
