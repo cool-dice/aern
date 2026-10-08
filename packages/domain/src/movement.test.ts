@@ -102,12 +102,13 @@ test('cellsFor uses derive for step and run distances', () => {
   }
 });
 
-test('outside combat a step does not change OD, including when OD is 0', () => {
-  expect(walk({ inCombat: false, od: 0, reaction: 10 })).toEqual(
+test('outside combat a step spends 1 OD and a run spends 3', () => {
+  expect(walk({ inCombat: false, od: 0, reaction: 10 })).toEqual(err('od'));
+  expect(walk({ inCombat: false, od: 1, reaction: 10 })).toEqual(
     ok({ cell: at(0, -1), od: 0, cells: 1 }),
   );
-  expect(walk({ inCombat: false, od: 2, reaction: 25, running: true, dir: 's' })).toEqual(
-    ok({ cell: at(0, 8), od: 2, cells: 8 }),
+  expect(walk({ inCombat: false, od: 3, reaction: 25, running: true, dir: 's' })).toEqual(
+    ok({ cell: at(0, 8), od: 0, cells: 8 }),
   );
 });
 
@@ -216,7 +217,8 @@ test('downed crawls one cell, cannot run, and the crawl gap is 3 seconds', () =>
     ok({ cell: at(1, 0), od: 3, cells: 1 }),
   );
   expect(walk({ downed: true, running: true, reaction: 25, od: 9 })).toEqual(err('downed'));
-  expect(walk({ downed: true, inCombat: false, od: 0 })).toEqual(
+  expect(walk({ downed: true, inCombat: false, od: 0 })).toEqual(err('od'));
+  expect(walk({ downed: true, inCombat: false, od: 1 })).toEqual(
     ok({ cell: at(0, -1), od: 0, cells: 1 }),
   );
 });

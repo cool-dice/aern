@@ -202,9 +202,7 @@ function paceFor(reaction: number): { cellsPerStep: number; cellsPerRun: number;
 }
 
 function odCost(input: { inCombat: boolean; running: boolean; reaction: number }): number {
-  if (!input.inCombat) {
-    return 0;
-  }
+  void input.inCombat;
   if (input.running) {
     return paceFor(input.reaction).runOdCost;
   }

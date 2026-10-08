@@ -327,16 +327,23 @@ test('a combat step costs 1 OD and a run costs 3', () => {
   expect(runWorld.entities[0]?.cell).toEqual({ x: 0, y: -4 });
 });
 
-test('outside combat a step does not spend OD', () => {
-  const done = stepTick(
+test('outside combat a step spends 1 OD', () => {
+  const spent = stepTick(
+    world({ entities: [entity({ id: 'a', inCombat: false, od: 1, odFrac: 1 })] }),
+    [move('a', 'e', false)],
+    mulberry32(1),
+  );
+  expect(spent.rejections).toEqual([]);
+  expect(spent.entities[0]?.cell).toEqual({ x: 1, y: 0 });
+  expect(spent.entities[0]?.od).toBe(0);
+  expect(spent.entities[0]?.odFrac).toBe(0.3);
+  const broke = stepTick(
     world({ entities: [entity({ id: 'a', inCombat: false, od: 0, odFrac: 0 })] }),
     [move('a', 'e', false)],
     mulberry32(1),
   );
-  expect(done.rejections).toEqual([]);
-  expect(done.entities[0]?.cell).toEqual({ x: 1, y: 0 });
-  expect(done.entities[0]?.od).toBe(0);
-  expect(done.entities[0]?.odFrac).toBe(0.3);
+  expect(broke.rejections).toEqual([{ entityId: 'a', code: 'od' }]);
+  expect(broke.entities[0]?.cell).toEqual({ x: 0, y: 0 });
 });
 
 test('a blocked step rejects and leaves the entity where regen left it', () => {
@@ -430,6 +437,7 @@ test('an aimed leg hit sets legsDestroyed and the run pays the penalty', () => {
         entity({
           id: 'b',
           od: 5,
+          odFrac: 5,
           reaction: 10,
           legsDestroyed: 1,
           cell: { x: 0, y: 0 },
