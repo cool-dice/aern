@@ -1207,8 +1207,9 @@ export function pactLive(pact: GuildPact, nowMs: number): boolean {
   if (pact.brokenAtMs != null) {
     return false;
   }
-  if (pact.breakNoticeAtMs !== null && pact.kind === 'vassal') {
-    return nowMs < pact.breakNoticeAtMs + VASSAL_RELEASE_MS;
+  // A vassal pact has no 7-day expiry. It stays up through the release notice.
+  if (pact.kind === 'vassal') {
+    return true;
   }
   return nowMs < pact.untilMs;
 }
@@ -1274,6 +1275,30 @@ export function noticeAllianceBreak(
     return err('closed');
   }
   return ok({ ...pact, breakNoticeAtMs: nowMs });
+}
+
+/**
+ * The release is a later action. During the 7-day notice the vassal pact still
+ * holds. `pactLive` does not end it. This refuses until the notice has aged.
+ */
+export function releaseVassal(
+  pact: GuildPact,
+  nowMs: number,
+): Result<GuildPact, 'kind' | 'notice' | 'early' | 'closed'> {
+  assertMs(nowMs, 'nowMs');
+  if (pact.kind !== 'vassal') {
+    return err('kind');
+  }
+  if (pact.brokenAtMs != null || !pactLive({ ...pact, brokenAtMs: null }, nowMs)) {
+    return err('closed');
+  }
+  if (pact.breakNoticeAtMs === null) {
+    return err('notice');
+  }
+  if (nowMs < pact.breakNoticeAtMs + VASSAL_RELEASE_MS) {
+    return err('early');
+  }
+  return ok({ ...pact, brokenAtMs: nowMs });
 }
 
 /** A vassal is released 7 real days after this notice, not on the alliance's 24-hour fuse. */

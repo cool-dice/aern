@@ -62,10 +62,12 @@ import {
   breachNonAggression,
   formPact,
   breakAlliance,
+  releaseVassal,
   noticeAllianceBreak,
   noticeVassalRelease,
   coalitionChannel,
   pactAlly,
+  pactLive,
   suzerainDefenders,
   renewPact,
   postMercenary,
@@ -1159,7 +1161,14 @@ test('pacts make two guilds allies and a vassal cannot declare war alone', () =>
   expect(release.ok).toBe(true);
   if (release.ok) {
     expect(pactAlly([release.value], 'ash', 'wolves', ALLIANCE_BREAK_MS)).toBe(true);
-    expect(pactAlly([release.value], 'ash', 'wolves', VASSAL_RELEASE_MS)).toBe(false);
+    expect(pactAlly([release.value], 'ash', 'wolves', VASSAL_RELEASE_MS)).toBe(true);
+    expect(pactLive(release.value, VASSAL_RELEASE_MS)).toBe(true);
+    expect(releaseVassal(release.value, VASSAL_RELEASE_MS - 1)).toEqual({ ok: false, code: 'early' });
+    const freed = releaseVassal(release.value, VASSAL_RELEASE_MS);
+    expect(freed.ok).toBe(true);
+    if (freed.ok) {
+      expect(pactAlly([freed.value], 'ash', 'wolves', VASSAL_RELEASE_MS)).toBe(false);
+    }
   }
   expect(noticeVassalRelease(alliance.value, 0)).toEqual({ ok: false, code: 'kind' });
 });

@@ -413,6 +413,7 @@ export {
   pactLive,
   pactAlly,
   breakAlliance,
+  releaseVassal,
   noticeAllianceBreak,
   noticeVassalRelease,
   renewPact,
