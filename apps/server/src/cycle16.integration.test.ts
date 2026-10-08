@@ -151,3 +151,36 @@ test('questLanguageAccess denies a quest when side-language UPY is 30 or less', 
   const garbled = await graph.act('quest_accept', { characterId, questId: 'tutorial' });
   expect(garbled.ok).toBe(true);
 });
+
+test('canCraftLanguage blocks a recipe when side-language UPY is below 60', async () => {
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const craft = readFileSync(new URL('./modules/craft/service.ts', import.meta.url), 'utf8');
+  const start = dispatch.slice(dispatch.indexOf('async function craftStart'), dispatch.indexOf('async function craftComplete'));
+  expect(start.includes('canCraftLanguage(')).toBe(true);
+  expect(craft.includes('canCraftLanguage(')).toBe(true);
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-craft',
+    controller: 'player',
+    name: 'Cra',
+    clean: false,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  graph.enterCharacter('account-craft', characterId);
+  const record = await graph.character.repository.findById(characterId);
+  if (record === null) {
+    return;
+  }
+  await graph.character.repository.update({
+    ...record,
+    languages: { ...record.languages, common_light: 59 },
+  });
+  const blocked = await graph.act('craft_start', { characterId, recipeId: 'rusty_sword', itemLevel: 1 });
+  expect(blocked).toMatchObject({ ok: false, code: 'language' });
+});

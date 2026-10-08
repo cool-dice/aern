@@ -7,7 +7,7 @@ import type { GuildRank } from '@rift/domain/guild';
 import type { KeeperKind } from '@rift/domain/hack';
 import type { GradeId } from '@rift/domain/items';
 import type { RelicState, RelicSubtype } from '@rift/domain/relics';
-import { questLanguageAccess } from '@rift/domain/language';
+import { canCraftLanguage, questLanguageAccess } from '@rift/domain/language';
 import { socketCount } from '@rift/domain/relics';
 import type { QuestObjectiveKind } from '@rift/domain/quests';
 import { derive, emptyPoints } from '@rift/domain/stats';
@@ -792,6 +792,9 @@ async function craftStart(body: Record<string, unknown>, ports: LivePorts): Prom
     return { ok: false, code: 'invalid' };
   }
   await ports.ensureCrafter(characterId);
+  if (!canCraftLanguage(await ports.languageUpy(characterId))) {
+    return { ok: false, code: 'language' };
+  }
   const started = await ports.craft.start({
     characterId,
     recipeId,

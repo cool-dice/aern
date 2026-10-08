@@ -4639,15 +4639,18 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   }
 
   async function openCrafter(characterId: string): Promise<void> {
+    const upy = await languageUpy(characterId);
     const existing = await repos.crafters.get(characterId);
     if (existing === undefined) {
       await repos.crafters.save(characterId, {
         nodeId: 'fort_humans',
         inCombat: false,
-        languageUpy: 100,
+        languageUpy: upy,
         gold: GUILD_CREATE_GOLD,
         skills: { weaponsmith: { level: 1, xp: 0 } },
       });
+    } else if (existing.languageUpy !== upy) {
+      await repos.crafters.save(characterId, { ...existing, languageUpy: upy });
     }
     const stacks = await repos.materials.read(characterId);
     if ((stacks.metal ?? 0) < 5) {

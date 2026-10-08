@@ -13,6 +13,7 @@ import {
   type CraftSkill,
   type SkillState,
 } from '@rift/domain/craft';
+import { canCraftLanguage } from '@rift/domain/language';
 import type { Bus } from '../../shared/bus';
 import type { GameModule, ModuleContext } from '../../shared/module';
 import type {
@@ -241,6 +242,9 @@ export function createCraftService(deps: CraftServiceDeps): CraftService {
       const skill = crafter.skills[recipe.skill];
       if (!skill) {
         return fail('level');
+      }
+      if (!canCraftLanguage(crafter.languageUpy)) {
+        return fail('language');
       }
 
       const stacks = await deps.bank.read(input.characterId);
