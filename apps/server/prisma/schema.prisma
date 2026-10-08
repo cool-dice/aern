@@ -1,4 +1,4 @@
-// PostgreSQL 16 + pgvector. Prisma 5.22. Unit tests do not connect and do not generate the client.
+// PostgreSQL 16 + pgvector. Prisma 5.22. Unit tests pass a client double and do not open a socket.
 //
 // Gold columns are Int. Artifact 25 writes numeric(20,2); the domain stores whole gold.
 // Durability and relic degradation are Int centipercent, not Decimal(5,2):

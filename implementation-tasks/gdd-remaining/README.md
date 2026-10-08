@@ -20,7 +20,7 @@
 | 112 | [112-guild-live.md](112-guild-live.md) | done |
 | 113 | [113-auction-live.md](113-auction-live.md) | done |
 | 114 | [114-mail-titles.md](114-mail-titles.md) | done |
-| 115 | [115-prisma-repositories.md](115-prisma-repositories.md) | pending |
+| 115 | [115-prisma-repositories.md](115-prisma-repositories.md) | done |
 | 116 | [116-client-play-loop.md](116-client-play-loop.md) | pending |
 | 117 | [117-client-screens.md](117-client-screens.md) | pending |
 | 118 | [118-sidecar-observation.md](118-sidecar-observation.md) | pending |
