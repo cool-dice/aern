@@ -88,3 +88,86 @@ test('a guild-owned city debits the crossing fee and the repair cut', async () =
   expect(SERVICE_CUT_PERCENT).toBe(10);
   expect((await graph.guild.repository.findGuild(guildId))?.bank).toBe(8);
 }, 60_000);
+
+test('portal ask is a live route that calls askHostilePortal', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  expect(composeSource.includes('askHostilePortal(')).toBe(true);
+  expect(composeSource.includes('askPortal(')).toBe(true);
+  expect(composeSource.includes("path: '/portal/ask'")).toBe(true);
+  expect(dispatch.includes('askPortal(')).toBe(true);
+  expect(app.includes('askPortal(')).toBe(true);
+});
+
+test('a neutral asking a hostile city is refused and an enemy is blocked', async () => {
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.noteSidecar({ atMs: 10_000_000_000, characterId: 'lia', action: 'wait' });
+  const created = await graph.act('guild_create', {
+    name: 'Red Wolves',
+    tag: 'RW',
+    initiatorId: 'lia',
+    leaderId: 'lia',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'lia', level: 5 },
+      { id: 'm1', level: 5 },
+      { id: 'm2', level: 5 },
+      { id: 'm3', level: 5 },
+    ],
+  });
+  expect(created.ok).toBe(true);
+  const guildId = (created.value as { guildId: string }).guildId;
+  await graph.guild.repository.saveWar({
+    id: 'war-fort',
+    attackerGuildId: guildId,
+    cityId: 'fort_humans',
+    startsAtMs: 0,
+    gold: 0,
+    resources: 0,
+  });
+  let won = false;
+  for (let i = 0; i < 7_000 && !won; i += 1) {
+    graph.tickOnce();
+    const held = graph.state() as { captures: { cityId: string; won: boolean }[] };
+    won = held.captures.some((row) => row.cityId === 'fort_humans' && row.won);
+  }
+  expect(won).toBe(true);
+
+  graph.enterCharacter('account-noa', 'noa');
+  const refused = await graph.act('portal_ask', { characterId: 'noa', toNodeId: 'fort_humans' });
+  expect(refused).toMatchObject({ ok: false, code: 'refused' });
+  expect(await graph.act('portal', { characterId: 'noa', toNodeId: 'fort_humans' })).toMatchObject({
+    ok: false,
+    code: 'refused',
+  });
+
+  graph.enterCharacter('account-kai', 'kai');
+  const rival = await graph.act('guild_create', {
+    name: 'Ash Keepers',
+    tag: 'ASH',
+    initiatorId: 'kai',
+    leaderId: 'kai',
+    gold: GUILD_CREATE_GOLD,
+    members: [
+      { id: 'kai', level: 5 },
+      { id: 'n1', level: 5 },
+      { id: 'n2', level: 5 },
+      { id: 'n3', level: 5 },
+    ],
+  });
+  expect(rival.ok).toBe(true);
+  expect(await graph.act('portal_ask', { characterId: 'kai', toNodeId: 'fort_humans' })).toMatchObject({
+    ok: false,
+    code: 'blocked',
+  });
+
+  const granted = await graph.act('portal_grant', { guildId, cityId: 'fort_humans', characterId: 'noa' });
+  expect(granted).toMatchObject({ ok: true, value: { granted: true } });
+  const entered = await graph.act('portal_ask', { characterId: 'noa', toNodeId: 'fort_humans' });
+  expect(entered).toMatchObject({
+    ok: true,
+    value: { nodeId: 'fort_humans', cityFee: 1, gold: GUILD_CREATE_GOLD - 6 },
+  });
+}, 60_000);

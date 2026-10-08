@@ -52,6 +52,8 @@ export interface LivePorts {
   applyChoice(characterId: string, questId: string | undefined, choiceId: string): Promise<boolean>;
   shiftReputation(characterId: string, npcId: string, event: 'quest' | 'fail' | 'attack' | 'gift'): number;
   portalTo(characterId: string, toNodeId: string): Promise<LiveResult>;
+  askPortal(characterId: string, toNodeId: string): Promise<LiveResult>;
+  grantPortal(guildId: string, cityId: string, characterId: string): Promise<LiveResult>;
   assignGuild(characterId: string, guildId: string): void;
   creditService(characterId: string, cost: number): Promise<number>;
   setOwnedCityFee(guildId: string, cityId: string, fee: number): Promise<LiveResult>;
@@ -98,6 +100,8 @@ const LIVE_ACTIONS = new Set([
   'encounter_enter',
   'dialogue',
   'portal',
+  'portal_ask',
+  'portal_grant',
   'repair',
   'city_fee',
 ]);
@@ -160,6 +164,10 @@ export async function runLive(
       return dialogue(body, ports);
     case 'portal':
       return portal(body, ports);
+    case 'portal_ask':
+      return portalAsk(body, ports);
+    case 'portal_grant':
+      return portalGrant(body, ports);
     case 'repair':
       return repair(body, ports);
     case 'city_fee':
@@ -659,6 +667,25 @@ async function portal(body: Record<string, unknown>, ports: LivePorts): Promise<
     return { ok: false, code: 'invalid' };
   }
   return ports.portalTo(characterId, toNodeId);
+}
+
+async function portalAsk(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const characterId = text(body, 'characterId') ?? text(body, 'entityId');
+  const toNodeId = text(body, 'toNodeId');
+  if (characterId === undefined || toNodeId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.askPortal(characterId, toNodeId);
+}
+
+async function portalGrant(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {
+  const guildId = text(body, 'guildId');
+  const cityId = text(body, 'cityId');
+  const characterId = text(body, 'characterId');
+  if (guildId === undefined || cityId === undefined || characterId === undefined) {
+    return { ok: false, code: 'invalid' };
+  }
+  return ports.grantPortal(guildId, cityId, characterId);
 }
 
 async function encounterEnter(body: Record<string, unknown>, ports: LivePorts): Promise<LiveResult> {

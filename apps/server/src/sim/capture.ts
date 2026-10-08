@@ -13,7 +13,13 @@ export function readCaptures(value: unknown): CaptureHold[] {
     if (typeof row !== 'object' || row === null) {
       continue;
     }
-    const hold = row as { cityId?: unknown; guildId?: unknown; heldMs?: unknown; won?: unknown };
+    const hold = row as {
+      cityId?: unknown;
+      guildId?: unknown;
+      heldMs?: unknown;
+      won?: unknown;
+      wonAtMs?: unknown;
+    };
     if (typeof hold.cityId !== 'string' || typeof hold.heldMs !== 'number') {
       continue;
     }
@@ -22,6 +28,7 @@ export function readCaptures(value: unknown): CaptureHold[] {
       guildId: typeof hold.guildId === 'string' ? hold.guildId : null,
       heldMs: hold.heldMs,
       won: hold.won === true,
+      ...(typeof hold.wonAtMs === 'number' ? { wonAtMs: hold.wonAtMs } : {}),
     });
   }
   return holds;
@@ -32,6 +39,8 @@ export interface CaptureHold {
   guildId: string | null;
   heldMs: number;
   won: boolean;
+  /** Sim time when this guild first won the city. Griefing lift counts from here. */
+  wonAtMs?: number;
 }
 
 /**
@@ -64,11 +73,17 @@ export function tickCaptures(input: {
     });
     const already = previous?.won === true;
     const won = already || holdWins(advanced.heldMs);
+    const wonAtMs = won
+      ? previous?.won === true
+        ? previous.wonAtMs
+        : input.nowMs
+      : undefined;
     next.push({
       cityId: war.cityId,
       guildId: won ? (previous?.won === true ? previous.guildId : advanced.holderGuildId) : advanced.holderGuildId,
       heldMs: won && previous?.won === true ? previous.heldMs : advanced.heldMs,
       won,
+      ...(wonAtMs !== undefined ? { wonAtMs } : {}),
     });
   }
   return next;

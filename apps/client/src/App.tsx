@@ -11,7 +11,7 @@ import { t } from './i18n/translate';
 import { hudModel } from './ui/models';
 import { CreationScreen, HudScreen } from './ui/screens';
 import { PlayPanels } from './play/screens';
-import { completeTrade, enterDungeon, startCraft, startPortal } from './play/live';
+import { askPortal, completeTrade, enterDungeon, startCraft, startPortal } from './play/live';
 import { spawnMockSidecar, type SidecarHandle } from './play/sidecar';
 import {
   bindKeyboard,
@@ -429,6 +429,18 @@ export function App() {
                 return;
               }
               void startPortal({
+                server: SERVER,
+                characterId,
+                toNodeId: 'fort_humans',
+                store: plan.store,
+              });
+            }}
+            onPortalAsk={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void askPortal({
                 server: SERVER,
                 characterId,
                 toNodeId: 'fort_humans',

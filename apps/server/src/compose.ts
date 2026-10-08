@@ -45,8 +45,8 @@ import { NODES } from '@rift/domain/gathering';
 import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import { nnUsed, type BuildState } from '@rift/domain/build';
 import { RACES } from '@rift/domain/character';
-import { ownedCrossingFee, serviceCut, setCityFee } from '@rift/domain/economy';
-import { depositBank, GUILD_CREATE_GOLD } from '@rift/domain/guild';
+import { askHostilePortal, ownedCrossingFee, serviceCut, setCityFee, type PortalStance } from '@rift/domain/economy';
+import { depositBank, GUILD_CREATE_GOLD, warPhase } from '@rift/domain/guild';
 import { DIRS, type Dir } from '@rift/domain/movement';
 import { SIM_TICK_MS } from '@rift/domain/time';
 import { canPortal } from '@rift/domain/world';
@@ -166,6 +166,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
   const repos = openRepositories(options.databaseUrl, clock, options.db);
   const openWars: StoredWar[] = [];
   const guildOf = new Map<string, string>();
+  const portalGrants = new Map<string, Set<string>>();
   let captures: CaptureHold[] = [];
   const saveWar = repos.guilds.saveWar.bind(repos.guilds);
   repos.guilds.saveWar = async (war) => {
@@ -577,6 +578,8 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     applyChoice,
     shiftReputation,
     portalTo,
+    askPortal,
+    grantPortal,
     assignGuild,
     creditService,
     setOwnedCityFee,
@@ -728,16 +731,19 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     if (!allowed.ok) {
       return { ok: false, code: allowed.code };
     }
-    const owner = captures.find((row) => row.cityId === toNodeId && row.won)?.guildId ?? null;
+    const access = portalAccess(entity, toNodeId);
+    if (!access.ok) {
+      return { ok: false, code: access.code };
+    }
     const node = repos.economy.getNode(toNodeId);
-    if (node !== null) {
-      const rival = owner !== null && entity.guildId !== undefined && entity.guildId !== owner;
-      repos.economy.saveNode({ ...node, hostile: rival });
+    if (node !== null && node.hostile) {
+      repos.economy.saveNode({ ...node, hostile: false });
     }
     const paid = await economy.service.portal(characterId, toNodeId, clock.now());
     if (!paid.ok) {
       return { ok: false, code: paid.code };
     }
+    const owner = captures.find((row) => row.cityId === toNodeId && row.won)?.guildId ?? null;
     const crossing = repos.economy.getNode(toNodeId)?.cityFee ?? 0;
     if (owner !== null && crossing > 0) {
       await creditGuildBank(owner, crossing);
@@ -759,6 +765,75 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
       ok: true,
       value: { cooldownUntilMs: paid.value.cooldownUntilMs, nodeId: toNodeId, gold, cityFee: crossingFee },
     };
+  }
+
+  function portalStance(entity: SimEntity, owner: string): PortalStance {
+    if (entity.guildId === owner) {
+      return 'member';
+    }
+    if (entity.guildId !== undefined) {
+      return 'enemy';
+    }
+    return 'neutral';
+  }
+
+  function portalAccess(
+    entity: SimEntity,
+    cityId: string,
+  ): { ok: true; value: 'enter' } | { ok: false; code: string } {
+    const hold = captures.find((row) => row.cityId === cityId && row.won && row.guildId !== null);
+    if (hold?.guildId === undefined || hold.guildId === null) {
+      return { ok: true, value: 'enter' };
+    }
+    const now = clock.now();
+    const warActive = openWars.some(
+      (war) =>
+        war.cityId === cityId &&
+        war.startsAtMs <= now &&
+        warPhase(Math.max(0, now - war.startsAtMs)) !== 'closed',
+    );
+    const blockedForMs = hold.wonAtMs === undefined ? 0 : Math.max(0, now - hold.wonAtMs);
+    const granted = portalGrants.get(cityId)?.has(entity.id) === true;
+    const asked = askHostilePortal({
+      stance: portalStance(entity, hold.guildId),
+      warActive,
+      blockedForMs,
+      granted,
+    });
+    if (!asked.ok) {
+      return { ok: false, code: asked.code };
+    }
+    return { ok: true, value: 'enter' };
+  }
+
+  async function askPortal(
+    characterId: string,
+    toNodeId: string,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const entity = simWorld.entities.find((row) => row.id === characterId && row.monsterId === undefined);
+    if (entity === undefined) {
+      return { ok: false, code: 'missing' };
+    }
+    const access = portalAccess(entity, toNodeId);
+    if (!access.ok) {
+      return { ok: false, code: access.code };
+    }
+    return portalTo(characterId, toNodeId);
+  }
+
+  async function grantPortal(
+    guildId: string,
+    cityId: string,
+    characterId: string,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const hold = captures.find((row) => row.cityId === cityId && row.won && row.guildId === guildId);
+    if (hold === undefined) {
+      return { ok: false, code: 'owner' };
+    }
+    const granted = portalGrants.get(cityId) ?? new Set<string>();
+    granted.add(characterId);
+    portalGrants.set(cityId, granted);
+    return { ok: true, value: { cityId, characterId, granted: true } };
   }
 
   async function creditGuildBank(guildId: string, amount: number): Promise<void> {
@@ -1955,6 +2030,8 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/encounter/enter', action: 'encounter_enter' },
   { path: '/dialogue', action: 'dialogue' },
   { path: '/portal', action: 'portal' },
+  { path: '/portal/ask', action: 'portal_ask' },
+  { path: '/portal/grant', action: 'portal_grant' },
   { path: '/repair', action: 'repair' },
   { path: '/city-fee', action: 'city_fee' },
 ];

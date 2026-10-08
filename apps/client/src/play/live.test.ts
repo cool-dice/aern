@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 import { createClientStore } from '../state/store';
-import { completeTrade, enterDungeon, startCraft, startPortal, type LiveResponse } from './live';
+import { askPortal, completeTrade, enterDungeon, startCraft, startPortal, type LiveResponse } from './live';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -12,6 +12,7 @@ test('the play screen posts craft and trade through App', () => {
   expect(app).toContain('startCraft(');
   expect(app).toContain('completeTrade(');
   expect(app).toContain('startPortal(');
+  expect(app).toContain('askPortal(');
   expect(app).toContain('enterDungeon(');
   expect(app).toContain('onCraft=');
   expect(app).toContain('onTrade=');
@@ -20,6 +21,7 @@ test('the play screen posts craft and trade through App', () => {
   expect(app).toContain('onDungeonSolo=');
   const panels = readFileSync(join(here, 'screens.tsx'), 'utf8');
   expect(panels).toContain('data-portal="start"');
+  expect(panels).toContain('data-portal="ask"');
   expect(panels).toContain('data-dungeon="share"');
   expect(panels).toContain('data-dungeon="solo"');
 });
@@ -98,6 +100,27 @@ test('startPortal posts /portal and stores the destination', async () => {
   expect(posted.ok).toBe(true);
   expect(store.getState().portalResult).toEqual({ nodeId: 'fort_humans', gold: 9995, cooldownUntilMs: 300_000 });
   expect(store.getState().log).toEqual(['portal:fort_humans']);
+});
+
+test('askPortal posts /portal/ask and stores a refusal', async () => {
+  const store = createClientStore();
+  const calls: { url: string; body: Record<string, unknown> }[] = [];
+  const posted = await askPortal({
+    server: 'http://game.example',
+    characterId: 'noa',
+    toNodeId: 'fort_humans',
+    store,
+    fetchImpl: async (url, init) => {
+      calls.push({ url, body: JSON.parse(init.body) as Record<string, unknown> });
+      return { ok: false, json: async () => ({ code: 'refused' }) };
+    },
+  });
+  expect(calls).toEqual([
+    { url: 'http://game.example/portal/ask', body: { characterId: 'noa', toNodeId: 'fort_humans' } },
+  ]);
+  expect(posted.ok).toBe(false);
+  expect(store.getState().portalResult).toEqual({ code: 'refused' });
+  expect(store.getState().log).toEqual(['portal-ask:refused']);
 });
 
 test('enterDungeon posts a shared seed and a solo enter stores its own body', async () => {

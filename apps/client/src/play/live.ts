@@ -83,6 +83,27 @@ export async function completeTrade(input: {
   return accepted;
 }
 
+/**
+ * Posts `/portal/ask`. A neutral asking a guild-owned city is refused until
+ * the owner grants them or the 24-hour block lifts. An allowed ask then portals.
+ */
+export async function askPortal(input: {
+  server: string;
+  characterId: string;
+  toNodeId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  const posted = await postJson(input.fetchImpl ?? fetch, `${input.server}/portal/ask`, {
+    characterId: input.characterId,
+    toNodeId: input.toNodeId,
+  });
+  input.store.getState().setPortalResult(posted.body);
+  const nodeId = typeof posted.body.nodeId === 'string' ? posted.body.nodeId : String(posted.body.code ?? 'error');
+  input.store.getState().pushLog(posted.ok ? `portal-ask:${nodeId}` : `portal-ask:${nodeId}`);
+  return posted;
+}
+
 /** Posts `/portal` and stores the fee, cooldown, and destination. */
 export async function startPortal(input: {
   server: string;

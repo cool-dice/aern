@@ -53,6 +53,7 @@ export function PlayPanels({
   onCraft,
   onTrade,
   onPortal,
+  onPortalAsk,
   onDungeon,
   onDungeonSolo,
 }: {
@@ -60,6 +61,7 @@ export function PlayPanels({
   onCraft?: () => void;
   onTrade?: () => void;
   onPortal?: () => void;
+  onPortalAsk?: () => void;
   onDungeon?: () => void;
   onDungeonSolo?: () => void;
 }): ReactElement | null {
@@ -99,6 +101,9 @@ export function PlayPanels({
         <MapScreen model={mapModel(shown, shown.map((node) => node.id))} />
         <button type="button" data-portal="start" onClick={() => onPortal?.()}>
           portal
+        </button>
+        <button type="button" data-portal="ask" onClick={() => onPortalAsk?.()}>
+          ask
         </button>
         <button type="button" data-dungeon="share" onClick={() => onDungeon?.()}>
           share
