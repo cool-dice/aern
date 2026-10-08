@@ -81,31 +81,53 @@ export interface CapturePresent {
  */
 export function tickCaptures(input: {
   holds: readonly CaptureHold[];
-  wars: readonly { cityId: string; startsAtMs: number; attackerGuildId?: string }[];
+  wars: readonly { id?: string; cityId: string; startsAtMs: number; attackerGuildId?: string }[];
   nowMs: number;
   deltaMs: number;
   present: readonly CapturePresent[];
-  contenders?: readonly { cityId: string; guildId: string }[];
+  contenders?: readonly { cityId: string; guildId: string; warId?: string }[];
   guardsRemaining?: readonly { cityId: string; remaining: number }[];
 }): CaptureHold[] {
-  const next: CaptureHold[] = [];
+  const rows = new Map<string, CaptureHold>();
+  for (const hold of input.holds) {
+    rows.set(hold.cityId, hold);
+  }
+  const latest = new Map<string, (typeof input.wars)[number]>();
   for (const war of input.wars) {
     if (war.startsAtMs > input.nowMs) {
       continue;
     }
-    const previous = input.holds.find((row) => row.cityId === war.cityId);
-    if (previous?.settled === true) {
-      next.push(previous);
+    const current = latest.get(war.cityId);
+    if (current === undefined || war.startsAtMs >= current.startsAtMs) {
+      latest.set(war.cityId, war);
+    }
+  }
+  for (const war of latest.values()) {
+    const stored = rows.get(war.cityId);
+    const closedAt = stored?.drawEndedAtMs ?? stored?.wonAtMs;
+    if (stored?.settled === true && (closedAt === undefined || closedAt >= war.startsAtMs)) {
       continue;
     }
-    const ownerGuildId = previous?.ownerGuildId ?? (previous?.won === true ? previous.guildId : null);
+    const previous = stored?.settled === true ? undefined : stored;
+    const ownerGuildId =
+      stored?.settled === true
+        ? (stored.ownerGuildId ?? (stored.won ? stored.guildId : null))
+        : (stored?.ownerGuildId ?? (stored?.won === true ? stored.guildId : null));
     const elapsed = Math.max(0, input.nowMs - war.startsAtMs);
     const phase = warPhase(elapsed);
     const guards =
       input.guardsRemaining?.find((row) => row.cityId === war.cityId)?.remaining ?? 0;
     const contenderIds = new Set(
       (input.contenders ?? [])
-        .filter((row) => row.cityId === war.cityId)
+        .filter((row) => {
+          if (row.cityId !== war.cityId) {
+            return false;
+          }
+          if (row.warId === undefined || war.id === undefined) {
+            return true;
+          }
+          return row.warId === war.id;
+        })
         .map((row) => row.guildId),
     );
     const claimants = input.present.filter(
@@ -125,7 +147,7 @@ export function tickCaptures(input: {
     const guilds = [...fighters.entries()].map(([guildId, count]) => ({ guildId, fighters: count }));
 
     if (guards > 0 || phase === 'muster') {
-      next.push({
+      rows.set(war.cityId, {
         cityId: war.cityId,
         guildId: holder,
         heldMs: 0,
@@ -149,7 +171,7 @@ export function tickCaptures(input: {
     const heldLongEnough = phase === 'assault' && holdWins(advanced.heldMs);
     const finishing = phase === 'finish' || phase === 'closed';
     if (!heldLongEnough && !finishing) {
-      next.push({
+      rows.set(war.cityId, {
         cityId: war.cityId,
         guildId: advanced.holderGuildId,
         heldMs: advanced.heldMs,
@@ -166,7 +188,7 @@ export function tickCaptures(input: {
     const settled = settleWar({ outcome, ownerGuildId });
     const won = settled.ownerGuildId !== null && outcome.result === 'win';
     const draw = outcome.result === 'draw';
-    next.push({
+    rows.set(war.cityId, {
       cityId: war.cityId,
       guildId: won ? settled.ownerGuildId : ownerGuildId,
       heldMs: heldLongEnough ? advanced.heldMs : (previous?.heldMs ?? 0),
@@ -177,10 +199,5 @@ export function tickCaptures(input: {
       ...(draw ? { drawEndedAtMs: input.nowMs } : {}),
     });
   }
-  for (const hold of input.holds) {
-    if (!next.some((row) => row.cityId === hold.cityId)) {
-      next.push(hold);
-    }
-  }
-  return next;
+  return [...rows.values()];
 }
