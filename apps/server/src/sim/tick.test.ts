@@ -73,6 +73,7 @@ function entity(partial: Partial<SimEntity> & Pick<SimEntity, 'id'>): SimEntity 
     seasonTag: partial.seasonTag,
     nodeId: partial.nodeId,
     guildId: partial.guildId,
+    downedAtMs: partial.downedAtMs,
     inEncounter: partial.inEncounter,
     instanceId: partial.instanceId,
   };
@@ -884,6 +885,7 @@ test('respawn reads the war branch for defenders and attackers', () => {
   const body = source.slice(source.indexOf('function applyRespawn'), source.indexOf('function warFrontFor'));
   expect(body.includes('respawn(')).toBe(true);
   expect(body.includes('warRespawnNode(')).toBe(true);
+  expect(body.includes('warRespawnReady(')).toBe(true);
   const geography = {
     nodes: [
       { id: 'fort_humans', x: 0, y: 0, kind: 'city' as const, safe: true, side: 'light' as const, regionId: 'plains' },
@@ -912,6 +914,7 @@ test('respawn reads the war branch for defenders and attackers', () => {
           nodeId: 'fort_humans',
           bindNodeId: 'edge_light',
           bindCell: { x: 10, y: 0 },
+          downedAtMs: -30_000,
         }),
         entity({
           id: 'noa',
@@ -921,6 +924,7 @@ test('respawn reads the war branch for defenders and attackers', () => {
           nodeId: 'fort_humans',
           bindNodeId: 'edge_light',
           bindCell: { x: 10, y: 0 },
+          downedAtMs: -30_000,
         }),
       ],
     }),
@@ -954,6 +958,7 @@ test('respawn reads the war branch for defenders and attackers', () => {
           guildId: 'oak',
           nodeId: 'fort_humans',
           bindNodeId: 'edge_light',
+          downedAtMs: -30_000,
         }),
       ],
     }),
@@ -964,6 +969,26 @@ test('respawn reads the war branch for defenders and attackers', () => {
     nodeId: 'fort_humans',
     bindNodeId: 'fort_humans',
   });
+  const sameTick = stepTick(
+    world({
+      geography,
+      warFronts: [front],
+      entities: [
+        entity({
+          id: 'noa',
+          phase: 'downed',
+          hp: 0,
+          guildId: 'oak',
+          nodeId: 'fort_humans',
+          downedAtMs: 0,
+        }),
+      ],
+    }),
+    [{ type: 'respawn', entityId: 'noa', issuedAtMs: 0 }],
+    mulberry32(1),
+  );
+  expect(sameTick.rejections).toContainEqual({ entityId: 'noa', code: 'early' });
+  expect(sameTick.entities.find((row) => row.id === 'noa')?.phase).toBe('downed');
 });
 
 function runWith(start: SimWorld, commands: AttackCommand[]): SimWorld {

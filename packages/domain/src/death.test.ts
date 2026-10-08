@@ -7,7 +7,9 @@ import {
   fallDown,
   respawn,
   respawnAtBind,
+  WAR_RESPAWN_DELAY_MS,
   warRespawnNode,
+  warRespawnReady,
   revive,
   takeFromCorpse,
   type LifeState,
@@ -304,6 +306,10 @@ test('at CORPSE_MS the corpse can neither be looted nor revived', () => {
   expect(fallen.corpse).toEqual(snapshot);
 
   const respawned = respawnAtBind(fallen.life, 100, 12);
+  expect(WAR_RESPAWN_DELAY_MS).toBe(30_000);
+  expect(warRespawnReady(0, 0)).toBe(false);
+  expect(warRespawnReady(0, WAR_RESPAWN_DELAY_MS - 1)).toBe(false);
+  expect(warRespawnReady(0, WAR_RESPAWN_DELAY_MS)).toBe(true);
   expect(warRespawnNode({
     role: 'defender',
     cityNodeId: 'fort_humans',

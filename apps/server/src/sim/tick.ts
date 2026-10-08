@@ -16,6 +16,7 @@ import {
   fallDown,
   respawn,
   warRespawnNode,
+  warRespawnReady,
   warRespawnRole,
   revive,
   takeFromCorpse,
@@ -112,6 +113,8 @@ export interface SimEntity {
   reputation?: Record<string, number>;
   /** Guild this character holds a flag for. */
   guildId?: string;
+  /** Sim time of the war death. `applyRespawn` waits `WAR_RESPAWN_DELAY_MS`. */
+  downedAtMs?: number;
   /** City whose neutral-capture guard this monster is. */
   cityGuard?: string;
   /** Cells still left on the current world edge. */
@@ -325,7 +328,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     if (command.type === 'revive') {
       applyRevive(settled.entities, settled.corpses, command, rejections, nowMs);
     } else if (command.type === 'respawn') {
-      applyRespawn(settled.entities, command, rejections, world);
+      applyRespawn(settled.entities, command, rejections, world, nowMs);
     } else if (command.type === 'loot') {
       applyLoot(settled.entities, settled.corpses, command, rejections, nowMs);
     }
@@ -694,6 +697,7 @@ function settlePlayers(entities: SimEntity[], corpses: SimCorpse[], nowMs: numbe
     entity.phase = 'downed';
     entity.hp = fell.life.hp;
     entity.inventory = [];
+    entity.downedAtMs = nowMs;
     corpses.push({
       victimId: fell.corpse.victimId,
       createdAtMs: fell.corpse.createdAtMs,
@@ -740,6 +744,7 @@ function applyRespawn(
   command: RespawnCommand,
   rejections: SimRejection[],
   world: SimWorld,
+  nowMs: number,
 ): void {
   const entity = findEntity(entities, command.entityId);
   if (entity === undefined || entity.phase !== 'downed') {
@@ -747,6 +752,10 @@ function applyRespawn(
     return;
   }
   const front = warFrontFor(entity, world.warFronts ?? []);
+  if (front !== undefined && (entity.downedAtMs === undefined || !warRespawnReady(entity.downedAtMs, nowMs))) {
+    rejections.push({ entityId: command.entityId, code: 'early' });
+    return;
+  }
   const role =
     front === undefined
       ? 'civilian'
@@ -785,6 +794,7 @@ function applyRespawn(
   entity.cell = site !== undefined ? { x: site.x, y: site.y } : (entity.bindCell ?? { x: 0, y: 0 });
   entity.od = spawned.od;
   entity.odFrac = spawned.od;
+  delete entity.downedAtMs;
 }
 
 function warFrontFor(entity: SimEntity, fronts: readonly WarFront[]): WarFront | undefined {

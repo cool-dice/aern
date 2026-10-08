@@ -4,6 +4,8 @@ import { err, ok, type Result } from './result';
 export const CORPSE_MS = 7_200_000;
 export const LOGOUT_GRACE_MS = 600_000;
 export const REVIVE_HP_RATIO = 0.3;
+/** Artifact 17 §5.5. A war death does not respawn on the tick it happens. */
+export const WAR_RESPAWN_DELAY_MS = 30_000;
 
 export interface LootStack {
   itemId: string;
@@ -114,6 +116,14 @@ export function revive(
     },
     inventory,
   });
+}
+
+/** True only after the 30-second war delay. The death tick itself is not ready. */
+export function warRespawnReady(diedAtMs: number, nowMs: number): boolean {
+  if (!Number.isInteger(diedAtMs) || !Number.isInteger(nowMs)) {
+    throw new RangeError('war respawn times must be integer milliseconds');
+  }
+  return nowMs >= diedAtMs + WAR_RESPAWN_DELAY_MS;
 }
 
 export function respawnAtBind(
