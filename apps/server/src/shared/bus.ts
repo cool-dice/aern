@@ -6,6 +6,10 @@ export interface DomainEventMap {
   'chat.message': { channel: string; senderId: string };
   'quest.completed': { characterId: string; questId: string };
   'ai.rejected': { characterId: string; code: string };
+  'gather.completed': { characterId: string; nodeId: string };
+  'hack.opened': { characterId: string; kind: string };
+  'wiki.written': { articleId: string; authorId: string };
+  'build.installed': { characterId: string; kind: string };
 }
 
 export interface Bus {
@@ -31,6 +35,10 @@ function createHandlerLists(): HandlerLists {
     'chat.message': [],
     'quest.completed': [],
     'ai.rejected': [],
+    'gather.completed': [],
+    'hack.opened': [],
+    'wiki.written': [],
+    'build.installed': [],
   };
 }
 

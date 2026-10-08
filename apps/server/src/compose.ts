@@ -12,6 +12,10 @@ import { MemoryWorld } from './infra/db/memory';
 import { createPrismaRepositories, type PrismaRepositories } from './infra/db/prisma';
 import { attach, handleMessage } from './infra/ws/gateway';
 import { createAiModule, type AiModule } from './modules/ai/index';
+import { createBuildModule } from './modules/build/index';
+import { createGatheringModule } from './modules/gathering/index';
+import { createHackModule } from './modules/hack/index';
+import { createWikiModule } from './modules/wiki/index';
 import { PRODUCTION_BCRYPT_COST, createAuthModule, type AuthModule } from './modules/auth/index';
 import type { AuthRepository } from './modules/auth/repository';
 import type { SessionRecord } from './modules/auth/types';
@@ -184,6 +188,11 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     },
   };
 
+  const gathering = createGatheringModule(mulberry32(1));
+  const hack = createHackModule(mulberry32(1));
+  const wiki = createWikiModule();
+  const build = createBuildModule();
+
   const modules: readonly GameModule[] = [
     auth,
     character,
@@ -196,6 +205,10 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     guild,
     quest,
     event,
+    gathering,
+    hack,
+    wiki,
+    build,
     ai,
     gateway,
     sim,

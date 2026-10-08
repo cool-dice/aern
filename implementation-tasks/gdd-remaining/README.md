@@ -11,12 +11,12 @@
 | 103 | [103-death-corpse.md](103-death-corpse.md) | done |
 | 104 | [104-bestiary-fights.md](104-bestiary-fights.md) | done |
 | 105 | [105-season-weather.md](105-season-weather.md) | done |
-| 106 | [106-xp-quests.md](106-xp-quests.md) | pending |
+| 106 | [106-xp-quests.md](106-xp-quests.md) | done |
 | 107 | [107-neuroshock-mutation.md](107-neuroshock-mutation.md) | done |
-| 108 | [108-gathering-module.md](108-gathering-module.md) | pending |
-| 109 | [109-hack-module.md](109-hack-module.md) | pending |
-| 110 | [110-wiki-module.md](110-wiki-module.md) | pending |
-| 111 | [111-relic-build-module.md](111-relic-build-module.md) | pending |
+| 108 | [108-gathering-module.md](108-gathering-module.md) | done |
+| 109 | [109-hack-module.md](109-hack-module.md) | done |
+| 110 | [110-wiki-module.md](110-wiki-module.md) | done |
+| 111 | [111-relic-build-module.md](111-relic-build-module.md) | done |
 | 112 | [112-guild-live.md](112-guild-live.md) | pending |
 | 113 | [113-auction-live.md](113-auction-live.md) | pending |
 | 114 | [114-mail-titles.md](114-mail-titles.md) | pending |
