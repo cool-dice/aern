@@ -461,3 +461,53 @@ test('a worn core comes off on the live route before another can be equipped', a
     value: { cores: 1 },
   });
 });
+
+test('breakClean runs from the live route and not from relic install', () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const service = readFileSync(new URL('./modules/build/service.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const purity = composeSource.slice(
+    composeSource.indexOf('async function breakPurity'),
+    composeSource.indexOf('function noteWarBlow'),
+  );
+  const relic = dispatch.slice(dispatch.indexOf('async function relic'), dispatch.indexOf('async function echo'));
+  expect(purity.includes('breakClean(')).toBe(true);
+  expect(dispatch.includes('breakPurity(')).toBe(true);
+  expect(app.includes('postBreakClean(')).toBe(true);
+  expect(relic.includes('breakClean(')).toBe(false);
+  expect(service.includes('breakClean(')).toBe(false);
+});
+
+test('breaking purity stores clean false and keeps the path so a relic can then be installed', async () => {
+  const graph = compose({ nowMs: 0 });
+  const created = await graph.character.service.create({
+    accountId: 'account-pure',
+    controller: 'player',
+    name: 'Pure',
+    clean: true,
+    points: { ...emptyPoints(), body: 10, reaction: 5, accuracy: 5 },
+    appearance,
+  });
+  expect(created.ok).toBe(true);
+  if (!created.ok) {
+    return;
+  }
+  const characterId = created.value.characterId;
+  await graph.character.service.grantXp(characterId, 1_000);
+  graph.creditGold(characterId, 200);
+  expect(await graph.act('path_learn', { characterId, templateId: 'ward' })).toMatchObject({ ok: true });
+  expect(await graph.act('relic_install', { characterId, subtype: 'spore' })).toMatchObject({
+    ok: false,
+    code: 'clean',
+  });
+  expect(await graph.act('purity_break', { characterId })).toMatchObject({
+    ok: true,
+    value: { clean: false, programs: 1 },
+  });
+  expect(await graph.act('purity_break', { characterId })).toMatchObject({
+    ok: true,
+    value: { clean: false, programs: 1 },
+  });
+  expect(await graph.act('relic_install', { characterId, subtype: 'spore' })).toMatchObject({ ok: true });
+});

@@ -59,6 +59,7 @@ import { NODES } from '@rift/domain/gathering';
 import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import {
   beginPurify,
+  breakClean,
   completePurify,
   nnUsed,
   recoverForgetting,
@@ -954,6 +955,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     teachLanguage,
     markPathUsed,
     recoverPath,
+    breakPurity,
     memberDoctrine,
     holdWithdrawal,
     reviewRewardFreeze,
@@ -3783,6 +3785,39 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     };
   }
 
+  /**
+   * Artifact 6. Installing a relic is what breaks purity, and that refusal stays on
+   * `startInstall`. This route is the separate act that stores `clean: false`.
+   */
+  async function breakPurity(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    if (characterId.length === 0) {
+      return { ok: false, code: 'character' };
+    }
+    const record = await repos.characters.findById(characterId);
+    if (record === null) {
+      return { ok: false, code: 'character' };
+    }
+    const state = await buildOf(characterId);
+    const broken = breakClean(state, clock.now());
+    await repos.characters.update({
+      ...record,
+      clean: broken.clean,
+      build: {
+        programs: broken.programs.map((program) => ({ ...program })),
+        cores: broken.cores.map((core) => ({ ...core })),
+        relicSocketFree: broken.relicSocketFree,
+        relicGrade: record.build?.relicGrade ?? 'common',
+        purifyingUntilMs: broken.purifyingUntilMs,
+        echoIds: [...(record.build?.echoIds ?? [])],
+        relics: (record.build?.relics ?? []).map((relic) => ({ ...relic, echoIds: [...relic.echoIds] })),
+      },
+    });
+    return { ok: true, value: { clean: broken.clean, programs: broken.programs.length } };
+  }
+
   function noteWarBlow(attackerId: string, targetId: string): void {
     const attacker = simWorld.entities.find((entity) => entity.id === attackerId);
     const target = simWorld.entities.find((entity) => entity.id === targetId);
@@ -6493,6 +6528,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/path/use', action: 'path_use' },
   { path: '/path/recover', action: 'path_recover' },
   { path: '/core/unequip', action: 'core_unequip' },
+  { path: '/purity/break', action: 'purity_break' },
   { path: '/node/strike', action: 'node_strike' },
 ];
 

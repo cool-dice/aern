@@ -576,6 +576,23 @@ export async function breakPact(input: {
   });
 }
 
+/** Posts `/purity/break`. Stores `clean: false` and leaves installed paths in place. */
+export async function postBreakClean(input: {
+  server: string;
+  characterId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/purity/break',
+    body: { characterId: input.characterId },
+    store: input.store,
+    log: 'purity-break',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/core/unequip`. A worn core comes off in a city, outside combat. */
 export async function postUnequipCore(input: {
   server: string;

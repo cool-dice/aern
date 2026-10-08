@@ -39,6 +39,7 @@ import {
   postPathUse,
   postRecoverPath,
   postUnequipCore,
+  postBreakClean,
   readBankLog,
   registerContender,
   renewPact,
@@ -772,6 +773,17 @@ export function App() {
                 characterId,
                 op: 'deposit',
                 amount: 10,
+                store: plan.store,
+              });
+            }}
+            onBreakClean={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postBreakClean({
+                server: SERVER,
+                characterId,
                 store: plan.store,
               });
             }}

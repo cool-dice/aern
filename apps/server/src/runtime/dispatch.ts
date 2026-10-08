@@ -180,6 +180,7 @@ export interface LivePorts {
   teachLanguage(body: Record<string, unknown>): Promise<LiveResult>;
   markPathUsed(body: Record<string, unknown>): LiveResult;
   recoverPath(body: Record<string, unknown>): Promise<LiveResult>;
+  breakPurity(body: Record<string, unknown>): Promise<LiveResult>;
   setNeural(characterId: string, nn: number, nnLimit: number): void;
   walletGold(characterId: string): number;
   setGold(characterId: string, gold: number): void;
@@ -265,6 +266,7 @@ const LIVE_ACTIONS = new Set([
   'language_teach',
   'path_use',
   'path_recover',
+  'purity_break',
   'node_strike',
   'coalition_say',
 ]);
@@ -419,6 +421,8 @@ export async function runLive(
       return ports.markPathUsed(body);
     case 'path_recover':
       return ports.recoverPath(body);
+    case 'purity_break':
+      return ports.breakPurity(body);
     case 'node_strike':
       return ports.strikeNode(body);
     case 'coalition_say':
