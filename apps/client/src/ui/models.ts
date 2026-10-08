@@ -444,8 +444,8 @@ export interface ChatChannelModel {
   partyLimit: number | null;
 }
 
-const CHAT_STUB = new Set<ChatChannelId>(['mail', 'guild']);
-const CHAT_NO_INPUT = new Set<ChatChannelId>(['mail', 'guild', 'system']);
+const CHAT_STUB = new Set<ChatChannelId>([]);
+const CHAT_NO_INPUT = new Set<ChatChannelId>(['system']);
 const CHAT_UPY = new Set<ChatChannelId>(['local', 'trade', 'mail']);
 
 function oneChannel(id: ChatChannelId): ChatChannelModel {
@@ -460,7 +460,7 @@ function oneChannel(id: ChatChannelId): ChatChannelModel {
 
 const KNOWN_CHANNELS = new Set<string>(CHAT_CHANNELS);
 
-/** Six channels. Mail and guild are prototype stubs and have no composer. System accepts no player text. */
+/** Six channels. Mail and guild accept text. System accepts no player text. */
 export function chatModel(channels: readonly string[] = CHAT_CHANNELS): ChatChannelModel[] {
   const seen = new Set<string>();
   const models: ChatChannelModel[] = [];

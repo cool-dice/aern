@@ -1,6 +1,6 @@
 # 120. Сетка взлома 4×4
 
-status: pending
+status: done
 
 ## Правило GDD
 

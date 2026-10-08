@@ -10,6 +10,7 @@ import {
 import { t } from './i18n/translate';
 import { hudModel } from './ui/models';
 import { CreationScreen, HudScreen } from './ui/screens';
+import { PlayPanels } from './play/screens';
 import {
   bindKeyboard,
   characterBody,
@@ -81,6 +82,7 @@ export function App() {
                 </li>
               ))}
             </ul>
+            <PlayPanels session={session} />
             <HudScreen
               model={hudModel({
                 hp: self.hp,

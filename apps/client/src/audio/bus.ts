@@ -90,6 +90,11 @@ export interface AudioBus {
   takeEvents(): SubtitleEvent[];
 }
 
+/** Damage and UI cues. Clip files are absent, so the id is a generated tone. */
+export function playTone(bus: AudioBus, event: string): void {
+  bus.play({ clipId: `tone:${event}`, channel: 'effects', gain: 0.4 });
+}
+
 function finiteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }

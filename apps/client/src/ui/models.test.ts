@@ -259,16 +259,16 @@ test('fog hides an unvisited dungeon and keeps only an unknown edge to a visited
   expect(map.visible.find((node) => node.id === 'edge_light')).toBeUndefined();
 });
 
-test('mail and guild chat channels are stubs without an input', () => {
+test('mail and guild chat channels accept a line', () => {
   const channels = chatModel([...CHAT_CHANNELS]);
   expect(channels).toHaveLength(6);
   expect(channels.find((channel) => channel.id === 'mail')).toMatchObject({
-    stub: true,
-    input: false,
+    stub: false,
+    input: true,
   });
   expect(channels.find((channel) => channel.id === 'guild')).toMatchObject({
-    stub: true,
-    input: false,
+    stub: false,
+    input: true,
   });
   expect(channels.find((channel) => channel.id === 'local')).toMatchObject({
     stub: false,

@@ -1,6 +1,6 @@
 # 117. Экраны на store
 
-status: pending
+status: done
 
 ## Правило GDD
 

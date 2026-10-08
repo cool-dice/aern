@@ -1,4 +1,5 @@
 import type { ReactElement } from 'react';
+import { hackGrid } from './hack-grid';
 import type {
   ChatChannelModel,
   CreationPreview,
@@ -64,6 +65,11 @@ export function InventoryScreen({ model }: { model: InventoryModel }): ReactElem
         ))}
       </ul>
       <ul>
+        {model.bag.map((item) => (
+          <li key={item.id} data-item={item.itemId}>
+            {item.itemId}
+          </li>
+        ))}
         {model.slots
           .filter((slot) => slot.visible)
           .map((slot) => (
@@ -135,12 +141,29 @@ export function TradeScreen({ model }: { model: TradeModel }): ReactElement {
   );
 }
 
-export function HackScreen({ model }: { model: HackModel }): ReactElement {
+export function HackScreen({
+  model,
+  hint = 'ABCD',
+}: {
+  model: HackModel;
+  hint?: string;
+}): ReactElement {
+  const rows = hackGrid(hint);
   return (
     <section data-screen="hack" data-blocked={model.blocked}>
       <p>
         {model.rows}×{model.cols}
       </p>
+      {rows.map((row, rowIndex) => (
+        <div key={rowIndex}>
+          {row.map((symbol, column) => (
+            <span key={`${rowIndex}-${column}`} data-cell={symbol}>
+              {symbol}
+            </span>
+          ))}
+        </div>
+      ))}
+      <input data-password="4" maxLength={4} defaultValue="" />
       <p>{model.difficulty}</p>
     </section>
   );

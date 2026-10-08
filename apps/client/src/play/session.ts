@@ -164,6 +164,12 @@ export function commandForKey(code: string, facing: Dir, targetId: string | null
 
 export function pressKey(session: PlaySession, code: string): string | null {
   const action = actionFor(DEFAULT_BINDINGS, code);
+  if (code === 'Digit1') {
+    session.screen = 'hack';
+  }
+  if (code === 'Digit2') {
+    session.screen = 'trade';
+  }
   if (action !== null && SCREEN_ACTIONS[action] !== undefined) {
     session.screen = SCREEN_ACTIONS[action] ?? session.screen;
     if (action === 'chat') {
