@@ -9,6 +9,10 @@ export interface WeatherMods {
   accuracy: number;
   loot: number;
   perception: number;
+  /** Fog and similar anomalies shrink sight. 1 leaves the base radius. */
+  vision: number;
+  /** Spore weather rolls a timed mutation when this is above 0. */
+  mutationChance: number;
 }
 
 const IDENTITY: WeatherMods = {
@@ -19,6 +23,8 @@ const IDENTITY: WeatherMods = {
   accuracy: 0,
   loot: 1,
   perception: 0,
+  vision: 1,
+  mutationChance: 0,
 };
 
 /** Day and night are not inputs. Artifact 7 keeps them cosmetic. */
@@ -35,6 +41,8 @@ export function combatWeather(id: string | null | undefined, safeZone: boolean):
     accuracy: numberOf(effect.accuracy, 0),
     loot: numberOf(effect.loot, 1),
     perception: numberOf(effect.perception, 0),
+    vision: numberOf(effect.vision, 1),
+    mutationChance: numberOf(effect.mutationChance, 0),
   };
 }
 

@@ -32,6 +32,9 @@ import { manualClock } from '../shared/clock';
  */
 export const LOGOUT_GRACE_MS = 600_000;
 
+/** Dead monsters return after this delay. The death tick only writes the corpse. */
+export const MONSTER_RESPAWN_MS = 30_000;
+
 const LAG_HISTORY = 6;
 const MAX_LAG_MS = 500;
 const TICKS_PER_SECOND = REAL_SECOND_MS / SIM_TICK_MS;
@@ -82,6 +85,16 @@ export interface SimEntity {
   progress?: Progress;
   quests?: QuestProgress[];
   monsterKind?: MonsterKind;
+  /** Occupied neural load. Combat treats `nn > nnLimit` as neuroshock. */
+  nn?: number;
+  nnLimit?: number;
+  /** Fractional steps saved while `speedMultiplier` is below 1. */
+  moveFrac?: number;
+}
+
+export interface MonsterRespawn {
+  atMs: number;
+  entity: SimEntity;
 }
 
 export interface SimCorpse {
@@ -159,6 +172,11 @@ export interface SimWorld {
   lootTables?: Record<string, readonly LootEntry[]>;
   weatherId?: string | null;
   safeZone?: boolean;
+  respawns?: MonsterRespawn[];
+  /** Copied from `combatWeather` so vision and gathering read the same tick. */
+  vision?: number;
+  gatherSpeed?: number;
+  seasonSpawn?: number;
 }
 
 interface StatusMods {
@@ -182,6 +200,16 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
   const entities = world.entities
     .filter((entity) => !(entity.isBot && entity.carrierOffline === true))
     .map(cloneEntity);
+  const respawns: MonsterRespawn[] = [];
+  for (const row of world.respawns ?? []) {
+    if (row.atMs <= nowMs) {
+      if (!entities.some((entity) => entity.id === row.entity.id)) {
+        entities.push(cloneEntity({ ...row.entity, hp: row.entity.maxHp, phase: 'online' }));
+      }
+      continue;
+    }
+    respawns.push({ atMs: row.atMs, entity: cloneEntity(row.entity) });
+  }
   const rejections: SimRejection[] = [];
   const mods = new Map<string, StatusMods>();
   const weather = combatWeather(world.weatherId, world.safeZone === true);
@@ -199,6 +227,17 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
       entity.hp -= status.hpLoss;
       entity.hp -= weather.hpPerSecond;
     }
+    if (weather.mutationChance > 0 && rng.nextUnit() < weather.mutationChance) {
+      const rolled = tryApplyStatus({
+        resist: 0,
+        id: 'mutation',
+        nowMs,
+        sourceId: 'weather',
+        existing: entity.statuses,
+        rng,
+      });
+      entity.statuses = rolled.statuses;
+    }
     mods.set(entity.id, {
       accuracyPenalty: status.accuracyPenalty,
       speedMultiplier: status.speedMultiplier,
@@ -212,7 +251,7 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     if (command.type === 'move') {
       applyMove(entities, command, rejections, mods, obstacles, weather);
     } else if (command.type === 'attack') {
-      applyAttack(entities, command, rejections, mods, nowMs, weather);
+      applyAttack(entities, command, rejections, mods, nowMs, weather, rng);
     }
   }
 
@@ -220,9 +259,9 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     applyLogout(entity);
   }
 
-  pursuePlayers(entities, rejections, mods, obstacles, nowMs, weather);
+  pursuePlayers(entities, rejections, mods, obstacles, nowMs, weather, rng);
 
-  const settled = settleMonsters(entities, world.corpses, rng, nowMs, world.lootTables, weather);
+  const settled = settleMonsters(entities, world.corpses, rng, nowMs, world.lootTables, weather, respawns);
   settlePlayers(settled.entities, settled.corpses, nowMs);
   for (const command of ordered) {
     if (command.type === 'revive') {
@@ -245,6 +284,10 @@ export function stepTick(world: SimWorld, commands: readonly SimCommand[], rng: 
     ...(world.lootTables !== undefined ? { lootTables: world.lootTables } : {}),
     ...(world.weatherId !== undefined ? { weatherId: world.weatherId } : {}),
     ...(world.safeZone !== undefined ? { safeZone: world.safeZone } : {}),
+    respawns,
+    vision: weather.vision,
+    gatherSpeed: weather.speed,
+    ...(world.seasonSpawn !== undefined ? { seasonSpawn: world.seasonSpawn } : {}),
   };
   const prior = world.history.map(cloneWorld);
   return { ...next, history: [...prior, cloneWorld(next)].slice(-LAG_HISTORY) };
@@ -308,6 +351,7 @@ function pursuePlayers(
   obstacles: readonly Cell[],
   nowMs: number,
   weather: WeatherMods,
+  rng: Rng,
 ): void {
   const players = entities.filter(
     (entity) => entity.monsterId === undefined && entity.phase === 'online' && entity.hp > 0,
@@ -330,6 +374,10 @@ function pursuePlayers(
         nearest = player;
         best = distance;
       }
+    }
+    const sight = Math.max(1, Math.floor(8 * weather.vision));
+    if (best > sight) {
+      continue;
     }
     if (best <= 1) {
       applyAttack(
@@ -354,18 +402,34 @@ function pursuePlayers(
         mods,
         nowMs,
         weather,
+        rng,
       );
       continue;
     }
-    const dir = dirToward(monster.cell, nearest.cell);
-    const next = step(monster.cell, dir);
-    const occupied = entities.some(
-      (entity) => entity.id !== monster.id && entity.cell.x === next.x && entity.cell.y === next.y,
-    );
-    const blocked = obstacles.some((obstacle) => obstacle.x === next.x && obstacle.y === next.y);
-    if (!occupied && !blocked) {
-      monster.cell = next;
+    const speed =
+      (monster.speedMultiplier ?? 1) *
+      (mods.get(monster.id)?.speedMultiplier ?? 1) *
+      weather.speed;
+    let steps = Math.floor(speed);
+    monster.moveFrac = (monster.moveFrac ?? 0) + (speed - steps);
+    if (monster.moveFrac >= 1) {
+      steps += 1;
+      monster.moveFrac -= 1;
     }
+    let cell = monster.cell;
+    for (let index = 0; index < steps; index += 1) {
+      const dir = dirToward(cell, nearest.cell);
+      const next = step(cell, dir);
+      const occupied = entities.some(
+        (entity) => entity.id !== monster.id && entity.cell.x === next.x && entity.cell.y === next.y,
+      );
+      const blocked = obstacles.some((obstacle) => obstacle.x === next.x && obstacle.y === next.y);
+      if (occupied || blocked) {
+        break;
+      }
+      cell = next;
+    }
+    monster.cell = cell;
   }
 }
 
@@ -376,6 +440,7 @@ function settleMonsters(
   nowMs: number,
   lootTables: SimWorld['lootTables'],
   weather: WeatherMods,
+  respawns: MonsterRespawn[],
 ): { entities: SimEntity[]; corpses: SimCorpse[] } {
   const alive: SimEntity[] = [];
   const nextCorpses = corpses.map((corpse) => ({ ...corpse, stacks: corpse.stacks?.map((stack) => ({ ...stack })) }));
@@ -403,6 +468,10 @@ function settleMonsters(
         stacks: stacks.map((stack) => ({ itemId: stack.itemId, qty: stack.qty })),
         looted: false,
         bindNodeId: '',
+      });
+      respawns.push({
+        atMs: nowMs + MONSTER_RESPAWN_MS,
+        entity: cloneEntity({ ...entity, hp: entity.maxHp, phase: 'online' }),
       });
       continue;
     }
@@ -616,7 +685,7 @@ function grantKill(entities: readonly SimEntity[], victim: SimEntity): void {
   const next = onKill(
     { progress: hero.progress, quests: hero.quests },
     victim.level ?? 1,
-    victim.monsterKind ?? 'normal',
+    victim.monsterKind ?? (victim.eliteId != null && victim.eliteId !== '' ? 'elite' : 'normal'),
   );
   hero.progress = next.progress;
   hero.quests = next.quests;
@@ -646,7 +715,7 @@ function applyMove(
 
   const speed =
     (mods.get(entity.id)?.speedMultiplier ?? 1) *
-    (entity.overloaded === true ? neuroshockScale(1, true) : 1) *
+    neuroshockScale(1, neuralOverload(entity)) *
     weather.speed *
     (entity.speedMultiplier ?? 1);
   const downed = entity.phase === 'downed';
@@ -696,6 +765,23 @@ function applyMove(
   entity.cell = cell;
 }
 
+function neuralOverload(entity: SimEntity): boolean {
+  if (entity.overloaded === true) {
+    return true;
+  }
+  if (entity.nn === undefined || entity.nnLimit === undefined) {
+    return false;
+  }
+  return entity.nn > entity.nnLimit;
+}
+
+function isMutagen(monsterId: string | undefined): boolean {
+  if (monsterId === undefined) {
+    return false;
+  }
+  return monsterId.includes('spore') || monsterId.includes('fungus') || monsterId.includes('matron');
+}
+
 function applyAttack(
   entities: SimEntity[],
   command: AttackCommand,
@@ -703,6 +789,7 @@ function applyAttack(
   mods: ReadonlyMap<string, StatusMods>,
   nowMs: number,
   weather: WeatherMods,
+  rng: Rng,
 ): void {
   const attacker = findEntity(entities, command.attackerId);
   if (attacker === undefined) {
@@ -724,8 +811,11 @@ function applyAttack(
   enterCombat(attackerDraft);
   enterCombat(targetDraft);
 
+  const perceptionPenalty = weather.perception < 0 ? -weather.perception : 0;
   const weatherPenalty =
-    (command.melee ? 0 : -weather.rangedAccuracy) + (weather.accuracy < 0 ? -weather.accuracy : 0);
+    (command.melee ? 0 : -weather.rangedAccuracy) +
+    (weather.accuracy < 0 ? -weather.accuracy : 0) +
+    perceptionPenalty;
   const result = resolveAttack({
     attacker: toCombatant(
       attackerDraft,
@@ -733,7 +823,7 @@ function applyAttack(
     ),
     target: toCombatant(targetDraft, mods.get(target.id)?.accuracyPenalty ?? 0),
     weaponDamage:
-      neuroshockScale(command.weaponDamage, attacker.overloaded === true) *
+      neuroshockScale(command.weaponDamage, neuralOverload(attacker)) *
       (mods.get(attacker.id)?.damageMultiplier ?? 1) *
       (attacker.monsterId !== undefined ? weather.monsterDamage : 1),
     odCost: command.odCost,
@@ -765,6 +855,17 @@ function applyAttack(
     });
     targetDraft.statuses = applied.statuses;
     targetDraft.stunned = true;
+  }
+  if (isMutagen(attacker.monsterId)) {
+    const mutated = tryApplyStatus({
+      resist: 0,
+      id: 'mutation',
+      nowMs,
+      sourceId: attacker.id,
+      existing: targetDraft.statuses,
+      rng,
+    });
+    targetDraft.statuses = mutated.statuses;
   }
   replaceEntity(entities, attackerDraft);
   replaceEntity(entities, targetDraft);
@@ -865,6 +966,10 @@ function cloneWorld(world: SimWorld): SimWorld {
     ...(world.lootTables !== undefined ? { lootTables: world.lootTables } : {}),
     ...(world.weatherId !== undefined ? { weatherId: world.weatherId } : {}),
     ...(world.safeZone !== undefined ? { safeZone: world.safeZone } : {}),
+    ...(world.respawns !== undefined ? { respawns: world.respawns.map((row) => ({ atMs: row.atMs, entity: cloneEntity(row.entity) })) } : {}),
+    ...(world.vision !== undefined ? { vision: world.vision } : {}),
+    ...(world.gatherSpeed !== undefined ? { gatherSpeed: world.gatherSpeed } : {}),
+    ...(world.seasonSpawn !== undefined ? { seasonSpawn: world.seasonSpawn } : {}),
   };
 }
 

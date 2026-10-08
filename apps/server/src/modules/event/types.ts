@@ -24,6 +24,8 @@ export interface EventSnapshot {
   /** Spawn multiplier for this season's tag. Matching tags are 1.2 and do not stack. */
   spawnTagMultiplier: number;
   weather: Record<string, number | boolean> | null;
+  /** Active anomaly id, or null while none has started. */
+  weatherId: string | null;
   invasion: InvasionPhase | null;
   /** True while `now` sits in a plan's five-minute announcement window. */
   announced: boolean;

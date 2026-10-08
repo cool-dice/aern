@@ -75,6 +75,7 @@ export function createEventService(
         resourceBonus: seasonResource(season),
         spawnTagMultiplier: spawnMultiplier(season, seasonSpawnTag(season)),
         weather: effectAt(regionId, nowMs, inSafe),
+        weatherId: activeWeather(plans, nowMs)?.weatherId ?? null,
         invasion: startedAt === null ? null : invasionPhase(nowMs - startedAt),
         announced: inAnnounceWindow(plans, nowMs),
       };

@@ -20,15 +20,20 @@ export function onKill(
 }
 
 export function onGather(state: ProgressState): ProgressState {
-  return { progress: state.progress, quests: advanceMatching(state.quests, 'gather') };
+  return onObjective(state, 'gather');
 }
 
 export function onCraft(state: ProgressState): ProgressState {
-  return { progress: state.progress, quests: advanceMatching(state.quests, 'craft') };
+  return onObjective(state, 'craft');
 }
 
 export function onVisit(state: ProgressState): ProgressState {
-  return { progress: state.progress, quests: advanceMatching(state.quests, 'visit') };
+  return onObjective(state, 'visit');
+}
+
+/** One real event of `kind` moves every active objective of that kind. */
+export function onObjective(state: ProgressState, kind: QuestObjectiveKind): ProgressState {
+  return { progress: state.progress, quests: advanceMatching(state.quests, kind) };
 }
 
 function advanceMatching(quests: readonly QuestProgress[], kind: QuestObjectiveKind): QuestProgress[] {
