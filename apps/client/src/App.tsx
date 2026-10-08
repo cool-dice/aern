@@ -39,6 +39,7 @@ import {
   postStudyBook,
   postStudyRuins,
   postStudyInteraction,
+  postRefine,
   postPathUse,
   postRecoverPath,
   postUnequipCore,
@@ -923,6 +924,18 @@ export function App() {
                 server: SERVER,
                 characterId,
                 language: 'common_dark',
+                store: plan.store,
+              });
+            }}
+            onRefine={() => {
+              const characterId = session.store.getState().self?.id ?? '';
+              if (characterId === '') {
+                return;
+              }
+              void postRefine({
+                server: SERVER,
+                characterId,
+                resourceId: 'metal',
                 store: plan.store,
               });
             }}

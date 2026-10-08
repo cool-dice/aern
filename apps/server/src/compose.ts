@@ -58,7 +58,7 @@ import { createBus } from './shared/bus';
 import { manualClock, type Clock } from './shared/clock';
 import type { GameModule, ModuleContext } from './shared/module';
 import { OBSERVATION_LENGTH, utilityAction } from '@rift/domain/ai';
-import { NODES } from '@rift/domain/gathering';
+import { NODES, refine } from '@rift/domain/gathering';
 import { branchScene, recordChoice, setWorldFlagOnce, type QuestObjectiveKind, type QuestProgress } from '@rift/domain/quests';
 import {
   beginPurify,
@@ -968,6 +968,7 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     studyBook,
     studyRuins,
     studyInteraction,
+    refineResource,
     markPathUsed,
     recoverPath,
     breakPurity,
@@ -3902,6 +3903,48 @@ export function compose(options: ComposeOptions = {}): ServerComposition {
     return {
       ok: true,
       value: { language, upy: gained.value.state.values[language], gain: 'interaction' },
+    };
+  }
+
+  /**
+   * Artifact 12. Three ordinary units and 10 gold become one cleaned unit.
+   * Cleaned stock is stored as `<resource>_cleaned`. The domain result's gold is the wallet after the fee.
+   */
+  async function refineResource(
+    body: Record<string, unknown>,
+  ): Promise<{ ok: boolean; code?: string; value?: unknown }> {
+    const characterId = typeof body.characterId === 'string' ? body.characterId : '';
+    const resourceId = typeof body.resourceId === 'string' && body.resourceId.length > 0 ? body.resourceId : 'metal';
+    if (characterId.length === 0 || resourceId.endsWith('_cleaned')) {
+      return { ok: false, code: 'qty' };
+    }
+    const stacks = await repos.materials.read(characterId);
+    const wallet =
+      repos.economy.getCharacter(characterId) ??
+      newEconomyCharacter({ characterId, side: 'light', gold: 0 });
+    const refined = refine(stacks[resourceId] ?? 0, wallet.gold);
+    if (!refined.ok) {
+      return { ok: false, code: refined.code };
+    }
+    const cleanedId = `${resourceId}_cleaned`;
+    const committed = await repos.materials.commit(characterId, stacks, {
+      ...stacks,
+      [resourceId]: refined.value.normalLeft,
+      [cleanedId]: (stacks[cleanedId] ?? 0) + refined.value.cleanedGained,
+    });
+    if (!committed) {
+      return { ok: false, code: 'qty' };
+    }
+    repos.economy.saveCharacter({ ...wallet, gold: refined.value.gold });
+    return {
+      ok: true,
+      value: {
+        resourceId,
+        cleanedId,
+        normalLeft: refined.value.normalLeft,
+        cleanedGained: refined.value.cleanedGained,
+        gold: refined.value.gold,
+      },
     };
   }
 
@@ -7028,6 +7071,7 @@ const LIVE_ROUTES: readonly { path: string; action: string }[] = [
   { path: '/language/book', action: 'language_book' },
   { path: '/language/ruins', action: 'language_ruins' },
   { path: '/language/interact', action: 'language_interact' },
+  { path: '/refine', action: 'refine' },
   { path: '/path/use', action: 'path_use' },
   { path: '/path/recover', action: 'path_recover' },
   { path: '/core/unequip', action: 'core_unequip' },

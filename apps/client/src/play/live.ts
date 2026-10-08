@@ -778,6 +778,24 @@ export async function postStudyInteraction(input: {
   });
 }
 
+/** Posts `/refine`. Three ordinary units and 10 gold become one cleaned unit. */
+export async function postRefine(input: {
+  server: string;
+  characterId: string;
+  resourceId: string;
+  store: ClientStore;
+  fetchImpl?: FetchLike;
+}): Promise<LiveResponse> {
+  return postService({
+    server: input.server,
+    path: '/refine',
+    body: { characterId: input.characterId, resourceId: input.resourceId },
+    store: input.store,
+    log: 'refine',
+    ...(input.fetchImpl !== undefined ? { fetchImpl: input.fetchImpl } : {}),
+  });
+}
+
 /** Posts `/language/teach`. A lesson is 100 gold, caps at 80, and waits 24 hours. */
 export async function postTeach(input: {
   server: string;

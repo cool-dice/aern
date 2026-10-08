@@ -183,6 +183,7 @@ export interface LivePorts {
   studyBook(body: Record<string, unknown>): Promise<LiveResult>;
   studyRuins(body: Record<string, unknown>): Promise<LiveResult>;
   studyInteraction(body: Record<string, unknown>): Promise<LiveResult>;
+  refineResource(body: Record<string, unknown>): Promise<LiveResult>;
   markPathUsed(body: Record<string, unknown>): LiveResult;
   recoverPath(body: Record<string, unknown>): Promise<LiveResult>;
   breakPurity(body: Record<string, unknown>): Promise<LiveResult>;
@@ -276,6 +277,7 @@ const LIVE_ACTIONS = new Set([
   'language_book',
   'language_ruins',
   'language_interact',
+  'refine',
   'path_use',
   'path_recover',
   'purity_break',
@@ -439,6 +441,8 @@ export async function runLive(
       return ports.studyRuins(body);
     case 'language_interact':
       return ports.studyInteraction(body);
+    case 'refine':
+      return ports.refineResource(body);
     case 'path_use':
       return ports.markPathUsed(body);
     case 'path_recover':

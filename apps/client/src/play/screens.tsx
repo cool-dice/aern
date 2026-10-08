@@ -85,6 +85,7 @@ export function PlayPanels({
   onStudyBook,
   onStudyRuins,
   onStudyInteraction,
+  onRefine,
   onPathUse,
   onRecoverPath,
   onUnequipCore,
@@ -135,6 +136,7 @@ export function PlayPanels({
   onStudyBook?: () => void;
   onStudyRuins?: () => void;
   onStudyInteraction?: () => void;
+  onRefine?: () => void;
   onPathUse?: () => void;
   onRecoverPath?: () => void;
   onUnequipCore?: () => void;
@@ -308,6 +310,9 @@ export function PlayPanels({
         </button>
         <button type="button" data-language="interact" onClick={() => onStudyInteraction?.()}>
           talk
+        </button>
+        <button type="button" data-refine="batch" onClick={() => onRefine?.()}>
+          refine
         </button>
         <button type="button" data-party="match" onClick={() => onMatchmake?.()}>
           group

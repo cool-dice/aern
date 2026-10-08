@@ -184,3 +184,26 @@ test('canCraftLanguage blocks a recipe when side-language UPY is below 60', asyn
   const blocked = await graph.act('craft_start', { characterId, recipeId: 'rusty_sword', itemLevel: 1 });
   expect(blocked).toMatchObject({ ok: false, code: 'language' });
 });
+
+test('refine spends 3 ordinary resource and 10 gold from the live route', async () => {
+  const composeSource = readFileSync(new URL('./compose.ts', import.meta.url), 'utf8');
+  const dispatch = readFileSync(new URL('./runtime/dispatch.ts', import.meta.url), 'utf8');
+  const app = readFileSync(new URL('../../client/src/App.tsx', import.meta.url), 'utf8');
+  const route = composeSource.slice(
+    composeSource.indexOf('async function refineResource'),
+    composeSource.indexOf('async function advanceForgetting'),
+  );
+  expect(route.includes('refine(')).toBe(true);
+  expect(dispatch.includes('refineResource(')).toBe(true);
+  expect(app.includes('postRefine(')).toBe(true);
+  const graph = compose({ nowMs: 0 });
+  graph.enterCharacter('account-lia', 'lia');
+  graph.creditGold('lia', 25);
+  await graph.creditMaterial('lia', 'metal', 7);
+  const refined = await graph.act('refine', { characterId: 'lia', resourceId: 'metal' });
+  expect(refined).toMatchObject({
+    ok: true,
+    value: { resourceId: 'metal', normalLeft: 1, cleanedGained: 2, gold: 5 },
+  });
+  expect(await graph.materialQty('lia', 'metal_cleaned')).toBe(2);
+});
